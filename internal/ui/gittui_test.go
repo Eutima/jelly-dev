@@ -38,10 +38,25 @@ func newGitTestModel(width, height int) (GitModel, *fakeSource) {
 		{Status: source.StatusModified, Path: "b.txt"},
 		{Status: source.StatusAdded, Path: "c.bin"},
 	}
-	model := NewGitModel(files, src)
-	updated, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: height})
-	return updated.(GitModel), src
+	updated, _ := NewGitModel(files, src).Update(tea.WindowSizeMsg{Width: width, Height: height})
+	return settle(updated.(GitModel)), src
 }
+
+// runLoads executes a returned command and feeds finished background loads back into the model.
+func runLoads(model GitModel, cmd tea.Cmd) GitModel {
+	for cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(loadedMsg); !ok {
+			return model
+		}
+		updated, next := model.Update(msg)
+		model, cmd = updated.(GitModel), next
+	}
+	return model
+}
+
+// settle runs the initial background load.
+func settle(model GitModel) GitModel { return runLoads(model, model.Init()) }
 
 func gitPress(model GitModel, key string) GitModel {
 	var msg tea.KeyMsg
@@ -55,8 +70,8 @@ func gitPress(model GitModel, key string) GitModel {
 	default:
 		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
 	}
-	updated, _ := model.Update(msg)
-	return updated.(GitModel)
+	updated, cmd := model.Update(msg)
+	return runLoads(updated.(GitModel), cmd)
 }
 
 func TestGitView_ShowsFileListAndFirstDiff_WhenOpened(t *testing.T) {
@@ -161,7 +176,7 @@ func TestGitView_ScrollsList_WhenSelectionLeavesVisibleRows(t *testing.T) {
 	}
 	model := NewGitModel(files, &fakeSource{texts: map[string][2]string{}})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
-	model = gitPress(updated.(GitModel), "G")
+	model = gitPress(settle(updated.(GitModel)), "G")
 	if model.listTop != 30-model.listBodyHeight() || !strings.Contains(model.View(), strings.Repeat("f", 30)) {
 		t.Fatalf("listTop %d", model.listTop)
 	}
@@ -171,7 +186,7 @@ func TestGitView_StripsControlCharacters_WhenPathContainsEscapes(t *testing.T) {
 	files := []source.ChangedFile{{Status: source.StatusModified, Path: "evil\x1b]0;x\x07.txt"}}
 	model := NewGitModel(files, &fakeSource{texts: map[string][2]string{}})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
-	view := updated.(GitModel).View()
+	view := settle(updated.(GitModel)).View()
 	if strings.Contains(view, "\x1b]") || strings.Contains(view, "\x07") {
 		t.Fatalf("escape in view: %q", view)
 	}
@@ -184,7 +199,7 @@ func TestGitView_SanitizesAndFitsMessage_WhenLoadErrorContainsEscapesAndIsLong(t
 	}
 	files := []source.ChangedFile{{Status: source.StatusModified, Path: "evil\x1b]0;x\x07.txt"}}
 	updated, _ := NewGitModel(files, src).Update(tea.WindowSizeMsg{Width: 80, Height: 8})
-	view := updated.(GitModel).View()
+	view := settle(updated.(GitModel)).View()
 	if strings.Contains(view, "\x1b]") || strings.Contains(view, "\x07") || strings.Contains(view, "\x1b[31m") {
 		t.Fatalf("escape in view: %q", view)
 	}
@@ -203,5 +218,64 @@ func TestGitView_ExplainsUnmergedAndSubmodule_WhenThoseErrorsOccur(t *testing.T)
 		if got := describeLoadError(err); !strings.Contains(got, want) {
 			t.Fatalf("%v: %q", err, got)
 		}
+	}
+}
+
+func TestGitView_ShowsLoadingHint_WhenLoadNotFinished(t *testing.T) {
+	files := []source.ChangedFile{{Status: source.StatusModified, Path: "a.txt"}}
+	updated, _ := NewGitModel(files, &fakeSource{texts: map[string][2]string{"a.txt": {"x\n", "y\n"}}}).
+		Update(tea.WindowSizeMsg{Width: 100, Height: 8})
+	if view := updated.(GitModel).View(); !strings.Contains(view, "Loading a.txt") {
+		t.Fatalf("view:\n%s", view)
+	}
+}
+
+func TestGitUpdate_LoadsOnlyLatestSelection_WhenKeysPressedDuringLoad(t *testing.T) {
+	model, src := newGitTestModel(100, 12)
+	src.loads = nil
+	// Start a load of file 1, then move on twice while it is still running.
+	updated, firstLoad := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	model = updated.(GitModel)
+	if firstLoad == nil {
+		t.Fatal("expected a load command")
+	}
+	for _, key := range []string{"k", "j", "j"} {
+		updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+		model = updated.(GitModel)
+		if cmd != nil {
+			t.Fatalf("key %q must not start a second load while one is running", key)
+		}
+	}
+	model = runLoads(model, firstLoad)
+	if model.selected != 2 || model.loadedFile != 2 || strings.Join(src.loads, ",") != "b.txt,c.bin" {
+		t.Fatalf("selected %d loaded %d loads %v", model.selected, model.loadedFile, src.loads)
+	}
+	if !strings.Contains(model.View(), "Binary file") {
+		t.Fatalf("view:\n%s", model.View())
+	}
+}
+
+func TestGitUpdate_DoesNotReload_WhenSelectionUnchanged(t *testing.T) {
+	model, src := newGitTestModel(100, 12)
+	before := len(src.loads)
+	model = gitPress(model, "k")
+	if len(src.loads) != before {
+		t.Fatalf("reloaded: %v", src.loads)
+	}
+}
+
+func TestGitUpdate_KeepsShownFile_WhenUserReturnsToItDuringLoad(t *testing.T) {
+	model, src := newGitTestModel(100, 12)
+	src.loads = nil
+	updated, load := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")}) // start loading b.txt
+	model = updated.(GitModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")}) // back to the shown a.txt
+	model = updated.(GitModel)
+	if view := model.View(); strings.Contains(view, "Loading") || !strings.Contains(view, "ALPHA") {
+		t.Fatalf("shown file must stay visible:\n%s", view)
+	}
+	model = runLoads(model, load)
+	if model.loadedFile != 0 || strings.Join(src.loads, ",") != "b.txt" || model.loading {
+		t.Fatalf("loaded %d loads %v loading %v", model.loadedFile, src.loads, model.loading)
 	}
 }

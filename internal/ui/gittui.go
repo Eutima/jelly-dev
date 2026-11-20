@@ -44,13 +44,26 @@ type GitModel struct {
 	message  string // shown instead of the diff when the file cannot be displayed
 	theme    Theme
 
+	loading     bool // a file is being loaded in the background
+	loadingFile int  // index of the file being loaded
+	loadedFile  int  // index of the file whose diff is shown, -1 when none
+
 	width, height int
 }
 
-// NewGitModel builds the viewer and loads the diff of the first file.
+// loadedMsg carries the result of a background file load.
+type loadedMsg struct {
+	index   int
+	diff    DiffModel
+	message string // set instead of a meaningful diff when the file cannot be shown
+}
+
+// NewGitModel builds the viewer; the diff of the first file is loaded in the background (see Init).
 func NewGitModel(files []source.ChangedFile, src ChangeSource) GitModel {
-	model := GitModel{files: files, source: src, theme: DarkTheme()}
-	model.selectFile(0)
+	model := GitModel{files: files, source: src, theme: DarkTheme(), loadedFile: -1}
+	if len(files) > 0 {
+		model.loading, model.loadingFile = true, 0
+	}
 	return model
 }
 
@@ -58,7 +71,12 @@ func NewGitModel(files []source.ChangedFile, src ChangeSource) GitModel {
 func (m GitModel) FileCount() int { return len(m.files) }
 
 // Init implements tea.Model.
-func (m GitModel) Init() tea.Cmd { return nil }
+func (m GitModel) Init() tea.Cmd {
+	if !m.loading {
+		return nil
+	}
+	return m.loadCmd(m.loadingFile)
+}
 
 func (m GitModel) listWidth() int {
 	return min(max(m.width/listDivisor, minListWidth), maxListWidth, max(m.width/2, 0))
@@ -66,29 +84,61 @@ func (m GitModel) listWidth() int {
 
 func (m GitModel) diffWidth() int { return max(m.width-m.listWidth()-separatorW, 0) }
 
-// selectFile loads the diff of file index i.
-func (m *GitModel) selectFile(i int) {
+// selectFile selects file i and starts loading its diff unless it is already shown or a load is running
+// (the running load hands over to the latest selection when it finishes).
+func (m *GitModel) selectFile(i int) tea.Cmd {
 	if len(m.files) == 0 {
-		return
+		return nil
 	}
 	m.selected = min(max(i, 0), len(m.files)-1)
 	m.ensureVisible()
-	file := m.files[m.selected]
-	oldLabel, newLabel := m.source.Labels()
+	if m.loading || m.selected == m.loadedFile {
+		return nil
+	}
+	m.loading, m.loadingFile = true, m.selected
+	return m.loadCmd(m.selected)
+}
+
+// loadCmd loads file index and computes its diff off the UI goroutine.
+func (m GitModel) loadCmd(index int) tea.Cmd {
+	file := m.files[index]
+	src, theme := m.source, m.theme
+	oldLabel, newLabel := src.Labels()
 	oldPath := file.Path
 	if file.OldPath != "" {
 		oldPath = file.OldPath
 	}
-	oldText, newText, err := m.source.Load(file)
-	if err != nil {
-		m.message = describeLoadError(err)
-		m.diff = NewDiffModel(oldLabel+": "+oldPath, newLabel+": "+file.Path, nil, nil)
-	} else {
-		m.message = ""
-		m.diff = NewDiffModel(oldLabel+": "+oldPath, newLabel+": "+file.Path,
-			diff.SplitLines(oldText), diff.SplitLines(newText))
+	leftTitle, rightTitle := oldLabel+": "+oldPath, newLabel+": "+file.Path
+	return func() tea.Msg {
+		oldText, newText, err := src.Load(file)
+		if err != nil {
+			return loadedMsg{
+				index: index, message: describeLoadError(err),
+				diff: NewDiffModel(leftTitle, rightTitle, nil, nil).WithTheme(theme),
+			}
+		}
+		return loadedMsg{
+			index: index,
+			diff: NewDiffModel(leftTitle, rightTitle, diff.SplitLines(oldText), diff.SplitLines(newText)).
+				WithTheme(theme),
+		}
 	}
-	m.diff = m.diff.WithTheme(m.theme).withSize(m.diffWidth(), m.height)
+}
+
+// applyLoaded shows a finished load, or starts loading the file selected in the meantime.
+func (m *GitModel) applyLoaded(msg loadedMsg) tea.Cmd {
+	m.loading = false
+	if msg.index != m.selected {
+		if m.selected == m.loadedFile {
+			return nil // the user came back to the file that is already shown
+		}
+		m.loading, m.loadingFile = true, m.selected
+		return m.loadCmd(m.selected)
+	}
+	m.loadedFile = msg.index
+	m.message = msg.message
+	m.diff = msg.diff.withSize(m.diffWidth(), m.height)
+	return nil
 }
 
 func describeLoadError(err error) string {
@@ -132,6 +182,9 @@ func (m GitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.diff = m.diff.withSize(m.diffWidth(), m.height)
 		m.ensureVisible()
 		return m, nil
+	case loadedMsg:
+		cmd := m.applyLoaded(msg)
+		return m, cmd
 	case tea.MouseMsg:
 		return m.forwardToDiff(msg)
 	case tea.KeyMsg:
@@ -165,25 +218,26 @@ func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.forwardToDiff(msg)
 	}
+	var cmd tea.Cmd
 	switch key {
 	case "esc":
 		return m, tea.Quit
 	case "enter", "right", "l":
 		m.focus = focusDiff
 	case "j", "down":
-		m.selectFile(m.selected + 1)
+		cmd = m.selectFile(m.selected + 1)
 	case "k", "up":
-		m.selectFile(m.selected - 1)
+		cmd = m.selectFile(m.selected - 1)
 	case "pgdown":
-		m.selectFile(m.selected + m.listBodyHeight())
+		cmd = m.selectFile(m.selected + m.listBodyHeight())
 	case "pgup":
-		m.selectFile(m.selected - m.listBodyHeight())
+		cmd = m.selectFile(m.selected - m.listBodyHeight())
 	case "g", "home":
-		m.selectFile(0)
+		cmd = m.selectFile(0)
 	case "G", "end":
-		m.selectFile(len(m.files) - 1)
+		cmd = m.selectFile(len(m.files) - 1)
 	}
-	return m, nil
+	return m, cmd
 }
 
 // View implements tea.Model.
@@ -193,8 +247,8 @@ func (m GitModel) View() string {
 	}
 	list := m.listView()
 	right := m.diff.View()
-	if m.message != "" {
-		right = m.messageView()
+	if message := m.paneMessage(); message != "" {
+		right = m.messageView(message)
 	}
 	divider := strings.TrimSuffix(strings.Repeat(m.theme.Gutter.Render(separator)+"\n", m.height), "\n")
 	return lipgloss.JoinHorizontal(lipgloss.Top, list, divider, right)
@@ -235,8 +289,19 @@ func (m GitModel) fileRow(index, width int) string {
 	return status + renderText(label, nil, max(width-3, 0), style, style)
 }
 
+// paneMessage returns the text that replaces the diff pane: a loading hint or the reason a file is not shown.
+func (m GitModel) paneMessage() string {
+	if len(m.files) == 0 {
+		return ""
+	}
+	if m.loadedFile != m.selected {
+		return "Loading " + m.files[m.selected].Path + " ..."
+	}
+	return m.message
+}
+
 // messageView draws the right pane for files that cannot be shown.
-func (m GitModel) messageView() string {
+func (m GitModel) messageView(message string) string {
 	width := m.diffWidth()
 	lines := make([]string, 0, m.height)
 	lines = append(lines, m.theme.Header.Render(padRight(" "+sanitize(m.files[m.selected].Path), width)))
@@ -244,7 +309,7 @@ func (m GitModel) messageView() string {
 	for row := 0; row < m.listBodyHeight(); row++ {
 		text := ""
 		if row == 1 {
-			text = "  " + m.message // renderText sanitizes control characters and cuts to the width
+			text = "  " + message // renderText sanitizes control characters and cuts to the width
 		}
 		lines = append(lines, renderText(text, nil, width, plain, plain))
 	}
