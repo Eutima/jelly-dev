@@ -38,25 +38,41 @@ func newGitTestModel(width, height int) (GitModel, *fakeSource) {
 		{Status: source.StatusModified, Path: "b.txt"},
 		{Status: source.StatusAdded, Path: "c.bin"},
 	}
-	updated, _ := NewGitModel(files, src).Update(tea.WindowSizeMsg{Width: width, Height: height})
+	updated, _ := quietGit(files, src).Update(tea.WindowSizeMsg{Width: width, Height: height})
 	return settle(updated.(GitModel)), src
 }
 
-// runLoads executes a returned command and feeds finished background loads back into the model.
+// runLoads executes returned commands (including batches) and feeds finished background loads back into
+// the model. Animation ticks are ignored, so the loop always ends.
 func runLoads(model GitModel, cmd tea.Cmd) GitModel {
-	for cmd != nil {
-		msg := cmd()
-		if _, ok := msg.(loadedMsg); !ok {
-			return model
+	queue := []tea.Cmd{cmd}
+	for len(queue) > 0 {
+		next := queue[0]
+		queue = queue[1:]
+		if next == nil {
+			continue
 		}
-		updated, next := model.Update(msg)
-		model, cmd = updated.(GitModel), next
+		switch msg := next().(type) {
+		case tea.BatchMsg:
+			queue = append(queue, msg...)
+		case loadedMsg:
+			updated, more := model.Update(msg)
+			model = updated.(GitModel)
+			queue = append(queue, more)
+		}
 	}
 	return model
 }
 
 // settle runs the initial background load.
 func settle(model GitModel) GitModel { return runLoads(model, model.Init()) }
+
+// quietGit builds a model whose animation ticks fire immediately, so tests never wait for timers.
+func quietGit(files []source.ChangedFile, src ChangeSource) GitModel {
+	model := NewGitModel(files, src)
+	model.interval = 0
+	return model
+}
 
 func gitPress(model GitModel, key string) GitModel {
 	var msg tea.KeyMsg
@@ -174,7 +190,7 @@ func TestGitView_ScrollsList_WhenSelectionLeavesVisibleRows(t *testing.T) {
 	for i := range files {
 		files[i] = source.ChangedFile{Status: source.StatusModified, Path: strings.Repeat("f", i+1)}
 	}
-	model := NewGitModel(files, &fakeSource{texts: map[string][2]string{}})
+	model := quietGit(files, &fakeSource{texts: map[string][2]string{}})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
 	model = gitPress(settle(updated.(GitModel)), "G")
 	if model.listTop != 30-model.listBodyHeight() || !strings.Contains(model.View(), strings.Repeat("f", 30)) {
@@ -184,7 +200,7 @@ func TestGitView_ScrollsList_WhenSelectionLeavesVisibleRows(t *testing.T) {
 
 func TestGitView_StripsControlCharacters_WhenPathContainsEscapes(t *testing.T) {
 	files := []source.ChangedFile{{Status: source.StatusModified, Path: "evil\x1b]0;x\x07.txt"}}
-	model := NewGitModel(files, &fakeSource{texts: map[string][2]string{}})
+	model := quietGit(files, &fakeSource{texts: map[string][2]string{}})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
 	view := settle(updated.(GitModel)).View()
 	if strings.Contains(view, "\x1b]") || strings.Contains(view, "\x07") {
@@ -198,7 +214,7 @@ func TestGitView_SanitizesAndFitsMessage_WhenLoadErrorContainsEscapesAndIsLong(t
 		errs:  map[string]error{"evil\x1b]0;x\x07.txt": errors.New("boom \x1b[31m" + strings.Repeat("long ", 80))},
 	}
 	files := []source.ChangedFile{{Status: source.StatusModified, Path: "evil\x1b]0;x\x07.txt"}}
-	updated, _ := NewGitModel(files, src).Update(tea.WindowSizeMsg{Width: 80, Height: 8})
+	updated, _ := quietGit(files, src).Update(tea.WindowSizeMsg{Width: 80, Height: 8})
 	view := settle(updated.(GitModel)).View()
 	if strings.Contains(view, "\x1b]") || strings.Contains(view, "\x07") || strings.Contains(view, "\x1b[31m") {
 		t.Fatalf("escape in view: %q", view)
@@ -223,7 +239,7 @@ func TestGitView_ExplainsUnmergedAndSubmodule_WhenThoseErrorsOccur(t *testing.T)
 
 func TestGitView_ShowsLoadingHint_WhenLoadNotFinished(t *testing.T) {
 	files := []source.ChangedFile{{Status: source.StatusModified, Path: "a.txt"}}
-	updated, _ := NewGitModel(files, &fakeSource{texts: map[string][2]string{"a.txt": {"x\n", "y\n"}}}).
+	updated, _ := quietGit(files, &fakeSource{texts: map[string][2]string{"a.txt": {"x\n", "y\n"}}}).
 		Update(tea.WindowSizeMsg{Width: 100, Height: 8})
 	if view := updated.(GitModel).View(); !strings.Contains(view, "Loading a.txt") {
 		t.Fatalf("view:\n%s", view)

@@ -25,6 +25,7 @@ func testEnv(runUI uiRunner) environment {
 		openGit:          openGit,
 		getenv:           func(string) string { return "" },
 		enableAttributes: func() {},
+		busy:             noBusy,
 	}
 }
 

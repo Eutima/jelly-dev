@@ -49,6 +49,7 @@ func DarkTheme() Theme {
 		StatusAdded:    base.Foreground(hex("#6aab73")).Bold(true),
 		StatusDeleted:  base.Foreground(hex("#c75450")).Bold(true),
 		StatusModified: base.Foreground(hex("#56a8f5")).Bold(true),
+		Jelly:          base.Foreground(hex("#e0679b")),
 	}
 }
 
@@ -77,6 +78,7 @@ func LightTheme() Theme {
 		StatusAdded:    base.Foreground(hex("#1a7f37")).Bold(true),
 		StatusDeleted:  base.Foreground(hex("#c62828")).Bold(true),
 		StatusModified: base.Foreground(hex("#1565c0")).Bold(true),
+		Jelly:          base.Foreground(hex("#d63384")),
 	}
 }
 
@@ -105,6 +107,7 @@ func MonoTheme() Theme {
 		StatusAdded:    base.Bold(true),
 		StatusDeleted:  base.Strikethrough(true),
 		StatusModified: base.Bold(true),
+		Jelly:          base.Bold(true),
 	}
 }
 

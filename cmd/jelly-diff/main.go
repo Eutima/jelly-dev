@@ -49,6 +49,7 @@ type environment struct {
 	// enableAttributes makes the terminal output keep bold/reverse/strikethrough even when NO_COLOR
 	// switched the color profile to "no styling at all"; the mono theme depends on them.
 	enableAttributes func()
+	busy             busyFunc
 	workDir          string
 }
 
@@ -72,7 +73,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "jelly-diff: %v\n", err)
 		os.Exit(exitFailure)
 	}
-	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, openGit: openGit, gitConfig: runGitConfig, getenv: os.Getenv, enableAttributes: enableTextAttributes, workDir: workDir}
+	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, openGit: openGit, gitConfig: runGitConfig, getenv: os.Getenv, enableAttributes: enableTextAttributes,
+		busy: newBusy(os.Stderr, stderrIsTerminal()), workDir: workDir}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, env))
 }
 
@@ -136,7 +138,7 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 		}
 		err = diffClipboard(positional[0], *clipLeft, stdout, env)
 	case len(positional) == 2:
-		err = diffFiles(positional[0], positional[1], stdout, env.runUI)
+		err = diffFiles(positional[0], positional[1], stdout, env)
 	default:
 		fmt.Fprintf(stderr, "%s\n", usage)
 		return exitUsage
@@ -148,11 +150,11 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 	return exitOK
 }
 
-func diffFiles(leftPath, rightPath string, stdout io.Writer, runUI uiRunner) error {
+func diffFiles(leftPath, rightPath string, stdout io.Writer, env environment) error {
 	leftIsDir, rightIsDir := isDirectory(leftPath), isDirectory(rightPath)
 	switch {
 	case leftIsDir && rightIsDir:
-		return diffDirectories(leftPath, rightPath, stdout, runUI)
+		return diffDirectories(leftPath, rightPath, stdout, env)
 	case leftIsDir != rightIsDir:
 		return fmt.Errorf("cannot compare a directory with a file: %s, %s", leftPath, rightPath)
 	}
@@ -164,7 +166,7 @@ func diffFiles(leftPath, rightPath string, stdout io.Writer, runUI uiRunner) err
 	if err != nil {
 		return err
 	}
-	return show(leftPath, rightPath, left, right, stdout, runUI)
+	return show(leftPath, rightPath, left, right, stdout, env.runUI)
 }
 
 // isDirectory reports whether path exists and is a directory (links are followed).
@@ -173,12 +175,16 @@ func isDirectory(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-func diffDirectories(leftPath, rightPath string, stdout io.Writer, runUI uiRunner) error {
+func diffDirectories(leftPath, rightPath string, stdout io.Writer, env environment) error {
 	changes, err := source.OpenDirs(leftPath, rightPath)
 	if err != nil {
 		return err
 	}
-	files, err := changes.List()
+	var files []source.ChangedFile
+	err = env.busy("comparing directories ...", func() (listErr error) {
+		files, listErr = changes.List()
+		return listErr
+	})
 	if err != nil {
 		return err
 	}
@@ -186,7 +192,7 @@ func diffDirectories(leftPath, rightPath string, stdout io.Writer, runUI uiRunne
 		fmt.Fprintln(stdout, "no differences")
 		return nil
 	}
-	if err := runUI(ui.NewGitModel(files, changes)); err != nil {
+	if err := env.runUI(ui.NewGitModel(files, changes)); err != nil {
 		return fmt.Errorf("run ui: %w", err)
 	}
 	return nil
@@ -197,7 +203,11 @@ func diffClipboard(path string, clipboardOnLeft bool, stdout io.Writer, env envi
 	if err != nil {
 		return err
 	}
-	clip, err := env.readClipboard()
+	var clip string
+	err = env.busy("reading clipboard ...", func() (readErr error) {
+		clip, readErr = env.readClipboard()
+		return readErr
+	})
 	if err != nil {
 		return err
 	}
@@ -252,7 +262,11 @@ func browseGit(spec source.GitSpec, stdout io.Writer, env environment) error {
 	if err != nil {
 		return err
 	}
-	files, err := changes.List()
+	var files []source.ChangedFile
+	err = env.busy("listing changes ...", func() (listErr error) {
+		files, listErr = changes.List()
+		return listErr
+	})
 	if err != nil {
 		return err
 	}

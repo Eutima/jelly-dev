@@ -29,6 +29,7 @@ type Theme struct {
 	StatusAdded    lipgloss.Style
 	StatusDeleted  lipgloss.Style
 	StatusModified lipgloss.Style
+	Jelly          lipgloss.Style // the waiting animation
 }
 
 // renderCell draws one pane cell exactly cellWidth columns wide.

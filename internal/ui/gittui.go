@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -47,6 +48,9 @@ type GitModel struct {
 	loading     bool // a file is being loaded in the background
 	loadingFile int  // index of the file being loaded
 	loadedFile  int  // index of the file whose diff is shown, -1 when none
+	ticking     bool // the wobble animation is scheduled
+	frame       int  // current animation frame
+	interval    time.Duration
 
 	width, height int
 }
@@ -60,9 +64,9 @@ type loadedMsg struct {
 
 // NewGitModel builds the viewer; the diff of the first file is loaded in the background (see Init).
 func NewGitModel(files []source.ChangedFile, src ChangeSource) GitModel {
-	model := GitModel{files: files, source: src, theme: DarkTheme(), loadedFile: -1}
+	model := GitModel{files: files, source: src, theme: DarkTheme(), loadedFile: -1, interval: JellyInterval}
 	if len(files) > 0 {
-		model.loading, model.loadingFile = true, 0
+		model.loading, model.loadingFile, model.ticking = true, 0, true
 	}
 	return model
 }
@@ -75,7 +79,7 @@ func (m GitModel) Init() tea.Cmd {
 	if !m.loading {
 		return nil
 	}
-	return m.loadCmd(m.loadingFile)
+	return tea.Batch(m.loadCmd(m.loadingFile), jellyTick(m.interval))
 }
 
 func (m GitModel) listWidth() int {
@@ -96,7 +100,16 @@ func (m *GitModel) selectFile(i int) tea.Cmd {
 		return nil
 	}
 	m.loading, m.loadingFile = true, m.selected
-	return m.loadCmd(m.selected)
+	return tea.Batch(m.loadCmd(m.selected), m.startTick())
+}
+
+// startTick starts the wobble animation unless it already runs.
+func (m *GitModel) startTick() tea.Cmd {
+	if m.ticking {
+		return nil
+	}
+	m.ticking = true
+	return jellyTick(m.interval)
 }
 
 // loadCmd loads file index and computes its diff off the UI goroutine.
@@ -133,7 +146,7 @@ func (m *GitModel) applyLoaded(msg loadedMsg) tea.Cmd {
 			return nil // the user came back to the file that is already shown
 		}
 		m.loading, m.loadingFile = true, m.selected
-		return m.loadCmd(m.selected)
+		return tea.Batch(m.loadCmd(m.selected), m.startTick())
 	}
 	m.loadedFile = msg.index
 	m.message = msg.message
@@ -185,6 +198,13 @@ func (m GitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case loadedMsg:
 		cmd := m.applyLoaded(msg)
 		return m, cmd
+	case jellyTickMsg:
+		if !m.isLoadingHint() {
+			m.ticking = false // nothing waits any more: stop animating
+			return m, nil
+		}
+		m.frame++
+		return m, jellyTick(m.interval)
 	case tea.MouseMsg:
 		return m.forwardToDiff(msg)
 	case tea.KeyMsg:
@@ -289,6 +309,11 @@ func (m GitModel) fileRow(index, width int) string {
 	return status + renderText(label, nil, max(width-3, 0), style, style)
 }
 
+// isLoadingHint reports whether the right pane currently shows the loading animation.
+func (m GitModel) isLoadingHint() bool {
+	return len(m.files) > 0 && m.loadedFile != m.selected
+}
+
 // paneMessage returns the text that replaces the diff pane: a loading hint or the reason a file is not shown.
 func (m GitModel) paneMessage() string {
 	if len(m.files) == 0 {
@@ -306,12 +331,27 @@ func (m GitModel) messageView(message string) string {
 	lines := make([]string, 0, m.height)
 	lines = append(lines, m.theme.Header.Render(padRight(" "+sanitize(m.files[m.selected].Path), width)))
 	plain := m.theme.Equal.UnsetBackground()
-	for row := 0; row < m.listBodyHeight(); row++ {
-		text := ""
-		if row == 1 {
-			text = "  " + message // renderText sanitizes control characters and cuts to the width
+	body := m.listBodyHeight()
+	animate := m.isLoadingHint() && body >= minJellyBody
+	messageRow := 1
+	if animate {
+		messageRow = jellyHeight + 2
+	}
+	for row := 0; row < body; row++ {
+		switch {
+		case animate && row >= 1 && row <= jellyHeight:
+			jelly := centered(JellyFrame(m.frame)[row-1], width)
+			lines = append(lines, renderText(jelly, nil, width, m.theme.Jelly.UnsetBackground(), plain))
+		case row == messageRow:
+			// renderText sanitizes control characters and cuts to the width
+			text := "  " + message
+			if animate {
+				text = centered(message, width)
+			}
+			lines = append(lines, renderText(text, nil, width, plain, plain))
+		default:
+			lines = append(lines, renderText("", nil, width, plain, plain))
 		}
-		lines = append(lines, renderText(text, nil, width, plain, plain))
 	}
 	lines = append(lines, m.theme.Footer.Render(padRight("", width)))
 	return strings.Join(lines, "\n")
