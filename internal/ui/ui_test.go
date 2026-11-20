@@ -192,3 +192,34 @@ func TestSanitize_ReplacesBidiOverrides_WhenTextContainsThem(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestRenderCell_NeverExceedsCellWidth_WhenPaneNarrowerThanNumberColumn(t *testing.T) {
+	model := NewDiffModel("a", "b", []string{"x"}, []string{"y"})
+	cell := Cell{Kind: CellModified, No: 12345, Text: "some long text"}
+	for cellWidth := 0; cellWidth <= 12; cellWidth++ {
+		if got := lipgloss.Width(model.renderCell(cell, 6, cellWidth)); got != cellWidth {
+			t.Fatalf("cell width %d rendered %d wide", cellWidth, got)
+		}
+	}
+}
+
+func TestRenderCell_NeverExceedsCellWidth_WhenCellIsFiller(t *testing.T) {
+	model := NewDiffModel("a", "b", []string{"x"}, []string{"y"})
+	if got := lipgloss.Width(model.renderCell(Cell{Kind: CellFiller}, 3, 5)); got != 5 {
+		t.Fatalf("rendered %d wide", got)
+	}
+}
+
+func TestView_FillsExactWidth_WhenTerminalWidthIsOdd(t *testing.T) {
+	model := NewDiffModel("a", "b", []string{"hello"}, []string{"world"})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 41, Height: 6})
+	lines := strings.Split(updated.(DiffModel).View(), "\n")
+	for i, line := range lines {
+		if line == "" {
+			continue // padding below the last row
+		}
+		if got := lipgloss.Width(line); got != 41 {
+			t.Fatalf("line %d is %d wide, want 41: %q", i, got, line)
+		}
+	}
+}

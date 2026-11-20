@@ -123,8 +123,6 @@ func (m DiffModel) View() string {
 	paneWidth := max((m.width-gutterWidth)/2, 0)
 	rightWidth := max(m.width-paneWidth-gutterWidth, 0)
 	numWidth := len(fmt.Sprint(max(len(m.rows), 1))) + 1
-	leftText := max(paneWidth-numWidth, 0)
-	rightText := max(rightWidth-numWidth, 0)
 
 	var out strings.Builder
 	out.WriteString(m.header(paneWidth, rightWidth))
@@ -132,9 +130,9 @@ func (m DiffModel) View() string {
 	end := min(m.offset+m.bodyHeight(), len(m.rows))
 	for i := m.offset; i < end; i++ {
 		row := m.rows[i]
-		out.WriteString(m.renderCell(row.Left, numWidth, leftText))
+		out.WriteString(m.renderCell(row.Left, numWidth, paneWidth))
 		out.WriteString(m.renderGutter(row))
-		out.WriteString(m.renderCell(row.Right, numWidth, rightText))
+		out.WriteString(m.renderCell(row.Right, numWidth, rightWidth))
 		out.WriteByte('\n')
 	}
 	for i := end - m.offset; i < m.bodyHeight(); i++ {
@@ -180,12 +178,22 @@ func (m DiffModel) renderGutter(row Row) string {
 	}
 }
 
-func (m DiffModel) renderCell(cell Cell, numWidth, textWidth int) string {
+// renderCell draws one pane cell exactly cellWidth columns wide.
+func (m DiffModel) renderCell(cell Cell, numWidth, cellWidth int) string {
 	style := m.styleFor(cell.Kind)
 	if cell.Kind == CellFiller {
-		return style.Render(strings.Repeat(" ", numWidth+textWidth))
+		return style.Render(strings.Repeat(" ", cellWidth))
 	}
-	number := fmt.Sprintf("%*d ", numWidth-1, cell.No)
+	// A pane narrower than the number column drops the number instead of showing a cut-off one.
+	num := numWidth
+	if cellWidth < numWidth {
+		num = 0
+	}
+	textWidth := cellWidth - num
+	number := ""
+	if num > 0 {
+		number = fmt.Sprintf("%*d ", num-1, cell.No)
+	}
 	text := padRight(truncate(sanitize(cell.Text), textWidth), textWidth)
 	return m.theme.LineNumber.Background(style.GetBackground()).Render(number) + style.Render(text)
 }
