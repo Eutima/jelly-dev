@@ -223,3 +223,13 @@ func TestView_FillsExactWidth_WhenTerminalWidthIsOdd(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdate_KeepsScrollPosition_WhenTogglingWithoutSelection(t *testing.T) {
+	changed := manyLines(60)
+	changed[0] = "changed"
+	model := press(newTestModel(manyLines(60), changed), "j")
+	model = press(model, "t")
+	if model.offset != 1 {
+		t.Fatalf("offset %d, want 1", model.offset)
+	}
+}

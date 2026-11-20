@@ -11,8 +11,10 @@ act as a three-pane `git mergetool`.
 
 ## Status
 
-Step 2 of 8 done: file diff in a two-pane viewer (`jelly-diff <file-a> <file-b>`).
-Keys: `n`/`p` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, mouse wheel, `q` quit.
+Step 3 of 8 done: file diff (`jelly-diff <file-a> <file-b>`) in a two-pane viewer with word-level
+highlights inside changed lines and a unified view.
+Keys: `n`/`p` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, mouse wheel, `q` quit.
+The mouse is captured for wheel scrolling; hold Shift while dragging to select text in most terminals.
 
 ## Run
 

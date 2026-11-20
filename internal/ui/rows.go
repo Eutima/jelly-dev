@@ -21,9 +21,10 @@ const (
 
 // Cell is one side of a Row.
 type Cell struct {
-	Kind CellKind
-	No   int // one-based line number, 0 for fillers
-	Text string
+	Kind  CellKind
+	No    int // one-based line number, 0 for fillers
+	Text  string
+	Spans []diff.Span // changed words inside Text (byte offsets), only for modified/unified rows
 }
 
 // Row is one visual line of the side-by-side view.
@@ -54,8 +55,9 @@ func BuildRows(blocks []diff.Block) (rows []Row, hunkStarts []int) {
 			hasOld, hasNew := i < len(block.Old), i < len(block.New)
 			switch {
 			case hasOld && hasNew:
-				row.Left = Cell{Kind: CellModified, No: block.OldStart + i + 1, Text: block.Old[i]}
-				row.Right = Cell{Kind: CellModified, No: block.NewStart + i + 1, Text: block.New[i]}
+				oldSpans, newSpans := diff.Words(block.Old[i], block.New[i])
+				row.Left = Cell{Kind: CellModified, No: block.OldStart + i + 1, Text: block.Old[i], Spans: oldSpans}
+				row.Right = Cell{Kind: CellModified, No: block.NewStart + i + 1, Text: block.New[i], Spans: newSpans}
 			case hasOld:
 				row.Left = Cell{Kind: CellDeleted, No: block.OldStart + i + 1, Text: block.Old[i]}
 			default:
@@ -65,4 +67,44 @@ func BuildRows(blocks []diff.Block) (rows []Row, hunkStarts []int) {
 		}
 	}
 	return rows, hunkStarts
+}
+
+// UnifiedRow is one line of the unified (single column) view.
+type UnifiedRow struct {
+	Kind  CellKind // CellEqual, CellDeleted or CellAdded
+	OldNo int      // one-based, 0 when the line does not exist in the old text
+	NewNo int      // one-based, 0 when the line does not exist in the new text
+	Text  string
+	Spans []diff.Span
+	Hunk  int // -1 for unchanged rows
+}
+
+// BuildUnified turns diff blocks into unified rows (deleted lines first, then added lines per change).
+func BuildUnified(blocks []diff.Block) []UnifiedRow {
+	var rows []UnifiedRow
+	hunk := 0
+	for _, block := range blocks {
+		if block.Kind == diff.Equal {
+			for i, text := range block.Old {
+				rows = append(rows, UnifiedRow{
+					Kind: CellEqual, OldNo: block.OldStart + i + 1, NewNo: block.NewStart + i + 1, Text: text, Hunk: -1,
+				})
+			}
+			continue
+		}
+		start := len(rows)
+		for i, text := range block.Old {
+			rows = append(rows, UnifiedRow{Kind: CellDeleted, OldNo: block.OldStart + i + 1, Text: text, Hunk: hunk})
+		}
+		for i, text := range block.New {
+			rows = append(rows, UnifiedRow{Kind: CellAdded, NewNo: block.NewStart + i + 1, Text: text, Hunk: hunk})
+		}
+		for i := 0; i < min(len(block.Old), len(block.New)); i++ {
+			oldSpans, newSpans := diff.Words(block.Old[i], block.New[i])
+			rows[start+i].Spans = oldSpans
+			rows[start+len(block.Old)+i].Spans = newSpans
+		}
+		hunk++
+	}
+	return rows
 }
