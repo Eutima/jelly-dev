@@ -11,8 +11,12 @@ act as a three-pane `git mergetool`.
 
 ## Status
 
-Step 3 of 8 done: file diff (`jelly-diff <file-a> <file-b>`) in a two-pane viewer with word-level
-highlights inside changed lines and a unified view.
+Steps 1-4 of 8 done: file diff, word-level highlights, unified view and clipboard compare.
+
+Usage: `jelly-diff <file-a> <file-b>`. Flags must come before file names.
+Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage error.
+Clipboard: `jelly-diff --clip <file>` (clipboard on the right) or `--clip-left`. Reads via PowerShell on
+WSL/Windows, `pbpaste` on macOS, `wl-paste`/`xclip`/`xsel` on Linux.
 Keys: `n`/`p` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, mouse wheel, `q` quit.
 The mouse is captured for wheel scrolling; hold Shift while dragging to select text in most terminals.
 
