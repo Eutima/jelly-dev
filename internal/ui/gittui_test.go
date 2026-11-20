@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -15,12 +16,17 @@ type fakeSource struct {
 	texts map[string][2]string
 	errs  map[string]error
 	loads []string
+	ctxs  []context.Context // the context of every Load call, in order
 }
 
 func (f *fakeSource) Labels() (string, string) { return "HEAD", "working tree" }
 
-func (f *fakeSource) Load(file source.ChangedFile) (string, string, error) {
+func (f *fakeSource) Load(ctx context.Context, file source.ChangedFile) (string, string, error) {
 	f.loads = append(f.loads, file.Path)
+	f.ctxs = append(f.ctxs, ctx)
+	if err := ctx.Err(); err != nil {
+		return "", "", err
+	}
 	if err := f.errs[file.Path]; err != nil {
 		return "", "", err
 	}
@@ -246,28 +252,55 @@ func TestGitView_ShowsLoadingHint_WhenLoadNotFinished(t *testing.T) {
 	}
 }
 
-func TestGitUpdate_LoadsOnlyLatestSelection_WhenKeysPressedDuringLoad(t *testing.T) {
+func TestGitUpdate_CancelsRunningLoadAndLoadsLatest_WhenSelectionChangesDuringLoad(t *testing.T) {
 	model, src := newGitTestModel(100, 12)
-	src.loads = nil
-	// Start a load of file 1, then move on twice while it is still running.
-	updated, firstLoad := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	model = updated.(GitModel)
-	if firstLoad == nil {
-		t.Fatal("expected a load command")
-	}
-	for _, key := range []string{"k", "j", "j"} {
+	src.loads, src.ctxs = nil, nil
+	press := func(key string) tea.Cmd {
 		updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
 		model = updated.(GitModel)
-		if cmd != nil {
-			t.Fatalf("key %q must not start a second load while one is running", key)
-		}
+		return cmd
 	}
-	model = runLoads(model, firstLoad)
-	if model.selected != 2 || model.loadedFile != 2 || strings.Join(src.loads, ",") != "b.txt,c.bin" {
-		t.Fatalf("selected %d loaded %d loads %v", model.selected, model.loadedFile, src.loads)
+	first := press("j")  // starts loading file 1
+	second := press("j") // must cancel that load and start loading file 2
+	if first == nil || second == nil {
+		t.Fatal("every selection change must start a load")
+	}
+	// Run both commands in start order: the cancelled one still reports back, but its result is ignored.
+	model = runLoads(runLoads(model, first), second)
+	if model.selected != 2 || model.loadedFile != 2 || model.loading {
+		t.Fatalf("selected %d loaded %d loading %v", model.selected, model.loadedFile, model.loading)
+	}
+	if len(src.ctxs) != 2 || src.ctxs[0].Err() == nil {
+		t.Fatalf("the first load's context must be cancelled: %d contexts", len(src.ctxs))
 	}
 	if !strings.Contains(model.View(), "Binary file") {
-		t.Fatalf("view:\n%s", model.View())
+		t.Fatalf("view must show the latest file:\n%s", model.View())
+	}
+}
+
+func TestGitUpdate_IgnoresCancelledResult_WhenItArrivesAfterNewerLoadFinished(t *testing.T) {
+	model, _ := newGitTestModel(100, 12)
+	updated, first := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	model = updated.(GitModel)
+	updated, second := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	model = updated.(GitModel)
+	model = runLoads(runLoads(model, second), first) // the old result arrives last
+	if model.loadedFile != 2 {
+		t.Fatalf("the stale result must not replace the newer one: loaded %d", model.loadedFile)
+	}
+}
+
+func TestGitUpdate_StopsLoad_WhenQuitting(t *testing.T) {
+	model, _ := newGitTestModel(100, 12)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	model = updated.(GitModel)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	model = updated.(GitModel)
+	if cmd == nil || model.loading {
+		t.Fatalf("expected quit and no running load: loading %v", model.loading)
+	}
+	if model.cancelLoad != nil {
+		t.Fatal("the load must have been cancelled")
 	}
 }
 

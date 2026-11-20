@@ -1,12 +1,14 @@
 package source
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // testRepo is a throwaway git repository.
@@ -112,7 +114,7 @@ func TestLoad_ReturnsOldAndNewText_WhenFileModified(t *testing.T) {
 	repo.write("a.txt", "ONE\n")
 	changes := repo.open(GitSpec{})
 
-	oldText, newText, err := changes.Load(find(t, list(t, changes), "a.txt"))
+	oldText, newText, err := changes.Load(context.Background(), find(t, list(t, changes), "a.txt"))
 
 	if err != nil || oldText != "one\n" || newText != "ONE\n" {
 		t.Fatalf("old %q new %q err %v", oldText, newText, err)
@@ -130,11 +132,11 @@ func TestLoad_ReturnsEmptySide_WhenFileAddedDeletedOrUntracked(t *testing.T) {
 	changes := repo.open(GitSpec{})
 	files := list(t, changes)
 
-	oldText, newText, err := changes.Load(find(t, files, "gone.txt"))
+	oldText, newText, err := changes.Load(context.Background(), find(t, files, "gone.txt"))
 	if err != nil || oldText != "bye\n" || newText != "" {
 		t.Fatalf("deleted: %q %q %v", oldText, newText, err)
 	}
-	oldText, newText, err = changes.Load(find(t, files, "fresh.txt"))
+	oldText, newText, err = changes.Load(context.Background(), find(t, files, "fresh.txt"))
 	if err != nil || oldText != "" || newText != "hi\n" {
 		t.Fatalf("untracked: %q %q %v", oldText, newText, err)
 	}
@@ -149,7 +151,7 @@ func TestList_ReportsRenameWithOldPath_WhenFileMoved(t *testing.T) {
 
 	files := list(t, changes)
 	renamed := find(t, files, "new name.txt")
-	oldText, newText, err := changes.Load(renamed)
+	oldText, newText, err := changes.Load(context.Background(), renamed)
 
 	if renamed.Status != StatusRenamed || renamed.OldPath != "old name.txt" {
 		t.Fatalf("unexpected: %+v", renamed)
@@ -171,7 +173,7 @@ func TestList_SeparatesStagedFromWorkingTree_WhenStagedFlagGiven(t *testing.T) {
 	changes := repo.open(GitSpec{Staged: true})
 
 	files := list(t, changes)
-	oldText, newText, err := changes.Load(find(t, files, "a.txt"))
+	oldText, newText, err := changes.Load(context.Background(), find(t, files, "a.txt"))
 
 	if len(files) != 1 || err != nil || oldText != "one\n" || newText != "staged\n" {
 		t.Fatalf("files %+v old %q new %q err %v", files, oldText, newText, err)
@@ -187,7 +189,7 @@ func TestList_ComparesWorkingTreeToRevision_WhenRevGiven(t *testing.T) {
 	repo.write("a.txt", "v3\n")
 	changes := repo.open(GitSpec{Rev: "HEAD~1"})
 
-	oldText, newText, err := changes.Load(find(t, list(t, changes), "a.txt"))
+	oldText, newText, err := changes.Load(context.Background(), find(t, list(t, changes), "a.txt"))
 
 	if err != nil || oldText != "v1\n" || newText != "v3\n" {
 		t.Fatalf("old %q new %q err %v", oldText, newText, err)
@@ -203,7 +205,7 @@ func TestList_ComparesTwoRevisions_WhenRangeGiven(t *testing.T) {
 	repo.write("a.txt", "dirty\n")
 	changes := repo.open(GitSpec{Rev: "HEAD~1..HEAD"})
 
-	oldText, newText, err := changes.Load(find(t, list(t, changes), "a.txt"))
+	oldText, newText, err := changes.Load(context.Background(), find(t, list(t, changes), "a.txt"))
 	oldLabel, newLabel := changes.Labels()
 
 	if err != nil || oldText != "v1\n" || newText != "v2\n" || oldLabel != "HEAD~1" || newLabel != "HEAD" {
@@ -251,7 +253,7 @@ func TestLoad_ReturnsBinaryError_WhenBlobContainsNul(t *testing.T) {
 	repo.write("bin.dat", "a\x00c")
 	changes := repo.open(GitSpec{})
 
-	_, _, err := changes.Load(find(t, list(t, changes), "bin.dat"))
+	_, _, err := changes.Load(context.Background(), find(t, list(t, changes), "bin.dat"))
 
 	if !errors.Is(err, ErrBinary) {
 		t.Fatalf("err %v", err)
@@ -323,7 +325,7 @@ func TestLoad_ReturnsUnmergedError_WhenMergeConflicts(t *testing.T) {
 	changes := repo.open(GitSpec{})
 
 	file := find(t, list(t, changes), "a.txt")
-	_, _, err := changes.Load(file)
+	_, _, err := changes.Load(context.Background(), file)
 
 	if file.Status != StatusUnmerged || !errors.Is(err, ErrUnmerged) {
 		t.Fatalf("status %c err %v", file.Status, err)
@@ -345,7 +347,7 @@ func TestLoad_ReturnsSubmoduleError_WhenSubmoduleCommitChanged(t *testing.T) {
 	changes := repo.open(GitSpec{})
 
 	file := find(t, list(t, changes), "vendor")
-	_, _, err := changes.Load(file)
+	_, _, err := changes.Load(context.Background(), file)
 
 	if !errors.Is(err, ErrSubmodule) {
 		t.Fatalf("err %v", err)
@@ -354,7 +356,7 @@ func TestLoad_ReturnsSubmoduleError_WhenSubmoduleCommitChanged(t *testing.T) {
 
 func TestRunGit_ReturnsTooLargeError_WhenOutputExceedsLimit(t *testing.T) {
 	repo := newRepo(t)
-	if _, err := runGit(repo.dir, 3, "rev-parse", "--show-toplevel"); !errors.Is(err, ErrTooLarge) {
+	if _, err := runGit(context.Background(), repo.dir, 3, "rev-parse", "--show-toplevel"); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("err %v", err)
 	}
 }
@@ -374,7 +376,7 @@ func TestLoad_ShowsLinkTarget_WhenFileIsSymlink(t *testing.T) {
 	}
 	changes := repo.open(GitSpec{})
 
-	oldText, newText, err := changes.Load(find(t, list(t, changes), "link"))
+	oldText, newText, err := changes.Load(context.Background(), find(t, list(t, changes), "link"))
 
 	if err != nil || oldText != "real.txt" || newText != "/etc/hostname" {
 		t.Fatalf("old %q new %q err %v", oldText, newText, err)
@@ -392,9 +394,62 @@ func TestLoad_RejectsPath_WhenParentDirectoryIsSymlinkOutsideRepository(t *testi
 	}
 	changes := repo.open(GitSpec{})
 
-	_, _, err := changes.Load(ChangedFile{Status: StatusUntracked, Path: "dir/secret.txt"})
+	_, _, err := changes.Load(context.Background(), ChangedFile{Status: StatusUntracked, Path: "dir/secret.txt"})
 
 	if !errors.Is(err, ErrOutsideRepository) {
 		t.Fatalf("err %v", err)
+	}
+}
+
+func TestRunGit_ReturnsCancelledError_WhenContextAlreadyCancelled(t *testing.T) {
+	repo := newRepo(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := runGit(ctx, repo.dir, MaxTextBytes, "rev-parse", "--show-toplevel"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestRunGit_KillsRunningProcess_WhenContextCancelled(t *testing.T) {
+	if _, err := exec.LookPath("sleep"); err != nil {
+		t.Skip("the git alias in this test needs a shell and sleep")
+	}
+	repo := newRepo(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(100*time.Millisecond, cancel)
+	started := time.Now()
+	// A git alias that sleeps stands in for a slow git command.
+	_, err := runGit(ctx, repo.dir, MaxTextBytes, "-c", "alias.slow=!sleep 30", "slow")
+	if !errors.Is(err, context.Canceled) || time.Since(started) > 10*time.Second {
+		t.Fatalf("err %v after %v", err, time.Since(started))
+	}
+}
+
+func TestLoad_ReturnsCancelledError_WhenContextCancelled(t *testing.T) {
+	repo := newRepo(t)
+	repo.write("a.txt", "one\n")
+	repo.commit("init")
+	repo.write("a.txt", "two\n")
+	changes := repo.open(GitSpec{})
+	file := find(t, list(t, changes), "a.txt")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := changes.Load(ctx, file); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestReadTextFileContext_ReturnsCancelledError_WhenContextCancelled(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "big.txt")
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", 3*readChunk)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := ReadTextFileContext(ctx, path); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err %v", err)
+	}
+	if text, err := ReadTextFileContext(context.Background(), path); err != nil || len(text) != 3*readChunk {
+		t.Fatalf("uncancelled read: %d bytes, %v", len(text), err)
 	}
 }

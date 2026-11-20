@@ -2,6 +2,7 @@ package source
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -91,14 +92,14 @@ func (d *DirChanges) List() ([]ChangedFile, error) {
 }
 
 // Load returns the old (left) and new (right) text of a file; a missing side is empty.
-func (d *DirChanges) Load(file ChangedFile) (oldText, newText string, err error) {
+func (d *DirChanges) Load(ctx context.Context, file ChangedFile) (oldText, newText string, err error) {
 	if file.Status != StatusAdded {
-		if oldText, err = ReadTextFile(d.fullPath(d.left, file.Path)); err != nil {
+		if oldText, err = ReadTextFileContext(ctx, d.fullPath(d.left, file.Path)); err != nil {
 			return "", "", err
 		}
 	}
 	if file.Status != StatusDeleted {
-		if newText, err = ReadTextFile(d.fullPath(d.right, file.Path)); err != nil {
+		if newText, err = ReadTextFileContext(ctx, d.fullPath(d.right, file.Path)); err != nil {
 			return "", "", err
 		}
 	}

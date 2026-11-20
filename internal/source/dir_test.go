@@ -1,6 +1,7 @@
 package source
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -107,7 +108,7 @@ func TestDirList_FollowsLinksToFiles_WhenRightSideUsesSymlinks(t *testing.T) {
 	if err != nil || statuses(files) != "M a.txt" {
 		t.Fatalf("files %q err %v", statuses(files), err)
 	}
-	if oldText, newText, err := changes.Load(files[0]); err != nil || oldText != "old\n" || newText != "new\n" {
+	if oldText, newText, err := changes.Load(context.Background(), files[0]); err != nil || oldText != "old\n" || newText != "new\n" {
 		t.Fatalf("load %q %q %v", oldText, newText, err)
 	}
 }
@@ -170,7 +171,7 @@ func TestDirLoad_ReturnsTextsAndEmptyMissingSide_WhenFilesChanged(t *testing.T) 
 	}
 	cases := map[string][2]string{"c.txt": {"old\n", "new\n"}, "gone.txt": {"bye\n", ""}, "fresh.txt": {"", "hi\n"}}
 	for path, want := range cases {
-		oldText, newText, err := changes.Load(byPath[path])
+		oldText, newText, err := changes.Load(context.Background(), byPath[path])
 		if err != nil || oldText != want[0] || newText != want[1] {
 			t.Fatalf("%s: %q %q %v", path, oldText, newText, err)
 		}
@@ -179,7 +180,7 @@ func TestDirLoad_ReturnsTextsAndEmptyMissingSide_WhenFilesChanged(t *testing.T) 
 
 func TestDirLoad_ReturnsBinaryError_WhenFileHasNulBytes(t *testing.T) {
 	changes, files := listDirs(t, map[string]string{"b.dat": "a\x00b"}, map[string]string{"b.dat": "a\x00c"})
-	if _, _, err := changes.Load(files[0]); !errors.Is(err, ErrBinary) {
+	if _, _, err := changes.Load(context.Background(), files[0]); !errors.Is(err, ErrBinary) {
 		t.Fatalf("err %v", err)
 	}
 }

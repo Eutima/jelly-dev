@@ -3,6 +3,7 @@ package source
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +30,17 @@ var (
 // ReadTextFile returns the content of path, or an error if it cannot be read, is not a regular
 // file, is too large or looks binary. Symbolic links are followed.
 func ReadTextFile(path string) (string, error) {
+	return ReadTextFileContext(context.Background(), path)
+}
+
+// readChunk is how much ReadTextFileContext reads between two checks of the context.
+const readChunk = 1 << 20
+
+// ReadTextFileContext is ReadTextFile that gives up with ctx.Err() when ctx is cancelled.
+func ReadTextFileContext(ctx context.Context, path string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	// Check before opening: opening a FIFO would block until a writer appears.
 	before, err := os.Stat(path)
 	if err != nil {
@@ -50,11 +62,30 @@ func ReadTextFile(path string) (string, error) {
 	if !info.Mode().IsRegular() {
 		return "", fmt.Errorf("%s: %w", path, ErrNotRegular)
 	}
-	data, err := io.ReadAll(io.LimitReader(file, MaxTextBytes+1))
+	data, err := readAllContext(ctx, io.LimitReader(file, MaxTextBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("read %s: %w", path, err)
 	}
 	return checkText(path, data)
+}
+
+// readAllContext reads r to the end in chunks and stops with ctx.Err() as soon as ctx is cancelled.
+func readAllContext(ctx context.Context, r io.Reader) ([]byte, error) {
+	var data bytes.Buffer
+	chunk := make([]byte, readChunk)
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		n, err := r.Read(chunk)
+		data.Write(chunk[:n])
+		if errors.Is(err, io.EOF) {
+			return data.Bytes(), nil
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
 }
 
 // checkText rejects oversized and binary data and returns the data as a string.

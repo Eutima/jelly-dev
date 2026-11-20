@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -24,7 +25,9 @@ const (
 // ChangeSource provides the texts of a changed file (implemented by source.GitChanges).
 type ChangeSource interface {
 	Labels() (oldLabel, newLabel string)
-	Load(file source.ChangedFile) (oldText, newText string, err error)
+	// Load returns the old and new text of a file. It must stop early and return ctx.Err() when ctx is
+	// cancelled (the user selected another file).
+	Load(ctx context.Context, file source.ChangedFile) (oldText, newText string, err error)
 }
 
 type focus int
@@ -48,8 +51,11 @@ type GitModel struct {
 	loading     bool // a file is being loaded in the background
 	loadingFile int  // index of the file being loaded
 	loadedFile  int  // index of the file whose diff is shown, -1 when none
-	ticking     bool // the wobble animation is scheduled
-	frame       int  // current animation frame
+	loadSeq     int  // number of the current load; results of older loads are discarded
+	loadCtx     context.Context // context of the current load; kept so Init can start the first load
+	cancelLoad  context.CancelFunc // cancels the running load; nil when none
+	ticking     bool               // the wobble animation is scheduled
+	frame       int                // current animation frame
 	interval    time.Duration
 
 	width, height int
@@ -57,6 +63,7 @@ type GitModel struct {
 
 // loadedMsg carries the result of a background file load.
 type loadedMsg struct {
+	seq     int // the load this result belongs to; stale results are ignored
 	index   int
 	diff    DiffModel
 	message string // set instead of a meaningful diff when the file cannot be shown
@@ -66,7 +73,8 @@ type loadedMsg struct {
 func NewGitModel(files []source.ChangedFile, src ChangeSource) GitModel {
 	model := GitModel{files: files, source: src, theme: DarkTheme(), loadedFile: -1, interval: JellyInterval}
 	if len(files) > 0 {
-		model.loading, model.loadingFile, model.ticking = true, 0, true
+		model.beginLoad(0)
+		model.ticking = true
 	}
 	return model
 }
@@ -79,7 +87,7 @@ func (m GitModel) Init() tea.Cmd {
 	if !m.loading {
 		return nil
 	}
-	return tea.Batch(m.loadCmd(m.loadingFile), jellyTick(m.interval))
+	return tea.Batch(m.loadCmd(m.loadCtx, m.loadSeq, m.loadingFile), jellyTick(m.interval))
 }
 
 func (m GitModel) listWidth() int {
@@ -88,19 +96,44 @@ func (m GitModel) listWidth() int {
 
 func (m GitModel) diffWidth() int { return max(m.width-m.listWidth()-separatorW, 0) }
 
-// selectFile selects file i and starts loading its diff unless it is already shown or a load is running
-// (the running load hands over to the latest selection when it finishes).
+// selectFile selects file i. Its diff is loaded unless it is already shown; a load of another file that
+// is still running is cancelled, so only the latest selection is ever loaded.
 func (m *GitModel) selectFile(i int) tea.Cmd {
 	if len(m.files) == 0 {
 		return nil
 	}
 	m.selected = min(max(i, 0), len(m.files)-1)
 	m.ensureVisible()
-	if m.loading || m.selected == m.loadedFile {
+	switch {
+	case m.selected == m.loadedFile:
+		m.abortLoad() // back on the shown file: whatever loads in the background is no longer wanted
+		return nil
+	case m.loading && m.loadingFile == m.selected:
 		return nil
 	}
-	m.loading, m.loadingFile = true, m.selected
-	return tea.Batch(m.loadCmd(m.selected), m.startTick())
+	m.beginLoad(m.selected)
+	return tea.Batch(m.loadCmd(m.loadCtx, m.loadSeq, m.selected), m.startTick())
+}
+
+// beginLoad cancels a running load and registers a new one for file index. (abortLoad and beginLoad both
+// advance the sequence number; only the final value matters, so the double step is harmless.)
+func (m *GitModel) beginLoad(index int) {
+	m.abortLoad()
+	m.loadSeq++
+	m.loadCtx, m.cancelLoad = context.WithCancel(context.Background())
+	m.loading, m.loadingFile = true, index
+}
+
+// abortLoad cancels the running load, if any; its result will be ignored.
+func (m *GitModel) abortLoad() {
+	if m.cancelLoad != nil {
+		m.cancelLoad()
+		m.cancelLoad = nil
+	}
+	if m.loading {
+		m.loading = false
+		m.loadSeq++
+	}
 }
 
 // startTick starts the wobble animation unless it already runs.
@@ -112,8 +145,8 @@ func (m *GitModel) startTick() tea.Cmd {
 	return jellyTick(m.interval)
 }
 
-// loadCmd loads file index and computes its diff off the UI goroutine.
-func (m GitModel) loadCmd(index int) tea.Cmd {
+// loadCmd loads file index and computes its diff off the UI goroutine. It returns early once ctx is cancelled.
+func (m GitModel) loadCmd(ctx context.Context, seq, index int) tea.Cmd {
 	file := m.files[index]
 	src, theme := m.source, m.theme
 	oldLabel, newLabel := src.Labels()
@@ -123,30 +156,35 @@ func (m GitModel) loadCmd(index int) tea.Cmd {
 	}
 	leftTitle, rightTitle := oldLabel+": "+oldPath, newLabel+": "+file.Path
 	return func() tea.Msg {
-		oldText, newText, err := src.Load(file)
+		cancelled := loadedMsg{seq: seq, index: index}
+		oldText, newText, err := src.Load(ctx, file)
+		if ctx.Err() != nil {
+			return cancelled
+		}
 		if err != nil {
 			return loadedMsg{
-				index: index, message: describeLoadError(err),
+				seq: seq, index: index, message: describeLoadError(err),
 				diff: NewDiffModel(leftTitle, rightTitle, nil, nil).WithTheme(theme),
 			}
 		}
-		return loadedMsg{
-			index: index,
-			diff: NewDiffModel(leftTitle, rightTitle, diff.SplitLines(oldText), diff.SplitLines(newText)).
-				WithTheme(theme).WithHighlight(file.Path, file.OldPath),
+		model := NewDiffModel(leftTitle, rightTitle, diff.SplitLines(oldText), diff.SplitLines(newText)).
+			WithTheme(theme)
+		if ctx.Err() != nil {
+			return cancelled // skip the expensive highlighting
 		}
+		return loadedMsg{seq: seq, index: index, diff: model.WithHighlight(file.Path, file.OldPath)}
 	}
 }
 
-// applyLoaded shows a finished load, or starts loading the file selected in the meantime.
+// applyLoaded shows a finished load; results of cancelled or replaced loads are ignored.
 func (m *GitModel) applyLoaded(msg loadedMsg) tea.Cmd {
+	if msg.seq != m.loadSeq || !m.loading {
+		return nil
+	}
 	m.loading = false
-	if msg.index != m.selected {
-		if m.selected == m.loadedFile {
-			return nil // the user came back to the file that is already shown
-		}
-		m.loading, m.loadingFile = true, m.selected
-		return tea.Batch(m.loadCmd(m.selected), m.startTick())
+	if m.cancelLoad != nil {
+		m.cancelLoad() // release the context's resources
+		m.cancelLoad = nil
 	}
 	m.loadedFile = msg.index
 	m.message = msg.message
@@ -223,6 +261,7 @@ func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	switch key {
 	case "ctrl+c", "q":
+		m.abortLoad() // also stops a running git process
 		return m, tea.Quit
 	case "tab":
 		m.focus = 1 - m.focus
@@ -241,6 +280,7 @@ func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch key {
 	case "esc":
+		m.abortLoad()
 		return m, tea.Quit
 	case "enter", "right", "l":
 		m.focus = focusDiff

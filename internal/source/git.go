@@ -95,7 +95,7 @@ func OpenGit(dir string, spec GitSpec) (*GitChanges, error) {
 	if strings.HasPrefix(spec.Rev, "-") {
 		return nil, fmt.Errorf("%w: %q", ErrInvalidRevision, spec.Rev)
 	}
-	out, err := runGit(dir, MaxTextBytes, "rev-parse", "--show-toplevel")
+	out, err := runGit(context.Background(), dir, MaxTextBytes, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return nil, fmt.Errorf("open git repository: %w", err)
 	}
@@ -150,7 +150,7 @@ func (g *GitChanges) baseRev(rev string) (ref, label string) {
 	if rev != "" {
 		return rev, rev
 	}
-	if _, err := runGit(g.dir, MaxTextBytes, "rev-parse", "--verify", "--quiet", headRef); err != nil {
+	if _, err := runGit(context.Background(), g.dir, MaxTextBytes, "rev-parse", "--verify", "--quiet", headRef); err != nil {
 		return emptyTreeHash, emptyLabel
 	}
 	return headRef, headRef
@@ -169,7 +169,7 @@ func (g *GitChanges) verify(revs ...string) error {
 		if strings.HasPrefix(rev, "-") {
 			return fmt.Errorf("%w: %q", ErrInvalidRevision, rev)
 		}
-		if _, err := runGit(g.dir, MaxTextBytes, "rev-parse", "--verify", "--quiet", rev+"^{object}"); err != nil {
+		if _, err := runGit(context.Background(), g.dir, MaxTextBytes, "rev-parse", "--verify", "--quiet", rev+"^{object}"); err != nil {
 			return fmt.Errorf("%w: %q", ErrInvalidRevision, rev)
 		}
 	}
@@ -184,7 +184,7 @@ func (g *GitChanges) List() ([]ChangedFile, error) {
 	args := append([]string{"diff", "--no-ext-diff", "--no-color", "--name-status", "-z", "-M"}, g.diffArgs...)
 	args = append(args, "--")
 	args = append(args, g.spec.Paths...)
-	out, err := runGit(g.dir, MaxTextBytes, args...)
+	out, err := runGit(context.Background(), g.dir, MaxTextBytes, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list changes: %w", err)
 	}
@@ -210,7 +210,7 @@ func (g *GitChanges) List() ([]ChangedFile, error) {
 
 func (g *GitChanges) listUntracked() ([]ChangedFile, error) {
 	args := append([]string{"ls-files", "-z", "--others", "--exclude-standard", "--full-name", "--"}, g.spec.Paths...)
-	out, err := runGit(g.dir, MaxTextBytes, args...)
+	out, err := runGit(context.Background(), g.dir, MaxTextBytes, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list untracked files: %w", err)
 	}
@@ -249,7 +249,7 @@ func parseNameStatus(out []byte) ([]ChangedFile, error) {
 
 // Load returns the old and the new text of a changed file. A side that does not exist
 // (added, deleted or untracked files) is returned as an empty string.
-func (g *GitChanges) Load(file ChangedFile) (oldText, newText string, err error) {
+func (g *GitChanges) Load(ctx context.Context, file ChangedFile) (oldText, newText string, err error) {
 	if file.Status == StatusUnmerged {
 		return "", "", fmt.Errorf("%s: %w", file.Path, ErrUnmerged)
 	}
@@ -258,29 +258,29 @@ func (g *GitChanges) Load(file ChangedFile) (oldText, newText string, err error)
 		if file.OldPath != "" {
 			oldPath = file.OldPath
 		}
-		if oldText, err = g.read(g.oldSide, oldPath); err != nil {
+		if oldText, err = g.read(ctx, g.oldSide, oldPath); err != nil {
 			return "", "", err
 		}
 	}
 	if file.Status != StatusDeleted {
-		if newText, err = g.read(g.newSide, file.Path); err != nil {
+		if newText, err = g.read(ctx, g.newSide, file.Path); err != nil {
 			return "", "", err
 		}
 	}
 	return oldText, newText, nil
 }
 
-func (g *GitChanges) read(from side, path string) (string, error) {
+func (g *GitChanges) read(ctx context.Context, from side, path string) (string, error) {
 	if from.kind == sideWorktree {
-		return g.readWorktree(path)
+		return g.readWorktree(ctx, path)
 	}
 	object := ":0:" + path
 	if from.kind == sideRev {
 		object = from.ref + ":" + path
 	}
-	data, err := runGit(g.root, MaxTextBytes+1, "cat-file", "blob", object)
+	data, err := runGit(ctx, g.root, MaxTextBytes+1, "cat-file", "blob", object)
 	if err != nil {
-		if g.isGitlink(from, path) {
+		if g.isGitlink(ctx, from, path) {
 			return "", fmt.Errorf("%s: %w", path, ErrSubmodule)
 		}
 		return "", fmt.Errorf("read %s: %w", path, err)
@@ -290,7 +290,7 @@ func (g *GitChanges) read(from side, path string) (string, error) {
 
 // readWorktree reads a file of the working tree. A symbolic link is shown as its target path (as git
 // stores it) and is never followed; paths that leave the repository through a symlinked directory are rejected.
-func (g *GitChanges) readWorktree(path string) (string, error) {
+func (g *GitChanges) readWorktree(ctx context.Context, path string) (string, error) {
 	full := filepath.Join(g.root, filepath.FromSlash(path))
 	info, err := os.Lstat(full)
 	if err != nil {
@@ -314,18 +314,18 @@ func (g *GitChanges) readWorktree(path string) (string, error) {
 	if parent != root && !strings.HasPrefix(parent, root+string(filepath.Separator)) {
 		return "", fmt.Errorf("%s: %w", path, ErrOutsideRepository)
 	}
-	return ReadTextFile(full)
+	return ReadTextFileContext(ctx, full)
 }
 
 // isGitlink reports whether path is a submodule entry (mode 160000) on the given side.
-func (g *GitChanges) isGitlink(from side, path string) bool {
+func (g *GitChanges) isGitlink(ctx context.Context, from side, path string) bool {
 	var out []byte
 	var err error
 	switch from.kind {
 	case sideRev:
-		out, err = runGit(g.root, MaxTextBytes, "ls-tree", "-z", from.ref, "--", path)
+		out, err = runGit(ctx, g.root, MaxTextBytes, "ls-tree", "-z", from.ref, "--", path)
 	case sideIndex:
-		out, err = runGit(g.root, MaxTextBytes, "ls-files", "-s", "-z", "--", ":(literal)"+path)
+		out, err = runGit(ctx, g.root, MaxTextBytes, "ls-files", "-s", "-z", "--", ":(literal)"+path)
 	default:
 		return false
 	}
@@ -335,7 +335,7 @@ func (g *GitChanges) isGitlink(from side, path string) bool {
 // markUnmerged sets StatusUnmerged on files that have unresolved merge conflicts.
 func (g *GitChanges) markUnmerged(files []ChangedFile) error {
 	args := append([]string{"ls-files", "-u", "-z", "--full-name", "--"}, g.spec.Paths...)
-	out, err := runGit(g.dir, MaxTextBytes, args...)
+	out, err := runGit(context.Background(), g.dir, MaxTextBytes, args...)
 	if err != nil {
 		return fmt.Errorf("list unmerged files: %w", err)
 	}
@@ -382,9 +382,10 @@ func (h *headWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// runGit runs git in dir and returns its stdout, failing if it exceeds maxBytes.
-func runGit(dir string, maxBytes int, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+// runGit runs git in dir and returns its stdout, failing if it exceeds maxBytes. Cancelling parent kills the
+// git process and returns the context's error.
+func runGit(parent context.Context, dir string, maxBytes int, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(parent, gitTimeout)
 	defer cancel()
 	full := append([]string{"--no-pager", "-c", "core.fsmonitor=false", "-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...) // #nosec G204 -- fixed binary, arguments validated by callers
@@ -395,6 +396,9 @@ func runGit(dir string, maxBytes int, args ...string) ([]byte, error) {
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
+		if parentErr := parent.Err(); parentErr != nil {
+			return nil, parentErr // cancelled by the caller: not a git failure
+		}
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, fmt.Errorf("git timed out after %s", gitTimeout)
 		}

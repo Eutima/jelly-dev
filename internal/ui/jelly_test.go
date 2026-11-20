@@ -118,40 +118,35 @@ func flatten(cmd tea.Cmd) []tea.Msg {
 	return []tea.Msg{msg}
 }
 
-func TestGitUpdate_RestartsAnimation_WhenLoadHandsOverAfterIdle(t *testing.T) {
-	model, _ := newGitTestModel(100, 12)
+func TestGitUpdate_DiscardsCancelledLoadAndStopsAnimation_WhenUserReturnsToShownFile(t *testing.T) {
+	model, src := newGitTestModel(100, 12)
+	src.ctxs = nil
 	press := func(key string) tea.Cmd {
 		updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
 		model = updated.(GitModel)
 		return cmd
 	}
 	load := press("j") // start loading file 1
-	press("k")         // back to the shown file 0
-	updated, _ := model.Update(jellyTickMsg{})
-	model = updated.(GitModel) // nothing waits visibly: the animation stops
+	press("k")         // back on the shown file 0: the load is cancelled
+	if model.loading || strings.Contains(model.View(), "Loading") {
+		t.Fatal("no load and no loading hint expected after returning to the shown file")
+	}
+	model = runLoads(model, load) // the cancelled load reports back late
+	if model.loadedFile != 0 || model.selected != 0 {
+		t.Fatalf("loaded %d selected %d", model.loadedFile, model.selected)
+	}
+	updated, _ := model.Update(jellyTickMsg{}) // idle: the animation stops
+	model = updated.(GitModel)
 	if model.ticking {
 		t.Fatal("expected the animation to be idle")
 	}
-	press("j") // loading is still running: no new command
-	press("j") // file 2 selected while file 1 still loads
-
-	var handOver tea.Cmd
-	for _, msg := range flatten(load) {
-		if loaded, ok := msg.(loadedMsg); ok {
-			updated, handOver = model.Update(loaded)
-			model = updated.(GitModel)
+	restarted := false
+	for _, msg := range flatten(press("j")) { // a new load must restart the animation
+		if _, ok := msg.(jellyTickMsg); ok {
+			restarted = true
 		}
 	}
-	ticks, loads := false, false
-	for _, msg := range flatten(handOver) {
-		switch msg.(type) {
-		case jellyTickMsg:
-			ticks = true
-		case loadedMsg:
-			loads = true
-		}
-	}
-	if !ticks || !loads || !model.ticking {
-		t.Fatalf("hand-over must load and restart the animation: ticks %v loads %v ticking %v", ticks, loads, model.ticking)
+	if !restarted || !model.ticking {
+		t.Fatalf("a new load after idle must restart the animation: restarted %v ticking %v", restarted, model.ticking)
 	}
 }

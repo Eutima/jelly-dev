@@ -84,4 +84,4 @@ Environment variables (see `.env.example`):
 - A missing trailing newline at the end of a file is not shown as a difference.
 - Binary detection only checks for NUL bytes (UTF-16 files are shown as garbage); files and git blobs are limited to 64 MiB.
 - While a file loads in the list views a wobbling jelly is shown; slow operations before the UI opens (listing a large directory or repository, reading the clipboard) show a small jelly wave on stderr after 300 ms (only on an interactive terminal).
-- In git mode files load in the background ("Loading ..." is shown); only the latest selection is loaded when you move quickly. Plain `jelly-diff a b` still reads both files before the UI opens.
+- In git mode files load in the background ("Loading ..." is shown); selecting another file cancels the load in progress, including a running `git` process, so only the latest selection is loaded. Plain `jelly-diff a b` still reads both files before the UI opens.
