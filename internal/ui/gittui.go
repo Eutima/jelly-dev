@@ -48,11 +48,11 @@ type GitModel struct {
 	message  string // shown instead of the diff when the file cannot be displayed
 	theme    Theme
 
-	loading     bool // a file is being loaded in the background
-	loadingFile int  // index of the file being loaded
-	loadedFile  int  // index of the file whose diff is shown, -1 when none
-	loadSeq     int  // number of the current load; results of older loads are discarded
-	loadCtx     context.Context // context of the current load; kept so Init can start the first load
+	loading     bool               // a file is being loaded in the background
+	loadingFile int                // index of the file being loaded
+	loadedFile  int                // index of the file whose diff is shown, -1 when none
+	loadSeq     int                // number of the current load; results of older loads are discarded
+	loadCtx     context.Context    // context of the current load; kept so Init can start the first load
 	cancelLoad  context.CancelFunc // cancels the running load; nil when none
 	ticking     bool               // the wobble animation is scheduled
 	frame       int                // current animation frame
