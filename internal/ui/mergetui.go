@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -31,6 +32,8 @@ const (
 	ChoiceBoth
 	// ChoiceBase discards both changes and keeps the base lines.
 	ChoiceBase
+	// ChoiceCustom uses lines the user edited by hand.
+	ChoiceCustom
 )
 
 // MergeOutcome reports what happened in the merge viewer after it quit.
@@ -50,8 +53,10 @@ type mergeRow struct {
 }
 
 type historyEntry struct {
-	chunk int
-	prev  Choice
+	chunk      int
+	prev       Choice
+	prevCustom []string // the hand-edited lines before the step; only meaningful when hadCustom
+	hadCustom  bool
 }
 
 // MergeModel is the three-pane merge viewer: ours | result | theirs.
@@ -59,6 +64,7 @@ type MergeModel struct {
 	titles  MergeTitles
 	chunks  []merge.Chunk
 	choices []Choice
+	custom  map[int][]string // hand-edited result lines per chunk, used when the choice is ChoiceCustom
 	history []historyEntry
 	changed []int // indexes of chunks that are not Unchanged
 	theme   Theme
@@ -68,9 +74,19 @@ type MergeModel struct {
 	syntaxNames []string                   // file names the highlighting lexer is chosen from; empty means no highlighting
 	paneSyntax  [mergePanes][][]SyntaxSpan // spans per pane and line; the result pane is recomputed on every change
 
-	rows    []mergeRow
-	starts  []int // first row of every changed chunk
-	current int   // index into changed, -1 when none selected
+	rows     []mergeRow
+	starts   []int // first row of every changed chunk
+	chunkRow []int // first row of every chunk (a chunk without lines has none: its entry is the next row)
+	current  int   // index into changed, -1 when none selected
+	cursor   int   // row of the line cursor in the result pane
+
+	editing       bool // a result line is being edited
+	editor        lineEditor
+	editRow       int // row of the line being edited
+	editChunk     int // chunk and line (within the chunk's result) of the line being edited
+	editLine      int
+	editNew       bool // the line was just inserted: cancelling the edit removes it again
+	editBeforeRow int  // cursor row before a line was inserted
 
 	width, height int
 	offset        int
@@ -133,6 +149,8 @@ func (m MergeModel) chunkResult(i int) []string {
 		return append(append([]string(nil), chunk.Ours...), chunk.Theirs...)
 	case ChoiceBase:
 		return chunk.Base
+	case ChoiceCustom:
+		return m.custom[i]
 	}
 	if lines, ok := chunk.Resolved(); ok {
 		return lines
@@ -154,7 +172,7 @@ func equalLines(a, b []string) bool {
 
 // rebuild recomputes the aligned rows after the choices changed.
 func (m *MergeModel) rebuild() {
-	m.rows, m.starts = nil, nil // fresh slices: older copies of the model must not change
+	m.rows, m.starts, m.chunkRow = nil, nil, make([]int, len(m.chunks)) // fresh slices: older copies must not change
 	if len(m.syntaxNames) > 0 {
 		m.paneSyntax[paneResult] = highlightLines(m.syntaxNames, m.Result())
 	}
@@ -165,6 +183,7 @@ func (m *MergeModel) rebuild() {
 		panes := [mergePanes][]string{chunk.Ours, result, chunk.Theirs}
 		kinds := m.paneKinds(i, result)
 		height := max(len(panes[paneOurs]), len(panes[paneResult]), len(panes[paneTheirs]))
+		m.chunkRow[i] = len(m.rows)
 		if chunk.Kind != merge.Unchanged && changedIndex < len(m.changed) && m.changed[changedIndex] == i {
 			m.starts = append(m.starts, len(m.rows))
 			changedIndex++
@@ -185,12 +204,13 @@ func (m *MergeModel) rebuild() {
 			m.rows = append(m.rows, entry)
 		}
 	}
+	m.cursor = min(max(m.cursor, 0), max(len(m.rows)-1, 0))
 }
 
 // paneKinds decides how the three panes of chunk i are colored.
 func (m MergeModel) paneKinds(i int, result []string) [mergePanes]CellKind {
 	chunk := m.chunks[i]
-	if chunk.Kind == merge.Unchanged {
+	if chunk.Kind == merge.Unchanged && m.choices[i] != ChoiceCustom {
 		return [mergePanes]CellKind{CellEqual, CellEqual, CellEqual}
 	}
 	side := func(lines []string) CellKind {
@@ -237,6 +257,9 @@ func (m MergeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.editing {
+		return m.handleEditKey(msg)
+	}
 	key := msg.String()
 	if key != "q" && key != "esc" {
 		m.quitArmed = false
@@ -248,25 +271,21 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "esc":
 		return m.quit()
 	case "j", "down":
-		m.offset++
+		m.moveCursor(1)
 	case "k", "up":
-		m.offset--
+		m.moveCursor(-1)
 	case "pgdown", " ":
-		m.offset += page
+		m.moveCursor(page)
 	case "pgup":
-		m.offset -= page
+		m.moveCursor(-page)
 	case "g", "home":
-		m.offset = 0
+		m.setCursor(0)
 	case "G", "end":
-		m.offset = len(m.rows)
+		m.setCursor(len(m.rows) - 1)
 	case "n", "tab":
-		m.gotoChange(m.current + 1)
+		m.gotoChange(m.changeAfterCursor())
 	case "p", "shift+tab":
-		if m.current < 0 {
-			m.gotoChange(len(m.changed) - 1)
-		} else {
-			m.gotoChange(m.current - 1)
-		}
+		m.gotoChange(m.changeBeforeCursor())
 	case "o":
 		m.resolve(ChoiceOurs)
 	case "t":
@@ -275,6 +294,12 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.resolve(ChoiceBoth)
 	case "r":
 		m.resolve(ChoiceBase)
+	case "e", "enter":
+		m.startEdit()
+	case "d":
+		m.deleteLine()
+	case "i":
+		m.insertLine()
 	case "u":
 		m.undo()
 	case "s":
@@ -301,6 +326,7 @@ func (m *MergeModel) gotoChange(index int) {
 	}
 	m.current = (index%count + count) % count
 	m.offset = max(m.starts[m.current]-m.bodyHeight()/3, 0)
+	m.cursor = m.starts[m.current]
 }
 
 // resolve applies a choice to the selected change and moves on to the next unresolved conflict.
@@ -309,11 +335,7 @@ func (m *MergeModel) resolve(choice Choice) {
 		m.status = "Select a change first (n/p)"
 		return
 	}
-	chunk := m.changed[m.current]
-	m.history = append(m.history[:len(m.history):len(m.history)], historyEntry{chunk: chunk, prev: m.choices[chunk]})
-	m.choices = append([]Choice(nil), m.choices...)
-	m.choices[chunk] = choice
-	m.markDirty()
+	m.setChoice(m.changed[m.current], choice, nil)
 	m.status = ""
 	m.rebuild()
 	if next := m.nextUnresolved(); next >= 0 {
@@ -351,16 +373,13 @@ func (m *MergeModel) undo() {
 	}
 	last := m.history[len(m.history)-1]
 	m.history = m.history[: len(m.history)-1 : len(m.history)-1]
-	m.choices = append([]Choice(nil), m.choices...)
+	m.choices = slices.Clone(m.choices)
 	m.choices[last.chunk] = last.prev
+	m.setCustom(last.chunk, last.prevCustom, last.hadCustom)
 	m.markDirty()
 	m.status = ""
 	m.rebuild()
-	for index, chunk := range m.changed {
-		if chunk == last.chunk {
-			m.current = index
-		}
-	}
+	m.setCursor(m.chunkRow[last.chunk])
 	m.keepVisible()
 }
 
@@ -407,7 +426,7 @@ func (m MergeModel) View() string {
 		row := m.rows[i]
 		out.WriteString(m.theme.renderCell(row.cells[paneOurs], numWidth, widths[paneOurs]))
 		out.WriteString(m.gutter(row, paneOurs))
-		out.WriteString(m.theme.renderCell(row.cells[paneResult], numWidth, widths[paneResult]))
+		out.WriteString(m.resultCell(i, row, numWidth, widths[paneResult]))
 		out.WriteString(m.gutter(row, paneTheirs))
 		out.WriteString(m.theme.renderCell(row.cells[paneTheirs], numWidth, widths[paneTheirs]))
 		out.WriteByte('\n')
@@ -417,6 +436,33 @@ func (m MergeModel) View() string {
 	}
 	out.WriteString(m.footer())
 	return out.String()
+}
+
+// resultCell draws the result pane cell of row i: the line editor, the cursor line, or a normal cell.
+func (m MergeModel) resultCell(i int, row mergeRow, numWidth, width int) string {
+	cell := row.cells[paneResult]
+	switch {
+	case m.editing && i == m.editRow:
+		return m.editorCell(cell.No, numWidth, width)
+	case i == m.cursor && cell.Kind != CellFiller:
+		cell.Kind = CellCursor
+	}
+	return m.theme.renderCell(cell, numWidth, width)
+}
+
+// editorCell draws the line number and the editor in exactly width columns.
+func (m MergeModel) editorCell(number, numWidth, width int) string {
+	num := numWidth
+	if width < numWidth {
+		num = 0
+	}
+	label := ""
+	if num > 0 {
+		label = fmt.Sprintf("%*d ", num-1, number)
+	}
+	base := m.theme.Selected.Underline(true)
+	cursor := m.theme.Selected.Reverse(!m.theme.Selected.GetReverse())
+	return m.theme.LineNumber.Background(base.GetBackground()).Render(label) + m.editor.view(width-num, base, cursor)
 }
 
 func (m MergeModel) header(widths [mergePanes]int) string {
@@ -433,12 +479,15 @@ func (m MergeModel) header(widths [mergePanes]int) string {
 
 func (m MergeModel) footer() string {
 	text := m.status
+	if m.editing {
+		text = m.editingStatus()
+	}
 	if text == "" {
 		state := "all conflicts resolved"
 		if left := m.Unresolved(); left > 0 {
 			state = fmt.Sprintf("%d conflict(s) left", left)
 		}
-		text = state + "   n/p change   o ours   t theirs   b both   r base   u undo   s save   q quit"
+		text = state + "   n/p change   o ours   t theirs   b both   r base   e edit   d del   i ins   u undo   s save   q quit"
 	}
 	return m.theme.Footer.Render(padRight(fmt.Sprintf(statusFormat, text), m.width))
 }

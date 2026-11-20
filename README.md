@@ -29,10 +29,18 @@ Keys (diff): `n`/`p` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, `
 The mouse is captured for wheel scrolling; hold Shift while dragging to select text in most terminals.
 
 Merge: `jelly-diff merge <base> <local> <remote> <merged>` shows ours | result | theirs. Non-conflicting changes are
-merged automatically; conflicts start with the base lines. Keys: `n`/`p` select a change, `o` ours, `t` theirs,
-`b` both, `r` revert to base, `u` undo, `s` save (only when every conflict is resolved), `q` quit (asks before
-discarding). The result is written atomically with the line endings of the local file and a final newline; the exit
-code is 0 only after saving. Editing single lines in the result pane is not implemented yet.
+merged automatically; conflicts start with the base lines. The result pane has a line cursor:
+
+- `j`/`k`/arrows move the cursor (the change under it is selected), `n`/`p` jump to the next/previous change.
+- `o` takes ours, `t` theirs, `b` both, `r` reverts the change to the base.
+- `e` or `enter` edits the line under the cursor in place (`enter` applies, `esc` cancels, arrows/home/end move,
+  `ctrl+u`/`ctrl+k` delete to the start/end of the line), `d` deletes the line, `i` inserts a new line below it and
+  opens it for editing (`esc` removes it again). A block edited by hand counts as resolved.
+- `u` undoes the last step (also edits, deletions and insertions), `s` saves (only when every conflict is resolved),
+  `q` quits (asks before discarding).
+
+The result is written atomically with the line endings of the local file and a final newline; the exit code is 0 only
+after saving.
 Use as git tool: `jelly-diff install-git` prints the `git config` commands, `--apply` writes them (`--local` for
 the current repository only), then use `git difftool` and `git mergetool`.
 
@@ -54,6 +62,12 @@ Syntax highlighting (library: [chroma](https://github.com/alecthomas/chroma), MI
 the diff, clipboard, git, directory and merge views (in the merge view the result pane is re-highlighted after every
 choice): monokai colors in the dark theme, github colors in the light theme, none in mono. Changed words keep their
 own highlight. Files over 512 KiB and files without a known lexer are not highlighted.
+
+## Known limitations of the terminal UI
+
+- On terminals that do not answer the background-color query (some serial consoles and test harnesses) every start,
+  including `jelly-diff --version`, waits about 5 seconds. This comes from bubbletea v1 (it queries the terminal while
+  initializing) and goes away on terminals such as xterm, iTerm2, kitty, Alacritty, WezTerm; tmux and screen are skipped.
 
 ## Build and release
 

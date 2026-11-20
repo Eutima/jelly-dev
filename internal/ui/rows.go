@@ -17,6 +17,8 @@ const (
 	CellModified
 	// CellConflict is a line of an unresolved merge conflict.
 	CellConflict
+	// CellCursor is the line under the cursor in an editable pane.
+	CellCursor
 	// CellFiller is an empty placeholder that keeps both panes aligned.
 	CellFiller
 )

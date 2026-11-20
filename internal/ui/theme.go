@@ -63,6 +63,8 @@ func (t Theme) styleFor(kind CellKind) lipgloss.Style {
 		return t.Modified
 	case CellConflict:
 		return t.Conflict
+	case CellCursor:
+		return t.Selected
 	case CellFiller:
 		return t.Filler
 	default:
@@ -80,6 +82,8 @@ func (t Theme) wordStyleFor(kind CellKind) lipgloss.Style {
 		return t.ModifiedWord
 	case CellConflict:
 		return t.ConflictWord
+	case CellCursor:
+		return t.Selected
 	default:
 		return t.styleFor(kind)
 	}
