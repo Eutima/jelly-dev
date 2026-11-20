@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -376,5 +377,47 @@ func TestRun_Fails_WhenDirectoryComparedWithFile(t *testing.T) {
 	if code := run([]string{dir, file}, &bytes.Buffer{}, &stderr, testEnv(noUI)); code != exitFailure ||
 		!strings.Contains(stderr.String(), "directory with a file") {
 		t.Fatalf("code %d stderr %q", code, stderr.String())
+	}
+}
+
+func TestRun_PrintsVersion_WhenVersionFlagGiven(t *testing.T) {
+	for _, arg := range []string{"--version", "version"} {
+		var stdout bytes.Buffer
+		if code := run([]string{arg}, &stdout, &bytes.Buffer{}, testEnv(noUI)); code != exitOK ||
+			!strings.HasPrefix(stdout.String(), "jelly-diff ") {
+			t.Fatalf("%s: code %d stdout %q", arg, code, stdout.String())
+		}
+	}
+}
+
+func TestPrintVersion_PrintsToolNameAndVersion_WhenCalled(t *testing.T) {
+	var stdout bytes.Buffer
+	printVersion(&stdout)
+	if !strings.HasPrefix(stdout.String(), toolName+" ") || !strings.HasSuffix(stdout.String(), "\n") {
+		t.Fatalf("output %q", stdout.String())
+	}
+}
+
+func TestResolveVersion_PrefersLinkedThenModuleVersion_WhenAvailable(t *testing.T) {
+	module := &debug.BuildInfo{Main: debug.Module{Version: "v1.2.3"}}
+	devel := &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}
+	cases := []struct {
+		name   string
+		linked string
+		info   *debug.BuildInfo
+		want   string
+	}{
+		{"linked wins", "0.9.0", module, "0.9.0"},
+		{"module version", "dev", module, "v1.2.3"},
+		{"empty linked", "", module, "v1.2.3"},
+		{"devel build", "dev", devel, "dev"},
+		{"no build info", "dev", nil, "dev"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := resolveVersion(c.linked, c.info); got != c.want {
+				t.Fatalf("got %q want %q", got, c.want)
+			}
+		})
 	}
 }

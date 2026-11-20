@@ -1,0 +1,39 @@
+# GoReleaser configuration (schema version 2).
+# Local builds: `goreleaser release --snapshot --clean` (archives in dist/, nothing is published).
+version: 2
+project_name: jelly-diff
+
+builds:
+  - id: jelly-diff
+    main: ./cmd/jelly-diff
+    binary: jelly-diff
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: jelly-diff
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  disable: true
+
+# Publishing is switched off until a release target (for example a GitHub repository) is chosen.
+# To publish on a tag, remove this block and add a workflow that runs `goreleaser release`.
+release:
+  disable: true

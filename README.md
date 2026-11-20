@@ -55,6 +55,21 @@ the diff, clipboard, git, directory and merge views (in the merge view the resul
 choice): monokai colors in the dark theme, github colors in the light theme, none in mono. Changed words keep their
 own highlight. Files over 512 KiB and files without a known lexer are not highlighted.
 
+## Build and release
+
+`jelly-diff --version` (or `jelly-diff version`, only as the sole argument; use `./version` for a file of that name) prints the
+version. A plain `go build` reports the version Go records for the build (a pseudo-version with the commit, or `dev`
+without build information, or the tag when installed with `go install ...@vX.Y.Z`); release builds get the version
+linked in:
+
+```
+go build -trimpath -ldflags "-X main.version=0.1.0" -o bin/jelly-diff ./cmd/jelly-diff
+goreleaser release --snapshot --clean      # archives for Linux, macOS and Windows (amd64, arm64) in dist/
+```
+
+CI (`.github/workflows/ci.yml`) cross-compiles all six targets and runs `goreleaser check`. Publishing is switched off
+in `.goreleaser.yaml` until a release target is chosen.
+
 ## Config
 
 Environment variables (see `.env.example`):

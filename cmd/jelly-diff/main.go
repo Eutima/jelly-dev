@@ -32,6 +32,7 @@ const (
                                      browse changes of the git repository in the current directory
   jelly-diff merge <base> <local> <remote> <merged>
                                      three-way merge; writes <merged> (git mergetool order)
+  jelly-diff --version               print the version
   jelly-diff install-git [--apply] [--local]
                                      print (or with --apply write, overwriting existing values) the git diff/merge tool settings`
 )
@@ -85,6 +86,10 @@ func runProgram(model tea.Model) error {
 
 // run executes the command and returns the process exit code.
 func run(args []string, stdout, stderr io.Writer, env environment) int {
+	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
+		printVersion(stdout)
+		return exitOK
+	}
 	if len(args) > 0 && args[0] == "install-git" {
 		return runInstallGit(args[1:], stdout, stderr, env) // needs no theme, so a bad theme must not block it
 	}
