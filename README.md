@@ -67,7 +67,9 @@ go build -trimpath -ldflags "-X main.version=0.1.0" -o bin/jelly-diff ./cmd/jell
 goreleaser release --snapshot --clean      # archives for Linux, macOS and Windows (amd64, arm64) in dist/
 ```
 
-CI (`.github/workflows/ci.yml`) cross-compiles all six targets and runs `goreleaser check`. Publishing is switched off
+CI (`.github/workflows/ci.yml`) cross-compiles all six targets and runs `goreleaser check`. The actions are pinned
+to commit SHAs and GoReleaser to an exact version; Dependabot (`.github/dependabot.yml`) proposes updates weekly
+with Conventional Commit titles. Publishing is switched off
 in `.goreleaser.yaml` until a release target is chosen.
 
 ## Config
