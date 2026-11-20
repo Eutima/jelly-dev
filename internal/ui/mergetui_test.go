@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
 	"github.com/eutima/jelly-diff/internal/merge"
 )
@@ -236,5 +237,86 @@ func TestMergeModel_CountsAsNotSaved_WhenResultChangesAfterSave(t *testing.T) {
 	mergePress(model, "n", "r")
 	if outcome.Saved {
 		t.Fatal("a change after saving must clear the saved state")
+	}
+}
+
+// monokaiKeyword is the true-color escape of a keyword in the dark theme's monokai style.
+const monokaiKeyword = "38;2;249;38;113"
+
+const (
+	goBase   = "package main\n\nfunc a() {}\n\nfunc b() {}\n"
+	goOurs   = "package main\n\nfunc a() {}\n\nfunc bOurs() {}\n"
+	goTheirs = "package main\n\nfunc a() {}\n\nfunc bTheirs() {}\n"
+)
+
+func highlightedMergeModel(t *testing.T) MergeModel {
+	t.Helper()
+	model, _ := newMergeTestModel(goBase, goOurs, goTheirs, &saver{})
+	return model.WithHighlight("main.go")
+}
+
+// findRowWith returns the first row whose cell in pane has the given text.
+func findRowWith(model MergeModel, pane int, text string) (mergeRow, bool) {
+	for _, row := range model.rows {
+		if row.cells[pane].Text == text {
+			return row, true
+		}
+	}
+	return mergeRow{}, false
+}
+
+func TestMergeModel_HighlightsAllThreePanes_WhenGoFile(t *testing.T) {
+	model := highlightedMergeModel(t)
+	for pane, text := range map[int]string{paneOurs: "func bOurs() {}", paneTheirs: "func bTheirs() {}", paneResult: "func a() {}"} {
+		row, ok := findRowWith(model, pane, text)
+		if !ok || len(row.cells[pane].Syntax) == 0 {
+			t.Fatalf("pane %d lacks syntax spans for %q: %+v", pane, text, row.cells[pane])
+		}
+	}
+}
+
+func TestMergeModel_RecomputesResultHighlighting_WhenConflictResolved(t *testing.T) {
+	model := highlightedMergeModel(t)
+	before, _ := findRowWith(model, paneResult, "func b() {}") // unresolved conflict shows the base lines
+	if len(before.cells[paneResult].Syntax) == 0 {
+		t.Fatal("base line in the result pane must be highlighted")
+	}
+	model = mergePress(model, "n", "t")
+	row, ok := findRowWith(model, paneResult, "func bTheirs() {}")
+	if !ok || len(row.cells[paneResult].Syntax) == 0 {
+		t.Fatalf("resolved line must be highlighted too: %+v", row)
+	}
+}
+
+func TestMergeModel_StaysUnhighlighted_WhenNoLexerMatches(t *testing.T) {
+	model, _ := newMergeTestModel(goBase, goOurs, goTheirs, &saver{})
+	model = model.WithHighlight("notes.unknownext123")
+	for _, row := range model.rows {
+		for _, cell := range row.cells {
+			if len(cell.Syntax) != 0 {
+				t.Fatalf("unexpected spans: %+v", cell)
+			}
+		}
+	}
+}
+
+func TestMergeView_EmitsSyntaxColors_WhenDarkThemeAndGoFile(t *testing.T) {
+	withColorProfile(t, termenv.TrueColor)
+	model := highlightedMergeModel(t).WithTheme(DarkTheme())
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 12})
+	if view := updated.(MergeModel).View(); !strings.Contains(view, monokaiKeyword) {
+		t.Fatalf("expected the monokai keyword color in the merge view:\n%q", view)
+	}
+}
+
+func TestMergeView_FitsWidthWithSyntax_WhenSizesVary(t *testing.T) {
+	withColorProfile(t, termenv.TrueColor)
+	for _, width := range []int{41, 80, 120} {
+		updated, _ := highlightedMergeModel(t).Update(tea.WindowSizeMsg{Width: width, Height: 10})
+		for i, line := range strings.Split(updated.(MergeModel).View(), "\n") {
+			if line != "" && lipgloss.Width(line) > width {
+				t.Fatalf("width %d line %d is %d wide", width, i, lipgloss.Width(line))
+			}
+		}
 	}
 }

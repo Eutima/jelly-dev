@@ -61,6 +61,7 @@ func mergeFiles(basePath, localPath, remotePath, mergedPath string, stdout io.Wr
 		fmt.Fprintln(stdout, "nothing to merge")
 		return save(model.Result())
 	}
+	model = model.WithHighlight(mergedPath, localPath, remotePath)
 	if err := env.runUI(model); err != nil {
 		return fmt.Errorf("run ui: %w", err)
 	}

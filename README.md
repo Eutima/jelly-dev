@@ -51,9 +51,9 @@ repositories with it. Symbolic links are shown as their target path and are neve
 Inputs must be regular files (or symbolic links to them): pipes such as `<(command)` are rejected.
 
 Syntax highlighting (library: [chroma](https://github.com/alecthomas/chroma), MIT) is chosen by file name and shown in
-the diff, clipboard, git and directory views: monokai colors in the dark theme, github colors in the light theme, none in
-mono. Changed words keep their own highlight. Files over 512 KiB, files without a known lexer and the merge view are
-not highlighted.
+the diff, clipboard, git, directory and merge views (in the merge view the result pane is re-highlighted after every
+choice): monokai colors in the dark theme, github colors in the light theme, none in mono. Changed words keep their
+own highlight. Files over 512 KiB and files without a known lexer are not highlighted.
 
 ## Config
 

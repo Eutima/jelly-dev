@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 // pressKeys returns a UI runner that feeds the given keys to the merge model.
@@ -209,5 +211,40 @@ func TestRunGitConfig_StoresSettingsExactly_WhenAppliedToRealGit(t *testing.T) {
 		if err != nil || strings.TrimSpace(string(out)) != setting.value {
 			t.Fatalf("%s = %q, err %v", setting.key, out, err)
 		}
+	}
+}
+
+// monokaiKeywordColor is the true-color escape of a keyword in the dark theme's monokai style.
+const monokaiKeywordColor = "38;2;249;38;113"
+
+func TestRun_HighlightsMergeView_WhenMergedFileIsGoSource(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	args := []string{"merge",
+		write("base.go", "package a\nfunc f() {}\n"), write("local.go", "package a\nfunc g() {}\n"),
+		write("remote.go", "package a\nfunc h() {}\n"), write("merged.go", "")}
+	var view string
+	runUI := func(model tea.Model) error {
+		model, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 10})
+		view = model.View()
+		return nil
+	}
+	if code := run(args, &bytes.Buffer{}, &bytes.Buffer{}, testEnv(runUI)); code != exitFailure && code != exitOK {
+		t.Fatalf("unexpected exit code %d", code)
+	}
+	if view == "" {
+		t.Fatal("the merge view was never shown")
+	}
+	if !strings.Contains(view, monokaiKeywordColor) {
+		t.Fatalf("expected syntax colors in the merge view:\n%q", view)
 	}
 }

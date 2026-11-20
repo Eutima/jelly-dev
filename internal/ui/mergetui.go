@@ -65,6 +65,9 @@ type MergeModel struct {
 	save    func(lines []string) error
 	outcome *MergeOutcome
 
+	syntaxNames []string                   // file names the highlighting lexer is chosen from; empty means no highlighting
+	paneSyntax  [mergePanes][][]SyntaxSpan // spans per pane and line; the result pane is recomputed on every change
+
 	rows    []mergeRow
 	starts  []int // first row of every changed chunk
 	current int   // index into changed, -1 when none selected
@@ -152,6 +155,9 @@ func equalLines(a, b []string) bool {
 // rebuild recomputes the aligned rows after the choices changed.
 func (m *MergeModel) rebuild() {
 	m.rows, m.starts = nil, nil // fresh slices: older copies of the model must not change
+	if len(m.syntaxNames) > 0 {
+		m.paneSyntax[paneResult] = highlightLines(m.syntaxNames, m.Result())
+	}
 	var numbers [mergePanes]int
 	changedIndex := 0
 	for i, chunk := range m.chunks {
@@ -171,7 +177,10 @@ func (m *MergeModel) rebuild() {
 					continue
 				}
 				numbers[pane]++
-				entry.cells[pane] = Cell{Kind: kinds[pane], No: numbers[pane], Text: panes[pane][row]}
+				entry.cells[pane] = Cell{
+					Kind: kinds[pane], No: numbers[pane], Text: panes[pane][row],
+					Syntax: lineSpans(m.paneSyntax[pane], numbers[pane]),
+				}
 			}
 			m.rows = append(m.rows, entry)
 		}
@@ -455,4 +464,21 @@ func (m MergeModel) gutter(row mergeRow, side int) string {
 		return style.Render(arrow)
 	}
 	return style.Render(" ┃ ")
+}
+
+// WithHighlight returns the model with syntax highlighting; the lexer is chosen by the first file name
+// that has one. Without a lexer, or for very large files, nothing is highlighted.
+func (m MergeModel) WithHighlight(filenames ...string) MergeModel {
+	var ours, theirs []string
+	for _, chunk := range m.chunks {
+		ours = append(ours, chunk.Ours...)
+		theirs = append(theirs, chunk.Theirs...)
+	}
+	// The ours and theirs panes always show the complete Ours/Theirs lines of every chunk, so the line
+	// numbers of these concatenations match the pane line numbers used in rebuild.
+	m.syntaxNames = filenames
+	m.paneSyntax[paneOurs] = highlightLines(filenames, ours)
+	m.paneSyntax[paneTheirs] = highlightLines(filenames, theirs)
+	m.rebuild()
+	return m
 }
