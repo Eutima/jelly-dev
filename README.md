@@ -11,7 +11,8 @@ act as a three-pane `git mergetool`.
 
 ## Status
 
-Steps 1-7 of 8 done: file diff, word-level highlights, unified view, clipboard compare, git changes and the three-pane merge tool.
+Done: file diff, word-level highlights, unified view, clipboard compare, git changes, directory diff, three-pane
+merge, git tool setup, themes (dark, light, mono). Open: syntax highlighting and release packaging.
 
 Usage: `jelly-diff <file-a> <file-b>`. Flags must come before file names.
 Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage error.
@@ -20,6 +21,10 @@ WSL/Windows, `pbpaste` on macOS, `wl-paste`/`xclip`/`xsel` on Linux.
 Git: `jelly-diff git [--staged] [<rev> | <a>..<b>] [-- <path>...]` shows a changed-file list (working tree vs HEAD incl.
 untracked files by default) next to the diff of the selected file. In the list: `j`/`k` select, `enter` focus the
 diff, `tab` switch focus, `esc` back. Three-dot ranges are not supported; flags must precede the revision.
+Directories: `jelly-diff <dir-a> <dir-b>` lists the files that differ (modified, only left, only right) with the same
+list-plus-diff view; use it from git with `git difftool --dir-diff` (its temporary directories hold links to the working tree files, which
+are followed). Compared are regular files and links to regular files; links to directories, dangling links, special
+files and `.git` directories are skipped.
 Keys (diff): `n`/`p` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, mouse wheel, `q` quit.
 The mouse is captured for wheel scrolling; hold Shift while dragging to select text in most terminals.
 

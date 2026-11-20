@@ -342,3 +342,38 @@ func TestInstallGit_Works_WhenThemeInvalid(t *testing.T) {
 		t.Fatalf("code %d", code)
 	}
 }
+
+func TestRun_ShowsChangedFiles_WhenTwoDirectoriesDiffer(t *testing.T) {
+	left, right := t.TempDir(), t.TempDir()
+	for dir, content := range map[string]string{left: "old\n", right: "new\n"} {
+		if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var shown tea.Model
+	runUI := func(model tea.Model) error { shown = model; return nil }
+	if code := run([]string{left, right}, &bytes.Buffer{}, &bytes.Buffer{}, testEnv(runUI)); code != exitOK {
+		t.Fatalf("code %d", code)
+	}
+	if model, ok := shown.(ui.GitModel); !ok || model.FileCount() != 1 {
+		t.Fatalf("unexpected model %#v", shown)
+	}
+}
+
+func TestRun_ReportsNoDifferences_WhenDirectoriesIdentical(t *testing.T) {
+	left, right := t.TempDir(), t.TempDir()
+	var stdout bytes.Buffer
+	if code := run([]string{left, right}, &stdout, &bytes.Buffer{}, testEnv(noUI)); code != exitOK ||
+		!strings.Contains(stdout.String(), "no differences") {
+		t.Fatalf("code %d stdout %q", code, stdout.String())
+	}
+}
+
+func TestRun_Fails_WhenDirectoryComparedWithFile(t *testing.T) {
+	dir, file := t.TempDir(), writeFile(t, "f", "x\n")
+	var stderr bytes.Buffer
+	if code := run([]string{dir, file}, &bytes.Buffer{}, &stderr, testEnv(noUI)); code != exitFailure ||
+		!strings.Contains(stderr.String(), "directory with a file") {
+		t.Fatalf("code %d stderr %q", code, stderr.String())
+	}
+}

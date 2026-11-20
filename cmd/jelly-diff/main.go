@@ -25,7 +25,7 @@ const (
 
 	clipboardTitle = "clipboard"
 	usage          = `usage:
-  jelly-diff <file-a> <file-b>       compare two files
+  jelly-diff <file-a> <file-b>       compare two files, or two directories
   jelly-diff --clip <file>           compare a file with the clipboard (clipboard on the right)
   jelly-diff --clip-left <file>      compare the clipboard (left) with a file
   jelly-diff git [--staged] [<rev> | <a>..<b>] [-- <path>...]
@@ -149,6 +149,13 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 }
 
 func diffFiles(leftPath, rightPath string, stdout io.Writer, runUI uiRunner) error {
+	leftIsDir, rightIsDir := isDirectory(leftPath), isDirectory(rightPath)
+	switch {
+	case leftIsDir && rightIsDir:
+		return diffDirectories(leftPath, rightPath, stdout, runUI)
+	case leftIsDir != rightIsDir:
+		return fmt.Errorf("cannot compare a directory with a file: %s, %s", leftPath, rightPath)
+	}
 	left, err := source.ReadTextFile(leftPath)
 	if err != nil {
 		return err
@@ -158,6 +165,31 @@ func diffFiles(leftPath, rightPath string, stdout io.Writer, runUI uiRunner) err
 		return err
 	}
 	return show(leftPath, rightPath, left, right, stdout, runUI)
+}
+
+// isDirectory reports whether path exists and is a directory (links are followed).
+func isDirectory(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+func diffDirectories(leftPath, rightPath string, stdout io.Writer, runUI uiRunner) error {
+	changes, err := source.OpenDirs(leftPath, rightPath)
+	if err != nil {
+		return err
+	}
+	files, err := changes.List()
+	if err != nil {
+		return err
+	}
+	if len(files) == 0 {
+		fmt.Fprintln(stdout, "no differences")
+		return nil
+	}
+	if err := runUI(ui.NewGitModel(files, changes)); err != nil {
+		return fmt.Errorf("run ui: %w", err)
+	}
+	return nil
 }
 
 func diffClipboard(path string, clipboardOnLeft bool, stdout io.Writer, env environment) error {

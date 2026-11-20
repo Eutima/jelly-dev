@@ -29,3 +29,17 @@ func TestReadTextFile_RejectsWithoutBlocking_WhenPathIsFifo(t *testing.T) {
 		t.Fatal("ReadTextFile blocked on a FIFO")
 	}
 }
+
+func TestDirList_SkipsFifos_WhenDirectoryContainsSpecialFiles(t *testing.T) {
+	leftDir, rightDir := t.TempDir(), t.TempDir()
+	if err := syscall.Mkfifo(filepath.Join(rightDir, "pipe"), 0o600); err != nil {
+		t.Skipf("mkfifo not available: %v", err)
+	}
+	changes, err := OpenDirs(leftDir, rightDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files, err := changes.List(); err != nil || len(files) != 0 {
+		t.Fatalf("files %v err %v", files, err)
+	}
+}
