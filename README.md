@@ -11,7 +11,7 @@ act as a three-pane `git mergetool`.
 
 ## Status
 
-Steps 1-6 of 8 done (merge engine `internal/merge` is a library for now, the merge UI follows in step 7): file diff, word-level highlights, unified view, clipboard compare and git changes.
+Steps 1-7 of 8 done: file diff, word-level highlights, unified view, clipboard compare, git changes and the three-pane merge tool.
 
 Usage: `jelly-diff <file-a> <file-b>`. Flags must come before file names.
 Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage error.
@@ -22,6 +22,14 @@ untracked files by default) next to the diff of the selected file. In the list: 
 diff, `tab` switch focus, `esc` back. Three-dot ranges are not supported; flags must precede the revision.
 Keys (diff): `n`/`p` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, mouse wheel, `q` quit.
 The mouse is captured for wheel scrolling; hold Shift while dragging to select text in most terminals.
+
+Merge: `jelly-diff merge <base> <local> <remote> <merged>` shows ours | result | theirs. Non-conflicting changes are
+merged automatically; conflicts start with the base lines. Keys: `n`/`p` select a change, `o` ours, `t` theirs,
+`b` both, `r` revert to base, `u` undo, `s` save (only when every conflict is resolved), `q` quit (asks before
+discarding). The result is written atomically with the line endings of the local file and a final newline; the exit
+code is 0 only after saving. Editing single lines in the result pane is not implemented yet.
+Use as git tool: `jelly-diff install-git` prints the `git config` commands, `--apply` writes them (`--local` for
+the current repository only), then use `git difftool` and `git mergetool`.
 
 ## Run
 

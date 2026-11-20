@@ -15,6 +15,8 @@ const (
 	CellDeleted
 	// CellModified is a line that differs from its counterpart.
 	CellModified
+	// CellConflict is a line of an unresolved merge conflict.
+	CellConflict
 	// CellFiller is an empty placeholder that keeps both panes aligned.
 	CellFiller
 )

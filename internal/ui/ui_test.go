@@ -197,7 +197,7 @@ func TestRenderCell_NeverExceedsCellWidth_WhenPaneNarrowerThanNumberColumn(t *te
 	model := NewDiffModel("a", "b", []string{"x"}, []string{"y"})
 	cell := Cell{Kind: CellModified, No: 12345, Text: "some long text"}
 	for cellWidth := 0; cellWidth <= 12; cellWidth++ {
-		if got := lipgloss.Width(model.renderCell(cell, 6, cellWidth)); got != cellWidth {
+		if got := lipgloss.Width(model.theme.renderCell(cell, 6, cellWidth)); got != cellWidth {
 			t.Fatalf("cell width %d rendered %d wide", cellWidth, got)
 		}
 	}
@@ -205,7 +205,7 @@ func TestRenderCell_NeverExceedsCellWidth_WhenPaneNarrowerThanNumberColumn(t *te
 
 func TestRenderCell_NeverExceedsCellWidth_WhenCellIsFiller(t *testing.T) {
 	model := NewDiffModel("a", "b", []string{"x"}, []string{"y"})
-	if got := lipgloss.Width(model.renderCell(Cell{Kind: CellFiller}, 3, 5)); got != 5 {
+	if got := lipgloss.Width(model.theme.renderCell(Cell{Kind: CellFiller}, 3, 5)); got != 5 {
 		t.Fatalf("rendered %d wide", got)
 	}
 }

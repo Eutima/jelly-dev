@@ -169,9 +169,9 @@ func (m DiffModel) View() string {
 			out.WriteString(m.renderUnifiedRow(m.unified[i], numWidth))
 		} else {
 			row := m.rows[i]
-			out.WriteString(m.renderCell(row.Left, numWidth, paneWidth))
+			out.WriteString(m.theme.renderCell(row.Left, numWidth, paneWidth))
 			out.WriteString(m.renderGutter(row))
-			out.WriteString(m.renderCell(row.Right, numWidth, rightWidth))
+			out.WriteString(m.theme.renderCell(row.Right, numWidth, rightWidth))
 		}
 		out.WriteByte('\n')
 	}
@@ -222,29 +222,9 @@ func (m DiffModel) renderGutter(row Row) string {
 	}
 }
 
-// renderCell draws one pane cell exactly cellWidth columns wide.
-func (m DiffModel) renderCell(cell Cell, numWidth, cellWidth int) string {
-	style := m.styleFor(cell.Kind)
-	if cell.Kind == CellFiller {
-		return style.Render(strings.Repeat(" ", cellWidth))
-	}
-	// A pane narrower than the number column drops the number instead of showing a cut-off one.
-	num := numWidth
-	if cellWidth < numWidth {
-		num = 0
-	}
-	textWidth := cellWidth - num
-	number := ""
-	if num > 0 {
-		number = fmt.Sprintf("%*d ", num-1, cell.No)
-	}
-	text := renderText(cell.Text, cell.Spans, textWidth, style, m.wordStyleFor(cell.Kind))
-	return m.theme.LineNumber.Background(style.GetBackground()).Render(number) + text
-}
-
 // renderUnifiedRow draws one full-width line of the unified view.
 func (m DiffModel) renderUnifiedRow(row UnifiedRow, numWidth int) string {
-	style := m.styleFor(row.Kind)
+	style := m.theme.styleFor(row.Kind)
 	sign := "  "
 	switch row.Kind {
 	case CellAdded:
@@ -261,7 +241,7 @@ func (m DiffModel) renderUnifiedRow(row UnifiedRow, numWidth int) string {
 	if prefixWidth >= m.width {
 		return style.Render(strings.Repeat(" ", m.width))
 	}
-	text := renderText(row.Text, row.Spans, m.width-prefixWidth, style, m.wordStyleFor(row.Kind))
+	text := renderText(row.Text, row.Spans, m.width-prefixWidth, style, m.theme.wordStyleFor(row.Kind))
 	return prefixStyle.Background(style.GetBackground()).Render(prefix) + text
 }
 
@@ -271,32 +251,4 @@ func number(no, numWidth int) string {
 		return strings.Repeat(" ", numWidth)
 	}
 	return fmt.Sprintf("%*d ", numWidth-1, no)
-}
-
-func (m DiffModel) wordStyleFor(kind CellKind) lipgloss.Style {
-	switch kind {
-	case CellAdded:
-		return m.theme.AddedWord
-	case CellDeleted:
-		return m.theme.DeletedWord
-	case CellModified:
-		return m.theme.ModifiedWord
-	default:
-		return m.styleFor(kind)
-	}
-}
-
-func (m DiffModel) styleFor(kind CellKind) lipgloss.Style {
-	switch kind {
-	case CellAdded:
-		return m.theme.Added
-	case CellDeleted:
-		return m.theme.Deleted
-	case CellModified:
-		return m.theme.Modified
-	case CellFiller:
-		return m.theme.Filler
-	default:
-		return m.theme.Equal
-	}
 }

@@ -26,7 +26,11 @@ const (
   jelly-diff --clip <file>           compare a file with the clipboard (clipboard on the right)
   jelly-diff --clip-left <file>      compare the clipboard (left) with a file
   jelly-diff git [--staged] [<rev> | <a>..<b>] [-- <path>...]
-                                     browse changes of the git repository in the current directory`
+                                     browse changes of the git repository in the current directory
+  jelly-diff merge <base> <local> <remote> <merged>
+                                     three-way merge; writes <merged> (git mergetool order)
+  jelly-diff install-git [--apply] [--local]
+                                     print (or with --apply write, overwriting existing values) the git diff/merge tool settings`
 )
 
 // uiRunner shows a model in the terminal and blocks until the user quits.
@@ -37,6 +41,7 @@ type environment struct {
 	runUI         uiRunner
 	readClipboard func() (string, error)
 	openGit       func(dir string, spec source.GitSpec) (gitChanges, error)
+	gitConfig     func(scope, key, value string) error
 	workDir       string
 }
 
@@ -60,7 +65,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "jelly-diff: %v\n", err)
 		os.Exit(exitFailure)
 	}
-	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, openGit: openGit, workDir: workDir}
+	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, openGit: openGit, gitConfig: runGitConfig, workDir: workDir}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, env))
 }
 
@@ -71,8 +76,15 @@ func runProgram(model tea.Model) error {
 
 // run executes the command and returns the process exit code.
 func run(args []string, stdout, stderr io.Writer, env environment) int {
-	if len(args) > 0 && args[0] == "git" {
-		return runGit(args[1:], stdout, stderr, env)
+	if len(args) > 0 {
+		switch args[0] {
+		case "git":
+			return runGit(args[1:], stdout, stderr, env)
+		case "merge":
+			return runMerge(args[1:], stdout, stderr, env)
+		case "install-git":
+			return runInstallGit(args[1:], stdout, stderr, env)
+		}
 	}
 	flags := flag.NewFlagSet("jelly-diff", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
