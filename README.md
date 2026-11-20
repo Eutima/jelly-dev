@@ -11,7 +11,7 @@ act as a three-pane `git mergetool`.
 
 ## Status
 
-Steps 1-5 of 8 done: file diff, word-level highlights, unified view, clipboard compare and git changes.
+Steps 1-6 of 8 done (merge engine `internal/merge` is a library for now, the merge UI follows in step 7): file diff, word-level highlights, unified view, clipboard compare and git changes.
 
 Usage: `jelly-diff <file-a> <file-b>`. Flags must come before file names.
 Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage error.
