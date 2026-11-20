@@ -9,7 +9,10 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
+	"github.com/eutima/jelly-diff/internal/config"
 	"github.com/eutima/jelly-diff/internal/diff"
 	"github.com/eutima/jelly-diff/internal/source"
 	"github.com/eutima/jelly-diff/internal/ui"
@@ -42,7 +45,11 @@ type environment struct {
 	readClipboard func() (string, error)
 	openGit       func(dir string, spec source.GitSpec) (gitChanges, error)
 	gitConfig     func(scope, key, value string) error
-	workDir       string
+	getenv        func(string) string
+	// enableAttributes makes the terminal output keep bold/reverse/strikethrough even when NO_COLOR
+	// switched the color profile to "no styling at all"; the mono theme depends on them.
+	enableAttributes func()
+	workDir          string
 }
 
 // gitChanges is a repository view that can list changed files and load their texts.
@@ -65,7 +72,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "jelly-diff: %v\n", err)
 		os.Exit(exitFailure)
 	}
-	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, openGit: openGit, gitConfig: runGitConfig, workDir: workDir}
+	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, openGit: openGit, gitConfig: runGitConfig, getenv: os.Getenv, enableAttributes: enableTextAttributes, workDir: workDir}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, env))
 }
 
@@ -76,14 +83,30 @@ func runProgram(model tea.Model) error {
 
 // run executes the command and returns the process exit code.
 func run(args []string, stdout, stderr io.Writer, env environment) int {
+	if len(args) > 0 && args[0] == "install-git" {
+		return runInstallGit(args[1:], stdout, stderr, env) // needs no theme, so a bad theme must not block it
+	}
+	cfg, err := config.Load(env.getenv)
+	if err != nil {
+		printError(stderr, err)
+		return exitFailure
+	}
+	theme, ok := ui.NamedTheme(cfg.Theme)
+	if !ok {
+		printError(stderr, fmt.Errorf("unknown theme %q", cfg.Theme))
+		return exitFailure
+	}
+	if cfg.Theme == config.ThemeMono {
+		env.enableAttributes()
+	}
+	runUI := env.runUI
+	env.runUI = func(model tea.Model) error { return runUI(ui.Themed(model, theme)) }
 	if len(args) > 0 {
 		switch args[0] {
 		case "git":
 			return runGit(args[1:], stdout, stderr, env)
 		case "merge":
 			return runMerge(args[1:], stdout, stderr, env)
-		case "install-git":
-			return runInstallGit(args[1:], stdout, stderr, env)
 		}
 	}
 	flags := flag.NewFlagSet("jelly-diff", flag.ContinueOnError)
@@ -102,7 +125,6 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 		}
 	}
 
-	var err error
 	switch {
 	case *clipRight && *clipLeft:
 		fmt.Fprintf(stderr, "jelly-diff: use either --clip or --clip-left\n%s\n", usage)
@@ -231,4 +253,19 @@ func printError(w io.Writer, err error) {
 		return r
 	}, err.Error())
 	fmt.Fprintf(w, "jelly-diff: %s\n", clean)
+}
+
+// attributeProfile returns the color profile to use for the mono theme: terminals that can show text
+// attributes keep them even though NO_COLOR reduced the profile to plain text.
+func attributeProfile(current termenv.Profile, isTerminal bool, term string) termenv.Profile {
+	if current == termenv.Ascii && isTerminal && term != "" && term != "dumb" {
+		return termenv.ANSI
+	}
+	return current
+}
+
+func enableTextAttributes() {
+	info, err := os.Stdout.Stat()
+	isTerminal := err == nil && info.Mode()&os.ModeCharDevice != 0
+	lipgloss.SetColorProfile(attributeProfile(lipgloss.ColorProfile(), isTerminal, os.Getenv("TERM")))
 }

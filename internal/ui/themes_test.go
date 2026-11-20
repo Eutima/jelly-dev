@@ -1,0 +1,98 @@
+package ui
+
+import (
+	"strings"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+
+	"github.com/eutima/jelly-diff/internal/config"
+)
+
+// withColorProfile makes lipgloss emit escape sequences for the duration of a test.
+func withColorProfile(t *testing.T, profile termenv.Profile) {
+	t.Helper()
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(profile)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+}
+
+func sizedDiff(theme Theme) DiffModel {
+	model := NewDiffModel("a", "b", []string{"let foo = 1"}, []string{"let bar = 1"}).WithTheme(theme)
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 60, Height: 6})
+	return updated.(DiffModel)
+}
+
+func TestNamedTheme_ReturnsThemes_WhenNameKnown(t *testing.T) {
+	for _, name := range []string{config.ThemeDark, config.ThemeLight, config.ThemeMono} {
+		if _, ok := NamedTheme(name); !ok {
+			t.Fatalf("theme %s missing", name)
+		}
+	}
+	if _, ok := NamedTheme("neon"); ok {
+		t.Fatal("unknown theme must not resolve")
+	}
+}
+
+func TestMonoTheme_UsesNoColorsButAttributes_WhenRendered(t *testing.T) {
+	withColorProfile(t, termenv.TrueColor)
+	view := sizedDiff(MonoTheme()).View()
+	if strings.Contains(view, "38;2") || strings.Contains(view, "48;2") || strings.Contains(view, "38;5") {
+		t.Fatalf("mono theme emitted colors: %q", view)
+	}
+	if !strings.Contains(view, "\x1b[7m") && !strings.Contains(view, ";7m") && !strings.Contains(view, "[7;") {
+		t.Fatalf("mono theme must mark changed words with reverse video: %q", view)
+	}
+}
+
+func TestDarkAndLightThemes_EmitDifferentColors_WhenRendered(t *testing.T) {
+	withColorProfile(t, termenv.TrueColor)
+	dark, light := sizedDiff(DarkTheme()).View(), sizedDiff(LightTheme()).View()
+	if !strings.Contains(dark, "48;2") || !strings.Contains(light, "48;2") || dark == light {
+		t.Fatalf("themes must emit distinct background colors")
+	}
+}
+
+func TestThemed_AppliesThemeToAllModels_WhenWrapped(t *testing.T) {
+	mono := MonoTheme()
+	diffModel := Themed(NewDiffModel("a", "b", nil, nil), mono).(DiffModel)
+	gitModel := Themed(NewGitModel(nil, &fakeSource{}), mono).(GitModel)
+	mergeModel, _ := NewMergeModel(MergeTitles{}, nil, nil)
+	themedMerge := Themed(mergeModel, mono).(MergeModel)
+	if !diffModel.theme.Selected.GetReverse() || !gitModel.theme.Selected.GetReverse() ||
+		!themedMerge.theme.Selected.GetReverse() {
+		t.Fatal("theme not applied")
+	}
+}
+
+func TestGitView_MarksSelectedRowWithoutColor_WhenMonoTheme(t *testing.T) {
+	withColorProfile(t, termenv.TrueColor)
+	model, _ := newGitTestModel(100, 12)
+	view := model.WithTheme(MonoTheme()).View()
+	if strings.Contains(view, "48;2") || !strings.Contains(view, "7m") {
+		t.Fatalf("selected row must use reverse video only: %q", view)
+	}
+}
+
+func TestMonoTheme_ShowsNothingExtra_WhenProfileIsAscii(t *testing.T) {
+	// Documents why the CLI must raise the profile for NO_COLOR: in the Ascii profile lipgloss drops attributes.
+	withColorProfile(t, termenv.Ascii)
+	if view := sizedDiff(MonoTheme()).View(); strings.Contains(view, "\x1b[") {
+		t.Fatalf("expected plain text, got %q", view)
+	}
+	withColorProfile(t, termenv.ANSI)
+	if view := sizedDiff(MonoTheme()).View(); !strings.Contains(view, "7m") {
+		t.Fatalf("expected reverse video with the ANSI profile, got %q", view)
+	}
+}
+
+func TestMonoTheme_MarksDeletionsAsStruckThrough_WhenRendered(t *testing.T) {
+	withColorProfile(t, termenv.ANSI)
+	model := NewDiffModel("a", "b", []string{"gone"}, nil).WithTheme(MonoTheme())
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 40, Height: 5})
+	if view := updated.(DiffModel).View(); !strings.Contains(view, "9m") {
+		t.Fatalf("expected strikethrough: %q", view)
+	}
+}

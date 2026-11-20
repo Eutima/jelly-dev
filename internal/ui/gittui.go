@@ -88,7 +88,7 @@ func (m *GitModel) selectFile(i int) {
 		m.diff = NewDiffModel(oldLabel+": "+oldPath, newLabel+": "+file.Path,
 			diff.SplitLines(oldText), diff.SplitLines(newText))
 	}
-	m.diff = m.diff.withSize(m.diffWidth(), m.height)
+	m.diff = m.diff.WithTheme(m.theme).withSize(m.diffWidth(), m.height)
 }
 
 func describeLoadError(err error) string {
@@ -226,29 +226,13 @@ func (m GitModel) fileRow(index, width int) string {
 	}
 	style := m.theme.Equal
 	if index == m.selected {
-		style = style.Background(m.selectionColor())
+		style = m.theme.SelectedDim
+		if m.focus == focusList {
+			style = m.theme.Selected
+		}
 	}
-	statusStyle := m.statusStyle(file.Status).Background(style.GetBackground())
-	status := statusStyle.Render(" " + string(rune(file.Status)) + " ")
+	status := m.theme.statusStyle(file.Status).Inherit(style).Render(" " + string(rune(file.Status)) + " ")
 	return status + renderText(label, nil, max(width-3, 0), style, style)
-}
-
-func (m GitModel) selectionColor() lipgloss.Color {
-	if m.focus == focusList {
-		return lipgloss.Color("#2f4d78")
-	}
-	return lipgloss.Color("#3a3d41")
-}
-
-func (m GitModel) statusStyle(status byte) lipgloss.Style {
-	switch status {
-	case source.StatusAdded, source.StatusUntracked:
-		return m.theme.AddedWord.Background(lipgloss.NoColor{}).Foreground(lipgloss.Color("#6aab73")).Bold(true)
-	case source.StatusDeleted:
-		return m.theme.DeletedWord.Background(lipgloss.NoColor{}).Foreground(lipgloss.Color("#c75450")).Bold(true)
-	default:
-		return m.theme.ModifiedWord.Background(lipgloss.NoColor{}).Foreground(lipgloss.Color("#56a8f5")).Bold(true)
-	}
 }
 
 // messageView draws the right pane for files that cannot be shown.

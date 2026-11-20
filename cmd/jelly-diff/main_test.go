@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
 	"github.com/eutima/jelly-diff/internal/ui"
 )
@@ -18,9 +20,11 @@ func noUI(tea.Model) error { return errors.New("ui must not start") }
 
 func testEnv(runUI uiRunner) environment {
 	return environment{
-		runUI:         runUI,
-		readClipboard: func() (string, error) { return "clip\n", nil },
-		openGit:       openGit,
+		runUI:            runUI,
+		readClipboard:    func() (string, error) { return "clip\n", nil },
+		openGit:          openGit,
+		getenv:           func(string) string { return "" },
+		enableAttributes: func() {},
 	}
 }
 
@@ -133,7 +137,8 @@ func TestRun_PutsClipboardOnLeft_WhenClipLeftFlagGiven(t *testing.T) {
 
 func TestRun_Fails_WhenClipboardUnavailable(t *testing.T) {
 	a := writeFile(t, "a", "file\n")
-	env := environment{runUI: noUI, readClipboard: func() (string, error) { return "", errors.New("no tool") }}
+	env := testEnv(noUI)
+	env.readClipboard = func() (string, error) { return "", errors.New("no tool") }
 	var stderr bytes.Buffer
 	if code := run([]string{"--clip", a}, &bytes.Buffer{}, &stderr, env); code != exitFailure {
 		t.Fatalf("code %d", code)
@@ -255,5 +260,85 @@ func TestPrintError_ReplacesControlCharacters_WhenMessageContainsEscapes(t *test
 	printError(&out, errors.New("bad \x1b]0;x\x07 path"))
 	if strings.ContainsAny(out.String(), "\x1b\x07") || !strings.Contains(out.String(), "bad ") {
 		t.Fatalf("output %q", out.String())
+	}
+}
+
+func TestRun_Fails_WhenThemeInvalid(t *testing.T) {
+	a, b := writeFile(t, "a", "x\n"), writeFile(t, "b", "y\n")
+	env := testEnv(noUI)
+	env.getenv = func(key string) string {
+		if key == "JELLY_DIFF_THEME" {
+			return "neon"
+		}
+		return ""
+	}
+	var stderr bytes.Buffer
+	if code := run([]string{a, b}, &bytes.Buffer{}, &stderr, env); code != exitFailure || !strings.Contains(stderr.String(), "neon") {
+		t.Fatalf("code %d stderr %q", code, stderr.String())
+	}
+}
+
+func TestRun_UsesMonoThemeAndEnablesAttributes_WhenNoColorSet(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+	a, b := writeFile(t, "a", "let foo = 1\n"), writeFile(t, "b", "let bar = 1\n")
+	var shown ui.DiffModel
+	enabled := false
+	env := testEnv(captureModel(&shown))
+	env.enableAttributes = func() { enabled = true }
+	env.getenv = func(key string) string {
+		if key == "NO_COLOR" {
+			return "1"
+		}
+		return ""
+	}
+	if code := run([]string{a, b}, &bytes.Buffer{}, &bytes.Buffer{}, env); code != exitOK || !enabled {
+		t.Fatalf("code %d enabled %v", code, enabled)
+	}
+	updated, _ := shown.Update(tea.WindowSizeMsg{Width: 60, Height: 6})
+	view := updated.(ui.DiffModel).View()
+	if strings.Contains(view, "48;2") || !strings.Contains(view, "7m") {
+		t.Fatalf("mono theme not applied: %q", view)
+	}
+}
+
+func TestRun_DoesNotEnableAttributes_WhenThemeIsNotMono(t *testing.T) {
+	a, b := writeFile(t, "a", "x\n"), writeFile(t, "b", "y\n")
+	env := testEnv(func(tea.Model) error { return nil })
+	env.enableAttributes = func() { t.Fatal("must not be called") }
+	if code := run([]string{a, b}, &bytes.Buffer{}, &bytes.Buffer{}, env); code != exitOK {
+		t.Fatalf("code %d", code)
+	}
+}
+
+func TestAttributeProfile_KeepsAttributes_WhenTerminalAndNoColor(t *testing.T) {
+	cases := []struct {
+		name     string
+		current  termenv.Profile
+		terminal bool
+		term     string
+		want     termenv.Profile
+	}{
+		{"no color on terminal", termenv.Ascii, true, "xterm-256color", termenv.ANSI},
+		{"not a terminal", termenv.Ascii, false, "xterm", termenv.Ascii},
+		{"dumb terminal", termenv.Ascii, true, "dumb", termenv.Ascii},
+		{"no TERM", termenv.Ascii, true, "", termenv.Ascii},
+		{"colors available", termenv.TrueColor, true, "xterm", termenv.TrueColor},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := attributeProfile(c.current, c.terminal, c.term); got != c.want {
+				t.Fatalf("got %v want %v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestInstallGit_Works_WhenThemeInvalid(t *testing.T) {
+	env := testEnv(noUI)
+	env.getenv = func(string) string { return "neon" }
+	if code := run([]string{"install-git"}, &bytes.Buffer{}, &bytes.Buffer{}, env); code != exitOK {
+		t.Fatalf("code %d", code)
 	}
 }

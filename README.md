@@ -47,7 +47,10 @@ Inputs must be regular files (or symbolic links to them): pipes such as `<(comma
 
 ## Config
 
-See `.env.example`.
+Environment variables (see `.env.example`):
+
+- `JELLY_DIFF_THEME`: `dark` (default), `light` or `mono` (no colors: bold = added, strikethrough = deleted, reverse video = changed words).
+- `NO_COLOR`: any non-empty value selects `mono` unless `JELLY_DIFF_THEME` is set.
 
 ## Known limitations
 
