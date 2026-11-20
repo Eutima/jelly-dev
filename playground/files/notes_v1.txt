@@ -1,0 +1,10 @@
+Shopping list
+=============
+- milk
+- eggs
+- bread
+- two apples
+- coffee beans
+
+Reminder: call the dentist on Monday.
+Meeting with the team at 10:00 in room 4.

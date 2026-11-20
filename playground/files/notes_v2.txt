@@ -1,0 +1,10 @@
+Shopping list
+=============
+- oat milk
+- eggs
+- bread
+- three apples
+- tea
+- coffee beans
+
+Reminder: call the dentist on Tuesday.

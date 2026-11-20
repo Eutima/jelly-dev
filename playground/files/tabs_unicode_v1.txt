@@ -1,0 +1,4 @@
+col1	col2	col3
+naïve café	über	crème brûlée
+日本語のテキスト	漢字	ひらがな
+emoji: ★ ☆ ✓ ✗	end

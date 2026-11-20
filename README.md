@@ -44,6 +44,11 @@ after saving.
 Use as git tool: `jelly-diff install-git` prints the `git config` commands, `--apply` writes them (`--local` for
 the current repository only), then use `git difftool` and `git mergetool`.
 
+## Try it
+
+`playground/` has sample files, two directory trees, merge inputs and a script that creates git repositories with local
+changes and with a merge stopped on conflicts: see `playground/README.md`.
+
 ## Run
 
 ```

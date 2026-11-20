@@ -4,3 +4,6 @@
 *.log
 *.test
 *.out
+
+# Generated playground data (created by playground/setup.sh)
+/playground/sandbox/

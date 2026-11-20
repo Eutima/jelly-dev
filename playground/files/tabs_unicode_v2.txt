@@ -1,0 +1,5 @@
+col1	col2	col3
+naïve café	über	crème fraîche
+日本語のテキスト	漢字と仮名	ひらがな
+emoji: ★ ☆ ✓ ✗	end
+new line with a	tab inside

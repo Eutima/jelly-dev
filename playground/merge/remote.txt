@@ -1,0 +1,19 @@
+Project handbook
+================
+
+Intro: this handbook describes how everybody works.
+
+Section 1 - Setup
+Install the tools listed in the wiki.
+Create a workspace folder.
+Clone the repository.
+
+Section 2 - Daily work
+Open the board every morning.
+Pick the top ticket.
+
+Section 3 - Release
+Tag the release on Monday.
+Announce it in the team channel.
+
+Footer: last reviewed in March.

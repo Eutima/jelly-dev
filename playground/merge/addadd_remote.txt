@@ -1,0 +1,3 @@
+Welcome page
+Title: Start
+Colour: blue
