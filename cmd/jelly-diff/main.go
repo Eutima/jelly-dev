@@ -166,7 +166,7 @@ func diffFiles(leftPath, rightPath string, stdout io.Writer, env environment) er
 	if err != nil {
 		return err
 	}
-	return show(leftPath, rightPath, left, right, stdout, env.runUI)
+	return show(leftPath, rightPath, left, right, []string{rightPath, leftPath}, stdout, env.runUI)
 }
 
 // isDirectory reports whether path exists and is a directory (links are followed).
@@ -212,13 +212,15 @@ func diffClipboard(path string, clipboardOnLeft bool, stdout io.Writer, env envi
 		return err
 	}
 	if clipboardOnLeft {
-		return show(clipboardTitle, path, clip, file, stdout, env.runUI)
+		return show(clipboardTitle, path, clip, file, []string{path}, stdout, env.runUI)
 	}
-	return show(path, clipboardTitle, file, clip, stdout, env.runUI)
+	return show(path, clipboardTitle, file, clip, []string{path}, stdout, env.runUI)
 }
 
-func show(leftTitle, rightTitle, left, right string, stdout io.Writer, runUI uiRunner) error {
-	model := ui.NewDiffModel(leftTitle, rightTitle, diff.SplitLines(left), diff.SplitLines(right))
+// show opens the diff viewer; syntaxNames are the file names the highlighting lexer is chosen from.
+func show(leftTitle, rightTitle, left, right string, syntaxNames []string, stdout io.Writer, runUI uiRunner) error {
+	model := ui.NewDiffModel(leftTitle, rightTitle, diff.SplitLines(left), diff.SplitLines(right)).
+		WithHighlight(syntaxNames...)
 	if model.HunkCount() == 0 {
 		fmt.Fprintln(stdout, "no differences")
 		return nil

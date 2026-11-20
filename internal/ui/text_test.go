@@ -11,30 +11,30 @@ import (
 )
 
 func TestLayoutText_MarksHighlightedSegments_WhenSpansGiven(t *testing.T) {
-	got := layoutText("let foo = 1", []diff.Span{{Start: 4, End: 7}}, 40)
-	want := []segment{{"let ", false}, {"foo", true}, {" = 1", false}}
+	got := layoutText("let foo = 1", []diff.Span{{Start: 4, End: 7}}, nil, nil, 40)
+	want := []segment{{text: "let "}, {text: "foo", highlight: true}, {text: " = 1"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }
 
 func TestLayoutText_KeepsHighlightOnRightRunes_WhenTabPrecedesSpan(t *testing.T) {
-	got := layoutText("\tfoo", []diff.Span{{Start: 1, End: 4}}, 40)
-	want := []segment{{"    ", false}, {"foo", true}}
+	got := layoutText("\tfoo", []diff.Span{{Start: 1, End: 4}}, nil, nil, 40)
+	want := []segment{{text: "    "}, {text: "foo", highlight: true}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }
 
 func TestLayoutText_AddsEllipsis_WhenTextTooLong(t *testing.T) {
-	got := layoutText("abcdefghij", nil, 5)
+	got := layoutText("abcdefghij", nil, nil, nil, 5)
 	if len(got) != 2 || got[0].text != "abcd" || got[1].text != "…" {
 		t.Fatalf("got %+v", got)
 	}
 }
 
 func TestLayoutText_ReturnsNothing_WhenWidthIsZero(t *testing.T) {
-	if got := layoutText("abc", nil, 0); got != nil {
+	if got := layoutText("abc", nil, nil, nil, 0); got != nil {
 		t.Fatalf("got %+v", got)
 	}
 }

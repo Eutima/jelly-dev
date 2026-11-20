@@ -30,6 +30,7 @@ type Theme struct {
 	StatusDeleted  lipgloss.Style
 	StatusModified lipgloss.Style
 	Jelly          lipgloss.Style // the waiting animation
+	painter        *syntaxPainter // syntax colors, nil for themes without them
 }
 
 // renderCell draws one pane cell exactly cellWidth columns wide.
@@ -48,7 +49,7 @@ func (t Theme) renderCell(cell Cell, numWidth, cellWidth int) string {
 	if num > 0 {
 		number = fmt.Sprintf("%*d ", num-1, cell.No)
 	}
-	text := renderText(cell.Text, cell.Spans, textWidth, style, t.wordStyleFor(cell.Kind))
+	text := renderSyntaxText(cell.Text, cell.Spans, cell.Syntax, t.painter, textWidth, style, t.wordStyleFor(cell.Kind))
 	return t.LineNumber.Background(style.GetBackground()).Render(number) + text
 }
 

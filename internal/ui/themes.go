@@ -50,6 +50,7 @@ func DarkTheme() Theme {
 		StatusDeleted:  base.Foreground(hex("#c75450")).Bold(true),
 		StatusModified: base.Foreground(hex("#56a8f5")).Bold(true),
 		Jelly:          base.Foreground(hex("#e0679b")),
+		painter:        newPainter(darkSyntaxStyle),
 	}
 }
 
@@ -79,6 +80,7 @@ func LightTheme() Theme {
 		StatusDeleted:  base.Foreground(hex("#c62828")).Bold(true),
 		StatusModified: base.Foreground(hex("#1565c0")).Bold(true),
 		Jelly:          base.Foreground(hex("#d63384")),
+		painter:        newPainter(lightSyntaxStyle),
 	}
 }
 

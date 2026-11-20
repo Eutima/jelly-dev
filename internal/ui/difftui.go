@@ -25,6 +25,8 @@ type DiffModel struct {
 	hunkStarts  []int
 	unified     []UnifiedRow
 	unifiedAt   []int // first unified row of each change
+	oldLines    []string
+	newLines    []string
 	showUnified bool
 	theme       Theme
 
@@ -41,6 +43,7 @@ func NewDiffModel(leftTitle, rightTitle string, oldLines, newLines []string) Dif
 	return DiffModel{
 		leftTitle: leftTitle, rightTitle: rightTitle,
 		rows: rows, hunkStarts: hunkStarts, unified: unified, unifiedAt: unifiedStarts(unified),
+		oldLines: oldLines, newLines: newLines,
 		theme: DarkTheme(), current: -1,
 	}
 }
@@ -241,7 +244,8 @@ func (m DiffModel) renderUnifiedRow(row UnifiedRow, numWidth int) string {
 	if prefixWidth >= m.width {
 		return style.Render(strings.Repeat(" ", m.width))
 	}
-	text := renderText(row.Text, row.Spans, m.width-prefixWidth, style, m.theme.wordStyleFor(row.Kind))
+	text := renderSyntaxText(row.Text, row.Spans, row.Syntax, m.theme.painter, m.width-prefixWidth, style,
+		m.theme.wordStyleFor(row.Kind))
 	return prefixStyle.Background(style.GetBackground()).Render(prefix) + text
 }
 

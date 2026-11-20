@@ -23,10 +23,11 @@ const (
 
 // Cell is one side of a Row.
 type Cell struct {
-	Kind  CellKind
-	No    int // one-based line number, 0 for fillers
-	Text  string
-	Spans []diff.Span // changed words inside Text (byte offsets), only for modified/unified rows
+	Kind   CellKind
+	No     int // one-based line number, 0 for fillers
+	Text   string
+	Spans  []diff.Span  // changed words inside Text (byte offsets), only for modified/unified rows
+	Syntax []SyntaxSpan // syntax highlighting of Text, nil when not highlighted
 }
 
 // Row is one visual line of the side-by-side view.
@@ -73,12 +74,13 @@ func BuildRows(blocks []diff.Block) (rows []Row, hunkStarts []int) {
 
 // UnifiedRow is one line of the unified (single column) view.
 type UnifiedRow struct {
-	Kind  CellKind // CellEqual, CellDeleted or CellAdded
-	OldNo int      // one-based, 0 when the line does not exist in the old text
-	NewNo int      // one-based, 0 when the line does not exist in the new text
-	Text  string
-	Spans []diff.Span
-	Hunk  int // -1 for unchanged rows
+	Kind   CellKind // CellEqual, CellDeleted or CellAdded
+	OldNo  int      // one-based, 0 when the line does not exist in the old text
+	NewNo  int      // one-based, 0 when the line does not exist in the new text
+	Text   string
+	Spans  []diff.Span
+	Syntax []SyntaxSpan
+	Hunk   int // -1 for unchanged rows
 }
 
 // BuildUnified turns diff blocks into unified rows (deleted lines first, then added lines per change).

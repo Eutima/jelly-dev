@@ -133,7 +133,7 @@ func (m GitModel) loadCmd(index int) tea.Cmd {
 		return loadedMsg{
 			index: index,
 			diff: NewDiffModel(leftTitle, rightTitle, diff.SplitLines(oldText), diff.SplitLines(newText)).
-				WithTheme(theme),
+				WithTheme(theme).WithHighlight(file.Path, file.OldPath),
 		}
 	}
 }

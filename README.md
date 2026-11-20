@@ -12,7 +12,7 @@ act as a three-pane `git mergetool`.
 ## Status
 
 Done: file diff, word-level highlights, unified view, clipboard compare, git changes, directory diff, three-pane
-merge, git tool setup, themes (dark, light, mono). Open: syntax highlighting and release packaging.
+merge, git tool setup, themes (dark, light, mono), syntax highlighting. Open: release packaging.
 
 Usage: `jelly-diff <file-a> <file-b>`. Flags must come before file names.
 Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage error.
@@ -49,6 +49,11 @@ Git mode runs the `git` command, so the repository's own git configuration appli
 repositories with it. Symbolic links are shown as their target path and are never followed.
 
 Inputs must be regular files (or symbolic links to them): pipes such as `<(command)` are rejected.
+
+Syntax highlighting (library: [chroma](https://github.com/alecthomas/chroma), MIT) is chosen by file name and shown in
+the diff, clipboard, git and directory views: monokai colors in the dark theme, github colors in the light theme, none in
+mono. Changed words keep their own highlight. Files over 512 KiB, files without a known lexer and the merge view are
+not highlighted.
 
 ## Config
 
