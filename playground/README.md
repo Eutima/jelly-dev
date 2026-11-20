@@ -6,6 +6,9 @@ settings.
 
 ## Set up
 
+`playground/` is a separate Go module on purpose (see `go.mod`): the sample `.go` files are test data, and some of them
+deliberately contain conflicts or duplicate declarations, so the main module's `go build ./...` must not see them.
+
 From the project root:
 
 ```
