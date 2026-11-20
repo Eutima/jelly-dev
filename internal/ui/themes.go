@@ -8,15 +8,19 @@ import (
 	"github.com/eutima/jelly-diff/internal/source"
 )
 
-// NamedTheme returns a built-in theme by name.
-func NamedTheme(name string) (Theme, bool) {
+// NamedTheme returns a built-in theme by name, drawn with lipgloss's default renderer (the real terminal).
+func NamedTheme(name string) (Theme, bool) { return NamedThemeFor(lipgloss.DefaultRenderer(), name) }
+
+// NamedThemeFor returns a built-in theme by name whose styles are rendered by r. A renderer with its own
+// color profile lets tests produce colored output without touching the process-wide profile.
+func NamedThemeFor(r *lipgloss.Renderer, name string) (Theme, bool) {
 	switch name {
 	case config.ThemeDark:
-		return DarkTheme(), true
+		return DarkThemeFor(r), true
 	case config.ThemeLight:
-		return LightTheme(), true
+		return LightThemeFor(r), true
 	case config.ThemeMono:
-		return MonoTheme(), true
+		return MonoThemeFor(r), true
 	}
 	return Theme{}, false
 }
@@ -24,8 +28,11 @@ func NamedTheme(name string) (Theme, bool) {
 func hex(color string) lipgloss.Color { return lipgloss.Color(color) }
 
 // DarkTheme returns the default theme (JetBrains-like dark palette).
-func DarkTheme() Theme {
-	base := lipgloss.NewStyle()
+func DarkTheme() Theme { return DarkThemeFor(lipgloss.DefaultRenderer()) }
+
+// DarkThemeFor is DarkTheme with styles rendered by r.
+func DarkThemeFor(r *lipgloss.Renderer) Theme {
+	base := r.NewStyle()
 	text := base.Foreground(hex("#bcbec4"))
 	word := base.Foreground(hex("#ffffff"))
 	return Theme{
@@ -55,8 +62,11 @@ func DarkTheme() Theme {
 }
 
 // LightTheme returns a palette for light terminal backgrounds.
-func LightTheme() Theme {
-	base := lipgloss.NewStyle()
+func LightTheme() Theme { return LightThemeFor(lipgloss.DefaultRenderer()) }
+
+// LightThemeFor is LightTheme with styles rendered by r.
+func LightThemeFor(r *lipgloss.Renderer) Theme {
+	base := r.NewStyle()
 	text := base.Foreground(hex("#1e1f22"))
 	return Theme{
 		Header:         base.Foreground(hex("#1e1f22")).Background(hex("#dfe1e5")).Bold(true),
@@ -86,8 +96,11 @@ func LightTheme() Theme {
 
 // MonoTheme uses only text attributes (bold, strikethrough, reverse, underline), for NO_COLOR and monochrome
 // terminals. Added text is bold, deleted text is struck through, changed words are reversed.
-func MonoTheme() Theme {
-	base := lipgloss.NewStyle()
+func MonoTheme() Theme { return MonoThemeFor(lipgloss.DefaultRenderer()) }
+
+// MonoThemeFor is MonoTheme with styles rendered by r.
+func MonoThemeFor(r *lipgloss.Renderer) Theme {
+	base := r.NewStyle()
 	return Theme{
 		Header:         base.Reverse(true).Bold(true),
 		Footer:         base.Reverse(true),

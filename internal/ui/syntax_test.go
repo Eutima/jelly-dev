@@ -8,8 +8,8 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
 
+	"github.com/eutima/jelly-diff/internal/config"
 	"github.com/eutima/jelly-diff/internal/diff"
 	"github.com/eutima/jelly-diff/internal/source"
 )
@@ -94,9 +94,9 @@ func syntaxView(theme Theme, width int) string {
 }
 
 func TestView_ColorsKeywords_WhenDarkThemeAndGoFile(t *testing.T) {
-	withColorProfile(t, termenv.TrueColor)
-	highlighted := syntaxView(DarkTheme(), 80)
-	plain := NewDiffModel("a", "b", []string{"func old() {}"}, []string{"func newer() {}"}).WithTheme(DarkTheme())
+	t.Parallel()
+	highlighted := syntaxView(trueColorTheme(t, config.ThemeDark), 80)
+	plain := NewDiffModel("a", "b", []string{"func old() {}"}, []string{"func newer() {}"}).WithTheme(trueColorTheme(t, config.ThemeDark))
 	updated, _ := plain.Update(tea.WindowSizeMsg{Width: 80, Height: 6})
 	if highlighted == updated.(DiffModel).View() {
 		t.Fatal("syntax highlighting must change the output")
@@ -104,23 +104,23 @@ func TestView_ColorsKeywords_WhenDarkThemeAndGoFile(t *testing.T) {
 }
 
 func TestView_UsesDifferentSyntaxColors_WhenLightTheme(t *testing.T) {
-	withColorProfile(t, termenv.TrueColor)
-	if syntaxView(DarkTheme(), 80) == syntaxView(LightTheme(), 80) {
+	t.Parallel()
+	if syntaxView(trueColorTheme(t, config.ThemeDark), 80) == syntaxView(trueColorTheme(t, config.ThemeLight), 80) {
 		t.Fatal("dark and light syntax output must differ")
 	}
 }
 
 func TestView_HasNoSyntaxColors_WhenMonoTheme(t *testing.T) {
-	withColorProfile(t, termenv.TrueColor)
-	if view := syntaxView(MonoTheme(), 80); strings.Contains(view, "38;2") {
+	t.Parallel()
+	if view := syntaxView(trueColorTheme(t, config.ThemeMono), 80); strings.Contains(view, "38;2") {
 		t.Fatalf("mono theme must not emit colors: %q", view)
 	}
 }
 
 func TestView_FitsWidthWithSyntax_WhenSizesVary(t *testing.T) {
-	withColorProfile(t, termenv.TrueColor)
+	t.Parallel()
 	for _, width := range []int{20, 41, 80} {
-		for i, line := range strings.Split(syntaxView(DarkTheme(), width), "\n") {
+		for i, line := range strings.Split(syntaxView(trueColorTheme(t, config.ThemeDark), width), "\n") {
 			if line != "" && lipgloss.Width(line) > width {
 				t.Fatalf("width %d line %d is %d wide", width, i, lipgloss.Width(line))
 			}
@@ -129,7 +129,6 @@ func TestView_FitsWidthWithSyntax_WhenSizesVary(t *testing.T) {
 }
 
 func TestGitView_HighlightsSelectedFile_WhenPathHasLexer(t *testing.T) {
-	withColorProfile(t, termenv.TrueColor)
 	src := &fakeSource{texts: map[string][2]string{"main.go": {"func a() {}\n", "func b() {}\n"}}}
 	files := []source.ChangedFile{{Status: source.StatusModified, Path: "main.go"}}
 	updated, _ := quietGit(files, src).Update(tea.WindowSizeMsg{Width: 100, Height: 12})
@@ -173,8 +172,8 @@ func TestHighlightLines_KeepsLaterLinesAligned_WhenLineContainsLoneCarriageRetur
 }
 
 func TestRenderSyntaxText_KeepsWordStyle_WhenChangedWordIsAlsoKeyword(t *testing.T) {
-	withColorProfile(t, termenv.TrueColor)
-	theme := DarkTheme()
+	t.Parallel()
+	theme := trueColorTheme(t, config.ThemeDark)
 	spans := highlightLines([]string{"a.go"}, []string{"func f() {}"})
 	word := theme.ModifiedWord
 	out := renderSyntaxText("func f() {}", []diff.Span{{Start: 0, End: 4}}, spans[0], theme.painter, 20, theme.Modified, word)

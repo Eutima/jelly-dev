@@ -10,8 +10,6 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
 )
 
 // pressKeys returns a UI runner that feeds the given keys to the merge model.
@@ -218,9 +216,7 @@ func TestRunGitConfig_StoresSettingsExactly_WhenAppliedToRealGit(t *testing.T) {
 const monokaiKeywordColor = "38;2;249;38;113"
 
 func TestRun_HighlightsMergeView_WhenMergedFileIsGoSource(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+	t.Parallel()
 	dir := t.TempDir()
 	write := func(name, content string) string {
 		path := filepath.Join(dir, name)
@@ -238,7 +234,9 @@ func TestRun_HighlightsMergeView_WhenMergedFileIsGoSource(t *testing.T) {
 		view = model.View()
 		return nil
 	}
-	if code := run(args, &bytes.Buffer{}, &bytes.Buffer{}, testEnv(runUI)); code != exitFailure && code != exitOK {
+	env := testEnv(runUI)
+	env.namedTheme = trueColorThemes
+	if code := run(args, &bytes.Buffer{}, &bytes.Buffer{}, env); code != exitFailure && code != exitOK {
 		t.Fatalf("unexpected exit code %d", code)
 	}
 	if view == "" {

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"io"
 	"strings"
 	"testing"
 
@@ -11,12 +12,21 @@ import (
 	"github.com/eutima/jelly-diff/internal/config"
 )
 
-// withColorProfile makes lipgloss emit escape sequences for the duration of a test.
-func withColorProfile(t *testing.T, profile termenv.Profile) {
+// rendererFor returns a renderer with its own color profile. Themes built from it emit escape sequences
+// without changing the process-wide profile, so tests stay independent and parallel-safe.
+func rendererFor(profile termenv.Profile) *lipgloss.Renderer {
+	renderer := lipgloss.NewRenderer(io.Discard)
+	renderer.SetColorProfile(profile)
+	return renderer
+}
+
+func trueColorTheme(t *testing.T, name string) Theme {
 	t.Helper()
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(profile)
-	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+	theme, ok := NamedThemeFor(rendererFor(termenv.TrueColor), name)
+	if !ok {
+		t.Fatalf("unknown theme %q", name)
+	}
+	return theme
 }
 
 func sizedDiff(theme Theme) DiffModel {
@@ -37,8 +47,8 @@ func TestNamedTheme_ReturnsThemes_WhenNameKnown(t *testing.T) {
 }
 
 func TestMonoTheme_UsesNoColorsButAttributes_WhenRendered(t *testing.T) {
-	withColorProfile(t, termenv.TrueColor)
-	view := sizedDiff(MonoTheme()).View()
+	t.Parallel()
+	view := sizedDiff(trueColorTheme(t, config.ThemeMono)).View()
 	if strings.Contains(view, "38;2") || strings.Contains(view, "48;2") || strings.Contains(view, "38;5") {
 		t.Fatalf("mono theme emitted colors: %q", view)
 	}
@@ -48,8 +58,8 @@ func TestMonoTheme_UsesNoColorsButAttributes_WhenRendered(t *testing.T) {
 }
 
 func TestDarkAndLightThemes_EmitDifferentColors_WhenRendered(t *testing.T) {
-	withColorProfile(t, termenv.TrueColor)
-	dark, light := sizedDiff(DarkTheme()).View(), sizedDiff(LightTheme()).View()
+	t.Parallel()
+	dark, light := sizedDiff(trueColorTheme(t, config.ThemeDark)).View(), sizedDiff(trueColorTheme(t, config.ThemeLight)).View()
 	if !strings.Contains(dark, "48;2") || !strings.Contains(light, "48;2") || dark == light {
 		t.Fatalf("themes must emit distinct background colors")
 	}
@@ -68,29 +78,31 @@ func TestThemed_AppliesThemeToAllModels_WhenWrapped(t *testing.T) {
 }
 
 func TestGitView_MarksSelectedRowWithoutColor_WhenMonoTheme(t *testing.T) {
-	withColorProfile(t, termenv.TrueColor)
+	t.Parallel()
 	model, _ := newGitTestModel(100, 12)
-	view := model.WithTheme(MonoTheme()).View()
+	view := model.WithTheme(trueColorTheme(t, config.ThemeMono)).View()
 	if strings.Contains(view, "48;2") || !strings.Contains(view, "7m") {
 		t.Fatalf("selected row must use reverse video only: %q", view)
 	}
 }
 
 func TestMonoTheme_ShowsNothingExtra_WhenProfileIsAscii(t *testing.T) {
+	t.Parallel()
 	// Documents why the CLI must raise the profile for NO_COLOR: in the Ascii profile lipgloss drops attributes.
-	withColorProfile(t, termenv.Ascii)
-	if view := sizedDiff(MonoTheme()).View(); strings.Contains(view, "\x1b[") {
+	ascii, _ := NamedThemeFor(rendererFor(termenv.Ascii), config.ThemeMono)
+	if view := sizedDiff(ascii).View(); strings.Contains(view, "\x1b[") {
 		t.Fatalf("expected plain text, got %q", view)
 	}
-	withColorProfile(t, termenv.ANSI)
-	if view := sizedDiff(MonoTheme()).View(); !strings.Contains(view, "7m") {
+	ansi, _ := NamedThemeFor(rendererFor(termenv.ANSI), config.ThemeMono)
+	if view := sizedDiff(ansi).View(); !strings.Contains(view, "7m") {
 		t.Fatalf("expected reverse video with the ANSI profile, got %q", view)
 	}
 }
 
 func TestMonoTheme_MarksDeletionsAsStruckThrough_WhenRendered(t *testing.T) {
-	withColorProfile(t, termenv.ANSI)
-	model := NewDiffModel("a", "b", []string{"gone"}, nil).WithTheme(MonoTheme())
+	t.Parallel()
+	ansi, _ := NamedThemeFor(rendererFor(termenv.ANSI), config.ThemeMono)
+	model := NewDiffModel("a", "b", []string{"gone"}, nil).WithTheme(ansi)
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 40, Height: 5})
 	if view := updated.(DiffModel).View(); !strings.Contains(view, "9m") {
 		t.Fatalf("expected strikethrough: %q", view)

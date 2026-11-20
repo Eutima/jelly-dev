@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
 
+	"github.com/eutima/jelly-diff/internal/config"
 	"github.com/eutima/jelly-diff/internal/merge"
 )
 
@@ -301,8 +301,8 @@ func TestMergeModel_StaysUnhighlighted_WhenNoLexerMatches(t *testing.T) {
 }
 
 func TestMergeView_EmitsSyntaxColors_WhenDarkThemeAndGoFile(t *testing.T) {
-	withColorProfile(t, termenv.TrueColor)
-	model := highlightedMergeModel(t).WithTheme(DarkTheme())
+	t.Parallel()
+	model := highlightedMergeModel(t).WithTheme(trueColorTheme(t, config.ThemeDark))
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 12})
 	if view := updated.(MergeModel).View(); !strings.Contains(view, monokaiKeyword) {
 		t.Fatalf("expected the monokai keyword color in the merge view:\n%q", view)
@@ -310,9 +310,10 @@ func TestMergeView_EmitsSyntaxColors_WhenDarkThemeAndGoFile(t *testing.T) {
 }
 
 func TestMergeView_FitsWidthWithSyntax_WhenSizesVary(t *testing.T) {
-	withColorProfile(t, termenv.TrueColor)
+	t.Parallel()
 	for _, width := range []int{41, 80, 120} {
-		updated, _ := highlightedMergeModel(t).Update(tea.WindowSizeMsg{Width: width, Height: 10})
+		updated, _ := highlightedMergeModel(t).WithTheme(trueColorTheme(t, config.ThemeDark)).
+			Update(tea.WindowSizeMsg{Width: width, Height: 10})
 		for i, line := range strings.Split(updated.(MergeModel).View(), "\n") {
 			if line != "" && lipgloss.Width(line) > width {
 				t.Fatalf("width %d line %d is %d wide", width, i, lipgloss.Width(line))

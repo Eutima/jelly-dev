@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +27,7 @@ func testEnv(runUI uiRunner) environment {
 		openGit:          openGit,
 		getenv:           func(string) string { return "" },
 		enableAttributes: func() {},
+		namedTheme:       ui.NamedTheme,
 		busy:             noBusy,
 	}
 }
@@ -266,6 +268,7 @@ func TestPrintError_ReplacesControlCharacters_WhenMessageContainsEscapes(t *test
 }
 
 func TestRun_Fails_WhenThemeInvalid(t *testing.T) {
+	t.Parallel()
 	a, b := writeFile(t, "a", "x\n"), writeFile(t, "b", "y\n")
 	env := testEnv(noUI)
 	env.getenv = func(key string) string {
@@ -280,14 +283,21 @@ func TestRun_Fails_WhenThemeInvalid(t *testing.T) {
 	}
 }
 
+// trueColorThemes resolves themes whose styles have their own true-color profile, so tests see escape
+// sequences without changing the process-wide color profile.
+func trueColorThemes(name string) (ui.Theme, bool) {
+	renderer := lipgloss.NewRenderer(io.Discard)
+	renderer.SetColorProfile(termenv.TrueColor)
+	return ui.NamedThemeFor(renderer, name)
+}
+
 func TestRun_UsesMonoThemeAndEnablesAttributes_WhenNoColorSet(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+	t.Parallel()
 	a, b := writeFile(t, "a", "let foo = 1\n"), writeFile(t, "b", "let bar = 1\n")
 	var shown ui.DiffModel
 	enabled := false
 	env := testEnv(captureModel(&shown))
+	env.namedTheme = trueColorThemes
 	env.enableAttributes = func() { enabled = true }
 	env.getenv = func(key string) string {
 		if key == "NO_COLOR" {

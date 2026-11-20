@@ -47,6 +47,8 @@ type environment struct {
 	openGit       func(dir string, spec source.GitSpec) (gitChanges, error)
 	gitConfig     func(scope, key, value string) error
 	getenv        func(string) string
+	// namedTheme resolves a theme name; tests replace it with a theme that has its own color profile.
+	namedTheme func(name string) (ui.Theme, bool)
 	// enableAttributes makes the terminal output keep bold/reverse/strikethrough even when NO_COLOR
 	// switched the color profile to "no styling at all"; the mono theme depends on them.
 	enableAttributes func()
@@ -74,7 +76,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "jelly-diff: %v\n", err)
 		os.Exit(exitFailure)
 	}
-	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, openGit: openGit, gitConfig: runGitConfig, getenv: os.Getenv, enableAttributes: enableTextAttributes,
+	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, openGit: openGit, gitConfig: runGitConfig, getenv: os.Getenv, namedTheme: ui.NamedTheme, enableAttributes: enableTextAttributes,
 		busy: newBusy(os.Stderr, stderrIsTerminal()), workDir: workDir}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, env))
 }
@@ -98,7 +100,7 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 		printError(stderr, err)
 		return exitFailure
 	}
-	theme, ok := ui.NamedTheme(cfg.Theme)
+	theme, ok := env.namedTheme(cfg.Theme)
 	if !ok {
 		printError(stderr, fmt.Errorf("unknown theme %q", cfg.Theme))
 		return exitFailure
