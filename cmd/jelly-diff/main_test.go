@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,7 +17,11 @@ import (
 func noUI(tea.Model) error { return errors.New("ui must not start") }
 
 func testEnv(runUI uiRunner) environment {
-	return environment{runUI: runUI, readClipboard: func() (string, error) { return "clip\n", nil }}
+	return environment{
+		runUI:         runUI,
+		readClipboard: func() (string, error) { return "clip\n", nil },
+		openGit:       openGit,
+	}
 }
 
 func writeFile(t *testing.T, name, content string) string {
@@ -164,5 +169,91 @@ func TestRun_Fails_WhenClipFileMissingOrBinary(t *testing.T) {
 		if code := run([]string{"--clip", path}, &bytes.Buffer{}, &bytes.Buffer{}, testEnv(noUI)); code != exitFailure {
 			t.Fatalf("path %s: code %d", path, code)
 		}
+	}
+}
+
+// gitRepo creates a repository with one committed and one modified file and returns its path.
+func gitRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@e.x", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@e.x")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q", "-b", "main")
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "-A")
+	git("commit", "-q", "-m", "init")
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("two\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func gitEnv(dir string, runUI uiRunner) environment {
+	env := testEnv(runUI)
+	env.workDir = dir
+	return env
+}
+
+func TestRun_ShowsChangedFiles_WhenGitSubcommandUsed(t *testing.T) {
+	dir := gitRepo(t)
+	var shown tea.Model
+	runUI := func(model tea.Model) error { shown = model; return nil }
+	if code := run([]string{"git"}, &bytes.Buffer{}, &bytes.Buffer{}, gitEnv(dir, runUI)); code != exitOK {
+		t.Fatalf("code %d", code)
+	}
+	model, ok := shown.(ui.GitModel)
+	if !ok || model.FileCount() != 1 {
+		t.Fatalf("unexpected model %#v", shown)
+	}
+}
+
+func TestRun_ReportsNoChanges_WhenRepositoryClean(t *testing.T) {
+	dir := gitRepo(t)
+	var stdout bytes.Buffer
+	if code := run([]string{"git", "--", "nothing-here"}, &stdout, &bytes.Buffer{}, gitEnv(dir, noUI)); code != exitOK {
+		t.Fatalf("code %d", code)
+	}
+	if !strings.Contains(stdout.String(), "no changes") {
+		t.Fatalf("stdout %q", stdout.String())
+	}
+}
+
+func TestRun_Fails_WhenNotInGitRepository(t *testing.T) {
+	var stderr bytes.Buffer
+	if code := run([]string{"git"}, &bytes.Buffer{}, &stderr, gitEnv(t.TempDir(), noUI)); code != exitFailure {
+		t.Fatalf("code %d", code)
+	}
+}
+
+func TestRun_Fails_WhenGitRevisionUnknown(t *testing.T) {
+	dir := gitRepo(t)
+	if code := run([]string{"git", "does-not-exist"}, &bytes.Buffer{}, &bytes.Buffer{}, gitEnv(dir, noUI)); code != exitFailure {
+		t.Fatalf("code %d", code)
+	}
+}
+
+func TestRun_ReportsUsage_WhenGitArgumentsInvalid(t *testing.T) {
+	dir := gitRepo(t)
+	for _, args := range [][]string{{"git", "a", "b"}, {"git", "--bogus"}} {
+		if code := run(args, &bytes.Buffer{}, &bytes.Buffer{}, gitEnv(dir, noUI)); code != exitUsage {
+			t.Fatalf("args %v: code %d", args, code)
+		}
+	}
+}
+
+func TestPrintError_ReplacesControlCharacters_WhenMessageContainsEscapes(t *testing.T) {
+	var out bytes.Buffer
+	printError(&out, errors.New("bad \x1b]0;x\x07 path"))
+	if strings.ContainsAny(out.String(), "\x1b\x07") || !strings.Contains(out.String(), "bad ") {
+		t.Fatalf("output %q", out.String())
 	}
 }

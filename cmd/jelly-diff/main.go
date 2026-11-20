@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -23,7 +24,9 @@ const (
 	usage          = `usage:
   jelly-diff <file-a> <file-b>       compare two files
   jelly-diff --clip <file>           compare a file with the clipboard (clipboard on the right)
-  jelly-diff --clip-left <file>      compare the clipboard (left) with a file`
+  jelly-diff --clip-left <file>      compare the clipboard (left) with a file
+  jelly-diff git [--staged] [<rev> | <a>..<b>] [-- <path>...]
+                                     browse changes of the git repository in the current directory`
 )
 
 // uiRunner shows a model in the terminal and blocks until the user quits.
@@ -33,10 +36,31 @@ type uiRunner func(model tea.Model) error
 type environment struct {
 	runUI         uiRunner
 	readClipboard func() (string, error)
+	openGit       func(dir string, spec source.GitSpec) (gitChanges, error)
+	workDir       string
+}
+
+// gitChanges is a repository view that can list changed files and load their texts.
+type gitChanges interface {
+	ui.ChangeSource
+	List() ([]source.ChangedFile, error)
+}
+
+func openGit(dir string, spec source.GitSpec) (gitChanges, error) {
+	changes, err := source.OpenGit(dir, spec)
+	if err != nil {
+		return nil, err
+	}
+	return changes, nil
 }
 
 func main() {
-	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard}
+	workDir, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "jelly-diff: %v\n", err)
+		os.Exit(exitFailure)
+	}
+	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, openGit: openGit, workDir: workDir}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, env))
 }
 
@@ -47,6 +71,9 @@ func runProgram(model tea.Model) error {
 
 // run executes the command and returns the process exit code.
 func run(args []string, stdout, stderr io.Writer, env environment) int {
+	if len(args) > 0 && args[0] == "git" {
+		return runGit(args[1:], stdout, stderr, env)
+	}
 	flags := flag.NewFlagSet("jelly-diff", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	clipRight := flags.Bool("clip", false, "")
@@ -81,7 +108,7 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 		return exitUsage
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "jelly-diff: %v\n", err)
+		printError(stderr, err)
 		return exitFailure
 	}
 	return exitOK
@@ -124,4 +151,72 @@ func show(leftTitle, rightTitle, left, right string, stdout io.Writer, runUI uiR
 		return fmt.Errorf("run ui: %w", err)
 	}
 	return nil
+}
+
+// runGit handles `jelly-diff git [--staged] [<rev>] [-- <path>...]`.
+func runGit(args []string, stdout, stderr io.Writer, env environment) int {
+	var paths []string
+	if dash := indexOf(args, "--"); dash >= 0 {
+		args, paths = args[:dash], args[dash+1:]
+	}
+	flags := flag.NewFlagSet("jelly-diff git", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	staged := flags.Bool("staged", false, "")
+	if err := flags.Parse(args); err != nil {
+		fmt.Fprintf(stderr, "jelly-diff: %v\n%s\n", err, usage)
+		return exitUsage
+	}
+	if flags.NArg() > 1 {
+		fmt.Fprintf(stderr, "jelly-diff: at most one revision allowed (flags must come before the revision, paths after --)\n%s\n", usage)
+		return exitUsage
+	}
+	spec := source.GitSpec{Staged: *staged, Paths: paths}
+	if flags.NArg() == 1 {
+		spec.Rev = flags.Arg(0)
+	}
+	if err := browseGit(spec, stdout, env); err != nil {
+		printError(stderr, err)
+		return exitFailure
+	}
+	return exitOK
+}
+
+func browseGit(spec source.GitSpec, stdout io.Writer, env environment) error {
+	changes, err := env.openGit(env.workDir, spec)
+	if err != nil {
+		return err
+	}
+	files, err := changes.List()
+	if err != nil {
+		return err
+	}
+	if len(files) == 0 {
+		fmt.Fprintln(stdout, "no changes")
+		return nil
+	}
+	if err := env.runUI(ui.NewGitModel(files, changes)); err != nil {
+		return fmt.Errorf("run ui: %w", err)
+	}
+	return nil
+}
+
+func indexOf(items []string, wanted string) int {
+	for i, item := range items {
+		if item == wanted {
+			return i
+		}
+	}
+	return -1
+}
+
+// printError writes err to w with control characters replaced, so file names or git messages
+// cannot inject terminal escape sequences.
+func printError(w io.Writer, err error) {
+	clean := strings.Map(func(r rune) rune {
+		if r < 0x20 && r != '\t' || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			return '?'
+		}
+		return r
+	}, err.Error())
+	fmt.Fprintf(w, "jelly-diff: %s\n", clean)
 }
