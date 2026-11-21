@@ -40,7 +40,7 @@ merged automatically; conflicts start with the base lines. The result pane has a
   change gives both. `×` discards that side (the other side stays, or the base when none is left), like JetBrains.
   A click stays on the change instead of jumping to the next conflict, so you can apply both and edit by hand.
   A button disappears (and is no longer clickable) once its action is done, e.g. `»` after ours was applied.
-- `o` takes ours, `t` theirs, `b` both, `r` reverts the change to the base.
+- `o` or `→` takes ours, `t` or `←` theirs, `b` both, `r` reverts the change to the base.
 - `m` (auto-resolve) resolves every conflict that is none in fact: a change of whitespace only, or both sides editing
   different words of the same lines. Real conflicts stay open; one `u` undoes the whole step.
 - `e` or `enter` edits the line under the cursor in place (`enter` applies, `esc` cancels, arrows/home/end move,

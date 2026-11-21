@@ -294,9 +294,9 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.gotoChange(m.changeAfterCursor())
 	case "p", "shift+tab":
 		m.gotoChange(m.changeBeforeCursor())
-	case "o":
+	case "o", "right":
 		m.resolve(ChoiceOurs)
-	case "t":
+	case "t", "left":
 		m.resolve(ChoiceTheirs)
 	case "b":
 		m.resolve(ChoiceBoth)

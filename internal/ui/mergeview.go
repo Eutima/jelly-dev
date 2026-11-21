@@ -380,7 +380,7 @@ func (m MergeModel) hints() [][]hint {
 	return [][]hint{
 		view,
 		{
-			{"o", "ours", selected, 0}, {"t", "theirs", selected, 0}, {"b", "both", selected, 0},
+			{"→/o", "ours", selected, 0}, {"←/t", "theirs", selected, 0}, {"b", "both", selected, 0},
 			{"r", "base", selected, 1}, {"m", "auto-resolve", true, 0}, {"e", "edit", onLine, 0},
 		},
 		{{"d", "del", onLine, 2}, {"i", "ins", len(m.rows) > 0, 2}},
@@ -446,7 +446,7 @@ func (m MergeModel) actionLine() string {
 			title = fmt.Sprintf("Resolve conflict %d/%d", number, m.ConflictCount())
 		}
 		segments = append(segments, barPart{" " + title + "   ", m.theme.Header})
-		for _, k := range [][2]string{{"o", "Use ours"}, {"t", "Use theirs"}, {"b", "Use both"}, {"e", "Edit"}} {
+		for _, k := range [][2]string{{"→/o", "Use ours"}, {"←/t", "Use theirs"}, {"b", "Use both"}, {"e", "Edit"}} {
 			segments = append(segments, key(k[0], k[1])...)
 		}
 		segments = append(segments, barPart{" r base  m auto-resolve", footer.Faint(true)})

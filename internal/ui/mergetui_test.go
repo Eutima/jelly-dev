@@ -414,7 +414,7 @@ func TestMergeView_ShowsPositionAndProgress_WhenConflictSelected(t *testing.T) {
 	model = mergePress(model, "n")
 	view := model.View()
 	for _, want := range []string{"Jelly-Merge", "OURS", "RESULT", "THEIRS", "2 conflicts remaining", "Conflict 1 of 2 · unresolved",
-		"0/2 resolved", "Resolve conflict 1/2", "[o] Use ours", "● Modified"} {
+		"0/2 resolved", "Resolve conflict 1/2", "[→/o] Use ours", "● Modified"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view lacks %q:\n%s", want, view)
 		}
@@ -640,5 +640,21 @@ func TestMergeView_HidesAppliedButton_WhenSideWasApplied(t *testing.T) {
 	row = model.rows[model.starts[0]]
 	if model.buttonShown(row, paneOurs, true) || model.buttonShown(row, paneTheirs, true) {
 		t.Fatal("no apply button may be left when both sides are applied")
+	}
+}
+
+func TestMergeModel_AppliesOursOrTheirs_WhenArrowKeysPressed(t *testing.T) {
+	press := func(model MergeModel, keyType tea.KeyType) MergeModel {
+		updated, _ := model.Update(tea.KeyMsg{Type: keyType})
+		return updated.(MergeModel)
+	}
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = press(mergePress(model, "n"), tea.KeyRight) // the first change is the conflict at line 2
+	if model.Result()[1] != "X" {
+		t.Fatalf("right arrow must take ours: %v", model.Result())
+	}
+	model = press(model, tea.KeyLeft) // moved on to the second conflict
+	if model.Result()[7] != "Y2" || model.Unresolved() != 0 {
+		t.Fatalf("left arrow must take theirs: %v", model.Result())
 	}
 }
