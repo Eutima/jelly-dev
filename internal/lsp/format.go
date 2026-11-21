@@ -100,6 +100,11 @@ func ApplyEdits(text string, edits []TextEdit) (string, error) {
 // Format formats a file's text: with the formatter command of its server entry when that is installed, else
 // with the language server. tabSize and insertSpaces tell the server how to indent.
 func (m *Manager) Format(ctx context.Context, path, text string) (string, error) {
+	if command, ok := m.chosenFormatter(path); ok { // the user picked one for this file type
+		if _, err := m.lookPath(command[0]); err == nil {
+			return runFormatterChecked(ctx, command, path, text, m.root)
+		}
+	}
 	spec, languageID, ok := specFor(m.servers, path)
 	if !ok {
 		return "", ErrNoServer
@@ -147,6 +152,16 @@ func indentationOf(text string) (tabSize int, insertSpaces bool) {
 		least = 4
 	}
 	return least, true
+}
+
+// runFormatterChecked is runFormatter, but a formatter that succeeds and prints nothing for a text that is not empty is an
+// error (a wrong argument vector or a misbehaving tool): the text of the editor must not be replaced by nothing.
+func runFormatterChecked(ctx context.Context, command []string, path, text, dir string) (string, error) {
+	out, err := runFormatter(ctx, command, path, text, dir)
+	if err == nil && strings.TrimSpace(out) == "" && strings.TrimSpace(text) != "" {
+		return "", fmt.Errorf("%s printed nothing for a text that is not empty", command[0])
+	}
+	return out, err
 }
 
 // runFormatter pipes the text through an external formatter; "{file}" in its arguments is replaced by the file name.

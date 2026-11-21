@@ -27,13 +27,15 @@ type Manager struct {
 	lookPath func(string) (string, error)
 	start    func(ctx context.Context, name string, command []string, root string) (*Client, error)
 
-	mu      sync.Mutex
-	clients map[string]*Client // by server name and root
+	mu            sync.Mutex
+	clients       map[string]*Client  // by server name and root
+	chosen        map[string][]string // the formatter the user picked, by file type (see formatters.go)
+	formatterFile string              // where the choices are kept; empty: not stored
 }
 
 // NewManager returns a manager for the project in root.
 func NewManager(root string, servers []ServerSpec) *Manager {
-	return &Manager{root: root, servers: servers, lookPath: exec.LookPath, start: Start, clients: map[string]*Client{}}
+	return &Manager{root: root, servers: servers, lookPath: exec.LookPath, start: Start, clients: map[string]*Client{}, chosen: map[string][]string{}}
 }
 
 // client returns the running server for a file, starting it first when needed.

@@ -227,7 +227,10 @@ its references (`j`/`k`, `enter` or a click jump), `ctrl+o` returns to where the
 across files; so do `ctrl+c` and `ctrl+d` in normal mode, one step at a time, and only when there is no jump left to undo they close the
 window (unsaved changes block going back to another file, E37). `:format` (`:fmt`) formats the file as one undoable change: with the file type's formatter command when installed (Go: `gofmt`;
 HTML, CSS, SCSS, JavaScript, TypeScript, JSON: `prettier`; Python: `black`), otherwise with the language server (Java is formatted
-by jdtls). `ctrl+space` (or `ctrl+n`) in insert mode opens the completion popup with the server's
+by jdtls). When no formatter is found for the file (no server for the file type, a server that cannot format, a missing server), a
+searchable list of formatters opens (gofmt, goimports, prettier, black, ruff, shfmt, clang-format, rustfmt, jq, xmllint, yamlfmt, taplo ...;
+the ones for the file type come first, missing ones are dim): type to narrow it, `enter` formats with the chosen one and remembers it
+for that file type once its result was applied (`formatters.json` in the config folder; delete the entry there to forget it), `esc` cancels. `ctrl+space` (or `ctrl+n`) in insert mode opens the completion popup with the server's
 suggestions and the words of the file as a fallback: typing narrows it, `ctrl+n`/`ctrl+p` or the arrows choose, `tab` or `enter`
 accept, `esc` closes it. Defaults: gopls (Go), typescript-language-server (JavaScript, TypeScript, JSX), pyright (Python),
 vscode-html/css/json-language-server, jdtls (Java), groovy-language-server; the installer sets them up. Add or change servers in
