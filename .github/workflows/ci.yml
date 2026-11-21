@@ -16,6 +16,15 @@ jobs:
       - run: sh scripts/next-version_test.sh
       - run: sh scripts/install_test.sh
       - run: python3 -m unittest discover -s packaging/pypi
+  docker-nonroot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: jd runs as a normal user in alpine, debian and ubuntu (read-only root, no HOME)
+        run: sh scripts/docker_nonroot_test.sh
   build:
     runs-on: ubuntu-latest
     strategy:

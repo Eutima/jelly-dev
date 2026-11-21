@@ -376,6 +376,9 @@ go test ./...
 
 Requires Go 1.24 (the toolchain is fetched automatically by Go >= 1.21).
 
+`sh scripts/docker_nonroot_test.sh` runs jd as a normal user (uid 1000, read-only root, no usable `HOME`) in alpine, debian and
+ubuntu containers; it needs a working docker daemon and runs in CI as the `docker-nonroot` job.
+
 Git mode runs the `git` command, so the repository's own git configuration applies; do not open untrusted
 repositories with it. Symbolic links are shown as their target path and are never followed.
 
