@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-runewidth"
 
-	"github.com/eutima/jelly-diff/internal/source"
+	"github.com/eutima/jelly-dev/internal/source"
 )
 
 func TestJellyFrame_KeepsSizeAndRepeats_WhenAnimationAdvances(t *testing.T) {

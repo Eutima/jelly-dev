@@ -1,7 +1,7 @@
 # Merge inputs
 
 ```
-jelly-diff merge base.txt local.txt remote.txt merged.txt
+jelly-dev merge base.txt local.txt remote.txt merged.txt
 ```
 
 (`../setup.sh` copies these files to `../sandbox/merge/` so you can save without changing the originals.)
@@ -24,5 +24,5 @@ a line, `i` to insert one, `u` to undo, `s` to save (only possible when no confl
 does not exist:
 
 ```
-jelly-diff merge does-not-exist addadd_local.txt addadd_remote.txt merged.txt
+jelly-dev merge does-not-exist addadd_local.txt addadd_remote.txt merged.txt
 ```

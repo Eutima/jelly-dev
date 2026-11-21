@@ -1,6 +1,6 @@
-# Jelly Diff
+# Jelly Dev
 
-<p align="center"><img src="docs/jelly-diff-logo.png" alt="Jelly Diff logo" width="384"></p>
+<p align="center"><img src="docs/jelly-dev-logo.png" alt="Jelly Dev logo" width="384"></p>
 
 A terminal diff and merge tool with a JetBrains-style UI: side-by-side panes, colored change blocks and
 word-level highlights. It diffs files, directories and the clipboard, shows `git diff` and acts as a three-pane
@@ -17,18 +17,34 @@ word-level highlights. It diffs files, directories and the clipboard, shows `git
 Latest release, checked against the SHA-256 checksum published with it (an integrity check, not a signature):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/Eutima/jelly-diff/master/scripts/install.sh | sh   # Linux, macOS
-irm https://raw.githubusercontent.com/Eutima/jelly-diff/master/scripts/install.ps1 | iex        # Windows (PowerShell)
+curl -fsSL https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/install.sh | sh   # Linux, macOS
+irm https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/install.ps1 | iex        # Windows (PowerShell)
 ```
 
 The installer:
 
-- puts `jd` in `~/.local/bin` (Windows: `%LOCALAPPDATA%\Programs\jelly-diff`) and removes an old `jelly-diff` binary there;
+- puts `jd` in `~/.local/bin` (Windows: `%LOCALAPPDATA%\Programs\jelly-dev`) and removes an old `jelly-dev` binary there;
 - adds that directory to your PATH (Linux/macOS: your shell profile; Windows: the user PATH). Reload the shell
   (`exec "$SHELL" -l`, or open a new terminal) so `jd` is found and tab-completes;
+- checks the tools the IDE needs and **installs what is missing, without asking** (see below);
 - runs `jd install-git --apply`, making `jd` the global `diff.tool` and `merge.tool` of git (overwrites existing values).
 
-Options (environment variables): `JELLY_DIFF_VERSION` (for example `v0.2.0`) picks a release, `INSTALL_DIR` changes
+Dependencies (groups, all on by default; choose with `JD_DEPS=basics,terminal,runtimes,lsp`, skip with `JD_SKIP_DEPS=1`,
+preview with `JD_DRY_RUN=1`):
+
+| Group | Linux / macOS | Windows |
+|---|---|---|
+| `basics` | git; on Linux a clipboard tool (wl-clipboard or xclip) | git (winget) |
+| `terminal` | a terminal emulator for new windows (xterm if none is found); in WSL Windows Terminal (`wt.exe`, via winget) | Windows Terminal |
+| `runtimes` | Go, Node.js + npm, Python (pip, pipx), a JDK (also installed when `lsp` is chosen: the servers need them) | Go, Node.js, JDK 21, Python |
+| `lsp` | gopls (`go install`), pyright, typescript-language-server (JavaScript and TypeScript), vscode-langservers-extracted (HTML, CSS, JSON), the Angular language server and the formatter prettier (`npm -g`, into `~/.local`), the formatter black (pipx or `pip --user`), jdtls (download), groovy-language-server (download) | the same |
+
+System packages are installed with apt, dnf, pacman, zypper, apk or brew (through `sudo` unless you are root) and winget on
+Windows. A tool that cannot be installed is reported at the end; jd itself works without them (the language servers are
+used by the IDE from milestone 2 on). The jdtls and groovy-language-server downloads come from their official sites over
+HTTPS and are not checksum-verified.
+
+Options (environment variables): `JELLY_DEV_VERSION` (for example `v0.2.0`) picks a release, `INSTALL_DIR` changes
 the target, `JD_SKIP_GIT_CONFIG=1` leaves the git configuration alone.
 
 Check it: `jd --version`.
@@ -42,12 +58,13 @@ jd git [--staged] [<rev> | <a>..<b>]  browse the changes of the current git repo
 jd merge <base> <local> <remote> <merged>   three-way merge (what git mergetool calls)
 jd merge <file-a> <file-b>            merge b into a without git; the result is written to a
 jd merge <dir-a> <dir-b>              the same for two directories
+jd [<folder> | <file>]                open the project window (no argument: the most recent project)
 jd install-git [--apply] [--local]    print (or write) the git diff/merge tool settings
 ```
 
 With `jd` as git's tools: `git difftool`, `git difftool --dir-diff` and `git mergetool`.
 
-Keys in the diff views: `n`/`p` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, `q` quit.
+Keys in the diff views: `↓`/`↑` next/previous change (in `jd git` and directory diffs with the diff pane focused, past the last or first change of a file they open the next or previous file), `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, `q` quit.
 Keys in the merge view (conflicts):
 
 | Key | Action |
@@ -75,6 +92,100 @@ Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage 
 `playground/` has sample files, two directory trees, merge inputs and a script that creates git repositories with
 local changes and with a merge stopped on conflicts: see `playground/README.md`.
 
+## Project window (work in progress)
+
+`jd` with no argument opens the **most recent project** (a folder) in the project window: the file tree on the left and a
+vim-style editor on the right; with no history it shows a welcome screen with the recent projects (`enter` open here,
+`w` open in a new window, `o` type a folder, `d` forget, `q` quit). `jd <folder>` opens that folder, `jd <file>` opens the
+file in its project (the git root, else its folder); a name that does not exist yet starts a new file. The list of recent
+projects, and for each one the file and cursor that were open, is kept in `<user config dir>/jd/projects.json`
+(`JD_CONFIG_DIR` changes the folder), so the next `jd` continues where you stopped.
+
+**Top bar**: the first line of the project window has the buttons *Project* (`ctrl+p`), *Terminal* (`ctrl+t`) and, in a git
+repository only, *Diff* (the git changes of the project as in `jd git`, `D` in the tree or `:diff`; `q` returns to the editor; save
+first, the diff shows what is on disk). `ctrl+p` and `ctrl+t` work in the tree and in the editor's normal mode (`ctrl+o` is the way
+back after `gd`/`gr`). *Terminal* opens a shell in the project in a panel under the editor, like VS Code. Everything you type goes
+to the shell; `ctrl+]` (or a click on the editor) gives the focus back, `ctrl+t` or the *Terminal* button hides the panel (the shells
+keep running). The panel has **tabs**, one shell each: `alt+t` or `[+]` (or `:terminal new`) opens another, a click or `alt+1` … `alt+9`
+chooses one, `alt+w` or `[×]` ends the shown one; a shell that exits closes its tab, the last one takes the panel with it. Windows has no embedded terminal yet: there the shell runs in place of the window until
+you `exit`.
+
+**File tabs**: every file you open from the tree, a search or `gd`/`gr` gets a tab above the editor (an open file is shown, not
+opened twice); each tab keeps its own text, undo history and cursor. `gt` / `gT` (or `:tabn` / `:tabp`, `:bn` / `:bp`) show the next /
+previous tab, a click on a name shows it, a click on `×` (or `:bd`, `:tabclose`) closes it. `:q`, `:wq` and `ctrl+d` close the tab, the
+last one leaves; `:wa` writes all files, `:qa` leaves when nothing is unsaved and `:qa!` anyway. The open tabs come back with the project.
+The footers and bars adapt to the width: on a narrow terminal the last commands lose their label (the `[key]` stays clickable) and then
+drop out, the first ones stay.
+
+**Unsaved changes**: closing a tab or switching project asks *Save / Discard / Cancel* (`s`, `d`, `c`,
+`←/→` and `enter`, or a click).
+
+**Switching projects**: `ctrl+p` (or `P` in the tree), `:project` (without a folder) or `:projects` / `:recent` open the list of
+recent projects; `enter` opens the chosen one in a new window, `o` lets you type a folder (with `tab` completion; also opened in a new window), `d`
+forgets an entry, `esc` closes the list. `:project <folder>` switches this window directly (the folder may be relative to the project or start
+with `~`); `:project!` discards unsaved changes, otherwise they block the switch (E37). The file and cursor that were open are
+stored first and come back when you return to a project; the language servers follow the window to the new project.
+
+**New windows** (like JetBrains): `w` in the tree on a folder, `:window [folder]` in the editor and `w` on the welcome screen
+start a new terminal window running `jd` on that folder. jd uses tmux (`tmux new-window`) when it runs inside tmux, Windows
+Terminal when it runs in **WSL** or Windows, Terminal.app on macOS, and on Linux the first terminal it finds
+(x-terminal-emulator, gnome-terminal, konsole, xfce4-terminal, kitty, wezterm, alacritty, foot, xterm). Set `JD_TERMINAL`
+(for example `JD_TERMINAL="kitty"`) to choose another one; jd and the folder are appended to it. The value is split at spaces (no quoting), so a path with spaces needs a wrapper script. Where no terminal can be started (a container, an ssh session) a project
+opens in the current window instead.
+
+Closing: `ctrl+d` (like `ctrl+c`) closes the window from the tree and from the editor's normal mode; with unsaved changes it
+warns first and quits on the second press. In insert mode `ctrl+c` only returns to normal mode.
+
+Welcome screen "open folder" (`o`): type a path and press `tab` to complete it (a single match completes the whole folder, several
+matches complete their common part, further presses walk through them; `shift+tab` goes back). The matching folders are listed
+while you type and can be chosen with the arrows; `enter` opens the folder here, `ctrl+w` in a new window.
+
+Tree keys: `j`/`k` move, `enter`/`o` open a file or toggle a folder, `h`/`l` collapse/expand, `R` refresh, `w` new window,
+`ctrl+e` or `tab` switch to the editor, `q` quit (`ctrl+e` switches back to the tree). Entries of `.git` and the root
+`.gitignore` (names and globs) are hidden. The mouse works in the tree, the editor and the footers.
+
+Editor: normal, insert and visual mode with the keys listed under "Merge" (the same engine), line numbers, syntax highlighting,
+scrolling, `:w [file]`, `:wq`, `:x`, `:q`, `:q!`, `:e[!] file`, `:set nu|nonu`, `:{n}`. Files are written atomically with
+their line endings. Planned (branch `feature/vim-ide`): tabs and splits, the rest of vim, diagnostics, a terminal panel.
+
+**Search in the open file** like vim: `/pattern` forwards, `?pattern` backwards (a regular expression; a pattern that is none is searched
+literally; start it with `\c` to ignore case), `enter` jumps, `n` / `N` repeat in the same / the opposite direction and wrap around the
+end of the file, an empty `/` repeats the last pattern, and `:noh` removes the highlight of the matches.
+
+**Search** (`ctrl+f` file names, `ctrl+g` file content; in the tree also `/`; `:find [name]`, `:grep [text]`): a full-screen search over
+the project. `tab` switches between the two. File names are matched fuzzily (`uied` finds `internal/ui/editor.go`; several words must all
+match; names rank above paths). Content search starts while you type (smart case: lower case ignores case, a capital letter makes it
+case sensitive; `ctrl+r` switches to regular expressions) and lists `file:line  text` with the match highlighted. `enter` or a click
+opens the file at the match, `esc` (or `ctrl+d`) closes. `node_modules`, `.venv`, `venv`, `__pycache__`, `.tox`, `.gradle`, `.idea`,
+`.git`, caches and everything in the project's `.gitignore` or an optional `.jdignore` (same patterns) are skipped, as are binary
+files and files over 1 MiB.
+
+**Language servers** (started when first needed, per project): `gd` jumps to the definition of the symbol under the cursor, `gr` lists
+its references (`j`/`k`, `enter` or a click jump), `ctrl+o` returns to where the last jump started (also after a search jump), also
+across files; so do `ctrl+c` and `ctrl+d` in normal mode, one step at a time, and only when there is no jump left to undo they close the
+window (unsaved changes block going back to another file, E37). `:format` (`:fmt`) formats the file as one undoable change: with the file type's formatter command when installed (Go: `gofmt`;
+HTML, CSS, SCSS, JavaScript, TypeScript, JSON: `prettier`; Python: `black`), otherwise with the language server (Java is formatted
+by jdtls). `ctrl+space` (or `ctrl+n`) in insert mode opens the completion popup with the server's
+suggestions and the words of the file as a fallback: typing narrows it, `ctrl+n`/`ctrl+p` or the arrows choose, `tab` or `enter`
+accept, `esc` closes it. Defaults: gopls (Go), typescript-language-server (JavaScript, TypeScript, JSX), pyright (Python),
+vscode-html/css/json-language-server, jdtls (Java), groovy-language-server; the installer sets them up. Add or change servers in
+`<config dir>/jd/lsp.json`: `{"servers": [{"name": "rust", "command": ["rust-analyzer"], "extensions": [".rs"], "languageId": "rust",
+"rootMarkers": ["Cargo.toml"], "formatter": ["rustfmt", "--emit", "stdout"]}]}` (an entry with the name of a default replaces it).
+
+**Tools are installed for you**: when a project window opens, jd checks for the language servers and formatters (gopls,
+typescript-language-server, pyright, the HTML/CSS/JSON servers, the Angular language server, jdtls, groovy-language-server,
+prettier, black) and **installs what is missing in the background**, one after the other, with the language's own tool (`go
+install`, `npm install -g --prefix ~/.local`, `pipx` or `pip --user`, or a download); the progress shows in the status line
+and the result when it is done. A runtime that is missing (Go, Node.js, Python, Java) is reported, not installed: jd never
+asks for root rights, the installer installs runtimes. A tool that failed is tried again after a day; `:tools` tries all missing
+ones now and `:tools status` lists what is missing. `JD_NO_AUTO_INSTALL=1` turns the start-up installation off. Tools end up in
+`~/.local/bin` (and Go's bin folder), which jd adds to its own PATH. Angular templates (`*.component.html`) use the Angular
+language server (it finds `typescript` and `@angular/language-service` in the project's `node_modules` or the global ones).
+
+**Clipboard**: copied and deleted text (`y`, `d`, `x`, ...) is also put on the system clipboard, and `p` pastes what is on it, so text
+moves between the editor and other programs (WSL and Windows use PowerShell, macOS pbcopy/pbpaste, Linux wl-clipboard, xclip or
+xsel). Text pasted by the terminal is inserted as text, never run as vim commands. `ctrl+d` leaves insert and visual mode like `ctrl+c`.
+
 ## Details
 
 ### Status
@@ -95,7 +206,7 @@ Directories: `jd <dir-a> <dir-b>` lists the files that differ (modified, only le
 list-plus-diff view; use it from git with `git difftool --dir-diff` (its temporary directories hold links to the working tree files, which
 are followed). Compared are regular files and links to regular files; links to directories, dangling links, special
 files and `.git` directories are skipped.
-Keys (diff): `n`/`p` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, mouse wheel, `q` quit.
+Keys (diff): `↓`/`↑` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, mouse wheel, `q` quit.
 The mouse is captured for wheel scrolling; hold Shift while dragging to select text in most terminals.
 
 ### Merge
@@ -166,7 +277,7 @@ the current repository only), then use `git difftool` and `git mergetool`.
 ### Build from source and test
 
 ```
-go build -o bin/jd ./cmd/jelly-diff
+go build -o bin/jd ./cmd/jelly-dev
 go test ./...
 ```
 
@@ -196,7 +307,7 @@ without build information, or the tag when installed with `go install ...@vX.Y.Z
 linked in:
 
 ```
-go build -trimpath -ldflags "-X main.version=0.1.0" -o bin/jd ./cmd/jelly-diff
+go build -trimpath -ldflags "-X main.version=0.1.0" -o bin/jd ./cmd/jelly-dev
 goreleaser release --snapshot --clean      # archives for Linux, macOS and Windows (amd64, arm64) in dist/
 ```
 
@@ -213,8 +324,8 @@ Every push to `master` runs the tests (`.github/workflows/release.yml`) and then
 
 Environment variables (see `.env.example`):
 
-- `JELLY_DIFF_THEME`: `dark` (default), `light` or `mono` (no colors: bold = added, strikethrough = deleted, reverse video = changed words).
-- `NO_COLOR`: any non-empty value selects `mono` unless `JELLY_DIFF_THEME` is set.
+- `JELLY_DEV_THEME`: `dark` (default), `light` or `mono` (no colors: bold = added, strikethrough = deleted, reverse video = changed words).
+- `NO_COLOR`: any non-empty value selects `mono` unless `JELLY_DEV_THEME` is set.
 
 ### Known limitations
 

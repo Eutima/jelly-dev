@@ -16,7 +16,14 @@ func newTestModel(oldLines, newLines []string) DiffModel {
 }
 
 func press(model DiffModel, key string) DiffModel {
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
+	switch key {
+	case "down":
+		msg = tea.KeyMsg{Type: tea.KeyDown}
+	case "up":
+		msg = tea.KeyMsg{Type: tea.KeyUp}
+	}
+	updated, _ := model.Update(msg)
 	return updated.(DiffModel)
 }
 
@@ -52,11 +59,11 @@ func TestView_ShowsBothFileNamesAndContent_WhenSizeKnown(t *testing.T) {
 
 func TestUpdate_SelectsNextChangeAndWraps_WhenNPressed(t *testing.T) {
 	model := newTestModel([]string{"a", "b", "c", "d", "e"}, []string{"a", "B", "c", "D", "e"})
-	model = press(model, "n")
+	model = press(model, "down")
 	if model.current != 0 {
 		t.Fatalf("want hunk 0, got %d", model.current)
 	}
-	model = press(press(model, "n"), "n")
+	model = press(press(model, "down"), "down")
 	if model.current != 0 {
 		t.Fatalf("want wrap to 0, got %d", model.current)
 	}
@@ -64,7 +71,7 @@ func TestUpdate_SelectsNextChangeAndWraps_WhenNPressed(t *testing.T) {
 
 func TestUpdate_SelectsLastChange_WhenPPressedFirst(t *testing.T) {
 	model := newTestModel([]string{"a", "b", "c"}, []string{"a", "B", "c", "D"})
-	if model = press(model, "p"); model.current != 1 {
+	if model = press(model, "up"); model.current != 1 {
 		t.Fatalf("want hunk 1, got %d", model.current)
 	}
 }
@@ -100,7 +107,7 @@ func TestUpdate_ClampsScroll_WhenScrollingPastEnd(t *testing.T) {
 func TestUpdate_ScrollsHunkIntoView_WhenNPressed(t *testing.T) {
 	newLines := manyLines(50)
 	newLines[30] = "changed"
-	model := press(newTestModel(manyLines(50), newLines), "n")
+	model := press(newTestModel(manyLines(50), newLines), "down")
 	if want := model.hunkStarts[0] - model.bodyHeight()/3; model.offset != want {
 		t.Fatalf("offset %d, want %d", model.offset, want)
 	}
@@ -108,7 +115,7 @@ func TestUpdate_ScrollsHunkIntoView_WhenNPressed(t *testing.T) {
 
 func TestUpdate_WrapsToLastChange_WhenPPressedOnFirst(t *testing.T) {
 	model := newTestModel([]string{"a", "b", "c"}, []string{"A", "b", "C"})
-	model = press(press(model, "n"), "p")
+	model = press(press(model, "down"), "up")
 	if model.current != 1 {
 		t.Fatalf("want hunk 1, got %d", model.current)
 	}

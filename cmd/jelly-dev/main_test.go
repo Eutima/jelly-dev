@@ -15,7 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	"github.com/eutima/jelly-diff/internal/ui"
+	"github.com/eutima/jelly-dev/internal/ui"
 )
 
 func noUI(tea.Model) error { return errors.New("ui must not start") }
@@ -54,7 +54,7 @@ func TestRun_ReportsNoDifferences_WhenFilesMatch(t *testing.T) {
 
 func TestRun_Fails_WhenArgumentCountWrong(t *testing.T) {
 	var stderr bytes.Buffer
-	if code := run([]string{"only-one"}, &bytes.Buffer{}, &stderr, testEnv(noUI)); code != exitUsage {
+	if code := run([]string{"one", "two", "three"}, &bytes.Buffer{}, &stderr, testEnv(noUI)); code != exitUsage {
 		t.Fatalf("code %d", code)
 	}
 	if !strings.Contains(stderr.String(), "usage") {
@@ -272,7 +272,7 @@ func TestRun_Fails_WhenThemeInvalid(t *testing.T) {
 	a, b := writeFile(t, "a", "x\n"), writeFile(t, "b", "y\n")
 	env := testEnv(noUI)
 	env.getenv = func(key string) string {
-		if key == "JELLY_DIFF_THEME" {
+		if key == "JELLY_DEV_THEME" {
 			return "neon"
 		}
 		return ""

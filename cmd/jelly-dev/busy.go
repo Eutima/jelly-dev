@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/eutima/jelly-diff/internal/ui"
+	"github.com/eutima/jelly-dev/internal/ui"
 )
 
 const (

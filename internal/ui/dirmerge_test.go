@@ -8,8 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/eutima/jelly-diff/internal/merge"
-	"github.com/eutima/jelly-diff/internal/source"
+	"github.com/eutima/jelly-dev/internal/merge"
+	"github.com/eutima/jelly-dev/internal/source"
 )
 
 func dirMergeTestModel(t *testing.T, s *saver) DirMergeModel {
@@ -57,7 +57,7 @@ func TestDirMergeModel_OpensMergeViewAndMarksFileMerged_WhenSavedAndLeft(t *test
 	s := &saver{}
 	model := dirMergeTestModel(t, s)
 	model = dirPress(model, enterKey)
-	if !model.hasChild || !strings.Contains(model.View(), "Jelly Diff") {
+	if !model.hasChild || !strings.Contains(model.View(), "Jelly Dev") {
 		t.Fatalf("the merge view must be shown:\n%s", model.View())
 	}
 	model = dirPress(model, runes("n"), runes("t"), runes("s"), runes("q"))

@@ -1,14 +1,17 @@
-# Install the latest jelly-diff release (Windows, PowerShell 5.1+).
-#   irm https://raw.githubusercontent.com/Eutima/jelly-diff/master/scripts/install.ps1 | iex
-# Environment: JELLY_DIFF_VERSION (e.g. v0.2.0, default latest), INSTALL_DIR (default %LOCALAPPDATA%\Programs\jelly-diff),
-#              JD_SKIP_GIT_CONFIG=1 (do not set jd as git's diff and merge tool).
+# Install the latest jelly-dev release (Windows, PowerShell 5.1+).
+#   irm https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/install.ps1 | iex
+# Environment: JELLY_DEV_VERSION (e.g. v0.2.0, default latest), INSTALL_DIR (default %LOCALAPPDATA%\Programs\jelly-dev),
+#              JD_SKIP_GIT_CONFIG=1 (do not set jd as git's diff and merge tool),
+#              JD_SKIP_DEPS=1 (do not check or install dependencies),
+#              JD_DEPS (groups to handle, comma separated; default basics,terminal,runtimes,lsp),
+#              JD_DRY_RUN=1 (print what would be installed).
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $ProgressPreference = 'SilentlyContinue'
 
-$repo = 'Eutima/jelly-diff'
-$installDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\jelly-diff' }
+$repo = 'Eutima/jelly-dev'
+$installDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\jelly-dev' }
 
 $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
     'AMD64' { 'amd64' }
@@ -16,7 +19,7 @@ $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
     default { throw "Unsupported architecture $($env:PROCESSOR_ARCHITECTURE)" }
 }
 
-$tag = $env:JELLY_DIFF_VERSION
+$tag = $env:JELLY_DEV_VERSION
 if (-not $tag) {
     $request = [Net.WebRequest]::Create("https://github.com/$repo/releases/latest")
     $request.AllowAutoRedirect = $false
@@ -26,13 +29,13 @@ if (-not $tag) {
 if ($tag -notmatch '^v\d+\.\d+\.\d+$') { throw "Could not determine the latest release (got '$tag')" }
 $version = $tag.TrimStart('v')
 
-$archive = "jelly-diff_${version}_windows_${arch}.zip"
+$archive = "jelly-dev_${version}_windows_${arch}.zip"
 $baseUrl = "https://github.com/$repo/releases/download/$tag"
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ([IO.Path]::GetRandomFileName())
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
 try {
-    Write-Host "Downloading jelly-diff $tag for windows/$arch"
+    Write-Host "Downloading jelly-dev $tag for windows/$arch"
     Invoke-WebRequest "$baseUrl/$archive" -OutFile (Join-Path $tmp $archive)
     Invoke-WebRequest "$baseUrl/checksums.txt" -OutFile (Join-Path $tmp 'checksums.txt')
 
@@ -45,7 +48,7 @@ try {
     Expand-Archive (Join-Path $tmp $archive) -DestinationPath $tmp -Force
     New-Item -ItemType Directory -Path $installDir -Force | Out-Null
     Copy-Item (Join-Path $tmp 'jd.exe') (Join-Path $installDir 'jd.exe') -Force
-    Remove-Item (Join-Path $installDir 'jelly-diff.exe') -Force -ErrorAction SilentlyContinue # old command name
+    Remove-Item (Join-Path $installDir 'jelly-dev.exe') -Force -ErrorAction SilentlyContinue # old command name
 }
 finally {
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -57,6 +60,127 @@ if (@($userPath -split ';') -notcontains $installDir) {
     [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
     Write-Host "Added $installDir to your user PATH."
 }
+# ---- dependencies: git, Windows Terminal, runtimes and language servers for the IDE ----------------------------
+$script:problems = @()
+
+function Write-Problem([string]$text) {
+    Write-Warning $text
+    $script:problems += $text
+}
+
+function Invoke-Step([string]$text, [scriptblock]$action) {
+    if ($env:JD_DRY_RUN) { Write-Host "[dry-run] $text"; return $true }
+    $global:LASTEXITCODE = 0
+    try { & $action; return ($global:LASTEXITCODE -eq 0) } catch { return $false }
+}
+
+function Update-SessionPath {
+    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+}
+
+function Test-Group([string]$name) {
+    $groups = if ($env:JD_DEPS) { $env:JD_DEPS } else { 'basics,terminal,runtimes,lsp' }
+    return (",$groups," -like "*,$name,*")
+}
+
+# Ensure-Winget installs a package with winget unless one of the commands exists already.
+function Ensure-Winget([string]$label, [string]$id, [string[]]$commands) {
+    foreach ($command in $commands) {
+        if (Get-Command $command -ErrorAction SilentlyContinue) { Write-Host "ok       $label ($command)"; return }
+    }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        Write-Problem "$label is missing and winget was not found (install the 'App Installer' from the Microsoft Store)"
+        return
+    }
+    Write-Host "install  $label (winget $id)"
+    $done = Invoke-Step "winget install --id $id" { winget install --id $id -e --silent --accept-package-agreements --accept-source-agreements }
+    if (-not $done) { Write-Problem "$label could not be installed (winget install --id $id)" } else { Update-SessionPath }
+}
+
+function Install-Npm([string]$label, [string]$command, [string[]]$packages) {
+    if (Get-Command $command -ErrorAction SilentlyContinue) { Write-Host "ok       $label (npm)"; return }
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { Write-Problem "$label needs npm, which is missing"; return }
+    Write-Host "install  $label (npm)"
+    if (-not (Invoke-Step "npm install -g $packages" { npm install -g @packages })) { Write-Problem "$label could not be installed (npm install -g $packages)" }
+}
+
+function Install-Download([string]$label, [string]$url, [scriptblock]$finish) {
+    Write-Host "install  $label (download)"
+    if ($env:JD_DRY_RUN) { Write-Host "[dry-run] download $url"; return }
+    try { & $finish } catch { Write-Problem "$label could not be installed from ${url}: $($_.Exception.Message)" }
+}
+
+function Install-Dependencies {
+    Write-Host ''
+    Write-Host 'Checking the tools the IDE needs (skip with JD_SKIP_DEPS=1, choose groups with JD_DEPS)'
+    if (Test-Group 'basics') { Ensure-Winget 'git' 'Git.Git' @('git') }
+    if (Test-Group 'terminal') { Ensure-Winget 'Windows Terminal' 'Microsoft.WindowsTerminal' @('wt') }
+    # the language servers and formatters need Go, Node.js, Python and Java: choosing them installs the runtimes as well
+    if ((Test-Group 'runtimes') -or (Test-Group 'lsp')) {
+        Ensure-Winget 'Go' 'GoLang.Go' @('go')
+        Ensure-Winget 'Node.js and npm' 'OpenJS.NodeJS.LTS' @('npm')
+        Ensure-Winget 'Java JDK' 'EclipseAdoptium.Temurin.21.JDK' @('javac')
+        Ensure-Winget 'Python (starts the Java language server)' 'Python.Python.3.12' @('python', 'py')
+    }
+    if (Test-Group 'lsp') {
+        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+        if (Get-Command gopls -ErrorAction SilentlyContinue) { Write-Host 'ok       gopls (Go)' }
+        elseif (-not (Get-Command go -ErrorAction SilentlyContinue)) { Write-Problem 'gopls needs Go, which is missing' }
+        else {
+            Write-Host 'install  gopls (go install)'
+            $env:GOBIN = $installDir
+            if (-not (Invoke-Step 'go install golang.org/x/tools/gopls@latest' { go install golang.org/x/tools/gopls@latest })) { Write-Problem 'gopls could not be installed (go install golang.org/x/tools/gopls@latest)' }
+        }
+        Install-Npm 'pyright (Python)' 'pyright-langserver' @('pyright')
+        Install-Npm 'typescript-language-server (JavaScript, TypeScript)' 'typescript-language-server' @('typescript', 'typescript-language-server')
+        Install-Npm 'HTML, CSS and JSON language servers' 'vscode-html-language-server' @('vscode-langservers-extracted')
+        Install-Npm 'Angular language server' 'ngserver' @('@angular/language-server', '@angular/language-service', 'typescript')
+        Install-Npm 'prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)' 'prettier' @('prettier')
+        if (Get-Command black -ErrorAction SilentlyContinue) { Write-Host 'ok       black (Python formatter)' }
+        else {
+            $python = @('python', 'py') | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
+            if (-not $python) { Write-Problem 'black (Python formatter) needs Python, which is missing' }
+            else {
+                Write-Host 'install  black (pip)'
+                if (-not (Invoke-Step 'python -m pip install --user black' { & $python -m pip install --user black })) { Write-Problem 'black could not be installed (python -m pip install --user black)' }
+            }
+        }
+        if (Get-Command jdtls -ErrorAction SilentlyContinue) { Write-Host 'ok       jdtls (Java)' }
+        elseif (-not (Get-Command java -ErrorAction SilentlyContinue)) { Write-Problem 'jdtls (Java language server) needs a JDK, which is missing' }
+        else {
+            $url = 'https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz'
+            Install-Download 'jdtls' $url {
+                $target = Join-Path $env:LOCALAPPDATA 'jdtls'
+                New-Item -ItemType Directory -Path $target -Force | Out-Null
+                $archive = Join-Path ([IO.Path]::GetTempPath()) 'jdtls.tar.gz'
+                Invoke-WebRequest $url -OutFile $archive
+                tar -xzf $archive -C $target
+                Remove-Item $archive -Force
+                Set-Content -Path (Join-Path $installDir 'jdtls.cmd') -Value "@python `"$target\bin\jdtls`" %*" -Encoding ASCII
+            }
+        }
+        if (Get-Command groovy-language-server -ErrorAction SilentlyContinue) { Write-Host 'ok       groovy-language-server' }
+        elseif (-not (Get-Command java -ErrorAction SilentlyContinue)) { Write-Problem 'groovy-language-server needs a JDK, which is missing' }
+        else {
+            $url = 'https://github.com/GroovyLanguageServer/groovy-language-server/releases/latest/download/groovy-language-server-all.jar'
+            Install-Download 'groovy-language-server' $url {
+                $dir = Join-Path $env:LOCALAPPDATA 'groovy-language-server'
+                New-Item -ItemType Directory -Path $dir -Force | Out-Null
+                $jar = Join-Path $dir 'groovy-language-server-all.jar'
+                Invoke-WebRequest $url -OutFile $jar
+                Set-Content -Path (Join-Path $installDir 'groovy-language-server.cmd') -Value "@java -jar `"$jar`" %*" -Encoding ASCII
+            }
+        }
+    }
+    if ($script:problems.Count -gt 0) {
+        Write-Warning ("some tools are missing, jd itself works without them:`n  - " + ($script:problems -join "`n  - "))
+    } else {
+        Write-Host 'All dependencies are in place.'
+    }
+}
+
+if (-not $env:JD_SKIP_DEPS) { Install-Dependencies }
+
 # Make jd the global default diff and merge tool of git (opt out with JD_SKIP_GIT_CONFIG=1).
 if (-not $env:JD_SKIP_GIT_CONFIG) {
     if (Get-Command git -ErrorAction SilentlyContinue) {

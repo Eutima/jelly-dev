@@ -14,6 +14,7 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
       - run: sh scripts/next-version_test.sh
+      - run: sh scripts/install_test.sh
   build:
     runs-on: ubuntu-latest
     strategy:
@@ -25,7 +26,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
-      - run: go build -trimpath -o /dev/null ./cmd/jelly-diff
+      - run: go build -trimpath -o /dev/null ./cmd/jelly-dev
         env:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}

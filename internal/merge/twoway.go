@@ -1,6 +1,6 @@
 package merge
 
-import "github.com/eutima/jelly-diff/internal/diff"
+import "github.com/eutima/jelly-dev/internal/diff"
 
 // TwoWay compares two texts that have no common ancestor. Equal runs are unchanged chunks; every run in which
 // the texts differ is a Conflict (Ours from a, Theirs from b, empty Base), so a person decides each of them and

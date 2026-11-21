@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/eutima/jelly-diff/internal/source"
+	"github.com/eutima/jelly-dev/internal/source"
 )
 
 func TestCommandKeys_MapsShownTextToKeys(t *testing.T) {
@@ -163,7 +163,7 @@ func TestGitFooter_ClicksReachListAndDiffCommands(t *testing.T) {
 	model = settle(model)
 	view := model.View()
 	// the list footer (left) and the diff footer (right) are both clickable
-	for _, command := range []string{"[tab] focus", "[t] split/unified"} {
+	for _, command := range []string{"[tab]", "[t] split/unified"} {
 		lines := strings.Split(plainText(view), "\n")
 		y := len(lines) - 1
 		x := strings.Index(lines[y], command)
@@ -174,7 +174,7 @@ func TestGitFooter_ClicksReachListAndDiffCommands(t *testing.T) {
 		updated, _ := model.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: x, Y: y})
 		after := updated.(GitModel)
 		switch command {
-		case "[tab] focus":
+		case "[tab]":
 			if after.focus == model.focus {
 				t.Errorf("[tab] must switch the focus")
 			}
@@ -183,5 +183,60 @@ func TestGitFooter_ClicksReachListAndDiffCommands(t *testing.T) {
 				t.Errorf("[t] must toggle the unified view")
 			}
 		}
+	}
+}
+
+func TestBar_ShrinksToTheTerminalWidth(t *testing.T) {
+	theme := DarkTheme()
+	build := func() *bar {
+		b := &bar{}
+		b.add(barPart{" NORMAL ", theme.Header})
+		b.command(":w", "save", true, theme)
+		b.command(":q", "quit", true, theme)
+		b.command("ctrl+f", "files", true, theme)
+		b.hint(barPart{"hint", theme.Footer})
+		return b
+	}
+	full := build()
+	shown := func(width int) string { return stripANSI(full.render(width, theme.Footer)) }
+	if got := shown(full.width); !strings.Contains(got, "[ctrl+f] files") || !strings.Contains(got, "hint") {
+		t.Fatalf("a wide terminal shows everything: %q", got)
+	}
+	got := shown(full.width - 6) // too narrow by a little: the hint goes first, then the last labels lose their text
+	if strings.Contains(got, "hint") || !strings.Contains(got, "[:w] save") || strings.Contains(got, "files") || !strings.Contains(got, "[ctrl+f]") {
+		t.Fatalf("narrower: %q", got)
+	}
+	if got = shown(20); !strings.Contains(got, "[:w]") || strings.Contains(got, "ctrl+f") || len([]rune(got)) != 20 {
+		t.Fatalf("very narrow: %q", got)
+	}
+	for width := 1; width <= full.width; width++ {
+		if w := len([]rune(shown(width))); w != width {
+			t.Fatalf("width %d rendered %d columns", width, w)
+		}
+	}
+	// what is shown is what a click reaches
+	if keys := full.visibleKeysAt(11, 20); len(keys) == 0 || keys[0] != ":" { // "[:w]" starts at column 9
+		t.Fatalf("keys at the shortened command: %v", keys)
+	}
+}
+
+func TestProject_BarsFitSmallTerminals(t *testing.T) {
+	for _, width := range []int{20, 30, 45, 60, 80} {
+		model, _ := newProjectFixture(t, width, sampleFiles)
+		model, _ = projectKeys(model, "G", "enter")
+		for i, line := range strings.Split(stripANSI(model.View()), "\n") {
+			if w := lipgloss.Width(line); w > width {
+				t.Fatalf("width %d line %d is %d wide: %q", width, i, w, line)
+			}
+		}
+	}
+	model, _ := newProjectFixture(t, 45, sampleFiles)
+	model, _ = projectKeys(model, "G", "enter")
+	lines := strings.Split(stripANSI(model.View()), "\n")
+	if !strings.Contains(lines[0], "Project") {
+		t.Fatalf("the top bar keeps its first button: %q", lines[0])
+	}
+	if last := lines[len(lines)-1]; !strings.Contains(last, "[:w]") {
+		t.Fatalf("the footer keeps the first command: %q", last)
 	}
 }

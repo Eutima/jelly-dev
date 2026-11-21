@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/eutima/jelly-diff/internal/source"
+	"github.com/eutima/jelly-dev/internal/source"
 )
 
 type fakeSource struct {
@@ -87,6 +87,8 @@ func gitPress(model GitModel, key string) GitModel {
 		msg = tea.KeyMsg{Type: tea.KeyDown}
 	case "enter":
 		msg = tea.KeyMsg{Type: tea.KeyEnter}
+	case "up":
+		msg = tea.KeyMsg{Type: tea.KeyUp}
 	case "esc":
 		msg = tea.KeyMsg{Type: tea.KeyEsc}
 	default:
@@ -162,9 +164,10 @@ func TestGitUpdate_DoesNotChangeFile_WhenDiffHasFocus(t *testing.T) {
 	}
 }
 
-func TestGitUpdate_NavigatesChangesInDiff_WhenNPressedInListFocus(t *testing.T) {
+func TestGitUpdate_NavigatesChangesInDiff_WhenArrowDownPressedInDiffFocus(t *testing.T) {
 	model, _ := newGitTestModel(100, 12)
-	if model = gitPress(model, "n"); model.diff.current != 0 {
+	model = gitPress(model, "enter") // focus the diff: there the arrows step through the changes
+	if model = gitPress(model, "down"); model.diff.current != 0 {
 		t.Fatalf("current %d", model.diff.current)
 	}
 }
@@ -326,5 +329,26 @@ func TestGitUpdate_KeepsShownFile_WhenUserReturnsToItDuringLoad(t *testing.T) {
 	model = runLoads(model, load)
 	if model.loadedFile != 0 || strings.Join(src.loads, ",") != "b.txt" || model.loading {
 		t.Fatalf("loaded %d loads %v loading %v", model.loadedFile, src.loads, model.loading)
+	}
+}
+
+func TestGitUpdate_ArrowsCrossFileBorders(t *testing.T) {
+	model, _ := newGitTestModel(100, 12)
+	model = gitPress(model, "enter")
+	model = gitPress(model, "down") // the only change of a.txt
+	if model.selected != 0 || model.diff.current != 0 {
+		t.Fatalf("down must select the change first: file %d change %d", model.selected, model.diff.current)
+	}
+	model = gitPress(model, "down") // at its end: on to b.txt, on its first change
+	if model.selected != 1 || model.loadedFile != 1 || model.diff.current != 0 {
+		t.Fatalf("down at the end must open the next file: file %d loaded %d change %d", model.selected, model.loadedFile, model.diff.current)
+	}
+	model = gitPress(model, "up") // at the first change: back to a.txt, on its last change
+	if model.selected != 0 || model.loadedFile != 0 || model.diff.current != 0 {
+		t.Fatalf("up at the start must open the previous file: file %d loaded %d change %d", model.selected, model.loadedFile, model.diff.current)
+	}
+	model = gitPress(model, "up") // first file: nothing before it, the change wraps
+	if model.selected != 0 {
+		t.Fatalf("up on the first file must stay: %d", model.selected)
 	}
 }

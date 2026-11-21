@@ -73,7 +73,22 @@ func (b *Buffer) handleNormal(key string) Result {
 		b.resetPending()
 		return None
 	case ":":
-		b.mode, b.cmd = Command, ""
+		b.mode, b.cmd, b.cmdPrefix = Command, "", ':'
+		b.resetPending()
+		return None
+	case "/", "?":
+		if !visual && b.op == 0 {
+			b.startSearch(rune(key[0]))
+		} else {
+			b.resetPending()
+		}
+		return None
+	case "n", "N":
+		if !visual && b.op == 0 {
+			for range n {
+				b.RepeatSearch(key == "N")
+			}
+		}
 		b.resetPending()
 		return None
 	case "g":

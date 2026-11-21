@@ -9,23 +9,22 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/eutima/jelly-diff/internal/diff"
-	"github.com/eutima/jelly-diff/internal/merge"
-	"github.com/eutima/jelly-diff/internal/source"
-	"github.com/eutima/jelly-diff/internal/ui"
+	"github.com/eutima/jelly-dev/internal/diff"
+	"github.com/eutima/jelly-dev/internal/merge"
+	"github.com/eutima/jelly-dev/internal/source"
+	"github.com/eutima/jelly-dev/internal/ui"
 )
 
 const (
 	mergeArgCount  = 4 // BASE LOCAL REMOTE MERGED, the order of git mergetool's variables
 	pairArgCount   = 2 // A B: merge B into A without git
-	defaultMode    = 0o644
 	defaultDirMode = 0o755
 	lf             = "\n"
 	crlf           = "\r\n"
 )
 
-// runMerge handles `jelly-diff merge BASE LOCAL REMOTE MERGED` (the git mergetool entry point) and
-// `jelly-diff merge A B` (two files or directories without git; the result goes into A).
+// runMerge handles `jelly-dev merge BASE LOCAL REMOTE MERGED` (the git mergetool entry point) and
+// `jelly-dev merge A B` (two files or directories without git; the result goes into A).
 func runMerge(args []string, stdout, stderr io.Writer, env environment) int {
 	var err error
 	switch len(args) {
@@ -208,39 +207,4 @@ func writeResult(path string, lines []string, lineEnding string) error {
 }
 
 // writeAtomic replaces path through a temporary file in the same directory, keeping the file mode.
-func writeAtomic(path string, data []byte) error {
-	target := path
-	if resolved, err := filepath.EvalSymlinks(path); err == nil {
-		target = resolved
-	}
-	mode := fs.FileMode(defaultMode)
-	if info, err := os.Stat(target); err == nil {
-		mode = info.Mode().Perm()
-	}
-	temp, err := os.CreateTemp(filepath.Dir(target), ".jelly-diff-*")
-	if err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	tempName := temp.Name()
-	cleanup := func(cause error) error {
-		temp.Close()
-		os.Remove(tempName)
-		return fmt.Errorf("write %s: %w", path, cause)
-	}
-	if _, err := temp.Write(data); err != nil {
-		return cleanup(err)
-	}
-	if err := temp.Chmod(mode); err != nil {
-		return cleanup(err)
-	}
-	if err := temp.Sync(); err != nil { // make sure the data is on disk before it replaces the old file
-		return cleanup(err)
-	}
-	if err := temp.Close(); err != nil {
-		return cleanup(err)
-	}
-	if err := os.Rename(tempName, target); err != nil {
-		return cleanup(err)
-	}
-	return nil
-}
+func writeAtomic(path string, data []byte) error { return source.WriteAtomic(path, data) }

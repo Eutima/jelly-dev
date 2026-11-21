@@ -1,7 +1,7 @@
-// Package ui contains the Bubble Tea models and rendering for jelly-diff.
+// Package ui contains the Bubble Tea models and rendering for jelly-dev.
 package ui
 
-import "github.com/eutima/jelly-diff/internal/diff"
+import "github.com/eutima/jelly-dev/internal/diff"
 
 // CellKind describes how a cell is drawn.
 type CellKind int
