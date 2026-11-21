@@ -188,12 +188,17 @@ function Install-Dependencies {
         if (Get-Command jdtls -ErrorAction SilentlyContinue) { Write-Host 'ok       jdtls (Java)' }
         elseif (-not (Get-Command java -ErrorAction SilentlyContinue)) { Write-Problem 'jdtls (Java language server) needs a JDK, which is missing' }
         else {
-            $url = 'https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz'
+            $url = 'https://download.eclipse.org/jdtls/milestones/1.63.0/jdt-language-server-1.63.0-202610191322.tar.gz'
+            $sha256 = 'b1f2abe0b3cccb462cf64fb4a5587c7d09df60cf8be7748b152cbd89d018bdc4' # pinned: raise both together
             Install-Download 'jdtls' $url {
                 $target = Join-Path $env:LOCALAPPDATA 'jdtls'
                 New-Item -ItemType Directory -Path $target -Force | Out-Null
                 $archive = Join-Path ([IO.Path]::GetTempPath()) 'jdtls.tar.gz'
                 Invoke-WebRequest $url -OutFile $archive
+                if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLower() -ne $sha256) {
+                    Remove-Item $archive -Force
+                    throw 'checksum mismatch: the download is not the pinned jdtls release'
+                }
                 tar -xzf $archive -C $target
                 Remove-Item $archive -Force
                 Set-Content -Path (Join-Path $installDir 'jdtls.cmd') -Value "@python `"$target\bin\jdtls`" %*" -Encoding ASCII

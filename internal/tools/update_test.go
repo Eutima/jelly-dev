@@ -130,7 +130,7 @@ func TestUpdateLanguages_UpdatesSharedToolsOnceAndTellsTheProgress(t *testing.T)
 
 func TestInstallJdtls_AnUpdateRemovesTheOldFilesFirst(t *testing.T) {
 	m, env := newMachine(t, "java", "python3")
-	m.archive = jdtlsArchive(map[string]string{"bin/jdtls": "#!/usr/bin/env python3\n", "plugins/launcher_new.jar": "new"})
+	m.archive = jdtlsArchive(t, map[string]string{"bin/jdtls": "#!/usr/bin/env python3\n", "plugins/launcher_new.jar": "new"})
 	stale := filepath.Join(env.DataDir(), "jdtls", "plugins", "launcher_old.jar")
 	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
 		t.Fatal(err)

@@ -2,7 +2,10 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -38,6 +41,9 @@ func (e Env) installJdtls(ctx context.Context, t Tool) error {
 	if err := e.Fetch(ctx, jdtlsURL, archive); err != nil {
 		return fmt.Errorf("download jdtls: %w", err)
 	}
+	if err := verifySHA256(archive, jdtlsSHA256); err != nil {
+		return fmt.Errorf("jdtls %s: %w", jdtlsVersion, err)
+	}
 	// an update: the old files go (the launcher looks for its jar by a pattern, a stale one next to the new one could be taken)
 	if err := os.RemoveAll(target); err != nil {
 		return err
@@ -69,4 +75,21 @@ func (e Env) installGroovy(ctx context.Context, t Tool) error {
 	return e.writeLauncher("groovy-language-server",
 		fmt.Sprintf("#!/bin/sh\nexec java -jar %q \"$@\"\n", jar),
 		fmt.Sprintf("@java -jar \"%s\" %%*\r\n", jar))
+}
+
+// verifySHA256 refuses a file whose SHA-256 differs from the expected hex digest.
+func verifySHA256(path, want string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return err
+	}
+	if got := hex.EncodeToString(hash.Sum(nil)); got != want {
+		return fmt.Errorf("checksum mismatch (got %s, want %s): the download is not the pinned release", got, want)
+	}
+	return nil
 }

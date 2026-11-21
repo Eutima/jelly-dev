@@ -22,8 +22,16 @@ const (
 	maxDownload       = 512 << 20
 	maxUnpacked       = 2 << 30 // all files of one archive together
 	maxArchiveEntries = 100000
-	jdtlsURL          = "https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz"
+	jdtlsVersion      = "1.63.0"
+	jdtlsFile         = "jdt-language-server-1.63.0-202610191322.tar.gz"
 	groovyURL         = "https://github.com/GroovyLanguageServer/groovy-language-server/releases/latest/download/groovy-language-server-all.jar"
+)
+
+// jdtlsURL and jdtlsSHA256 pin the jdtls download to one milestone; raise them together (the checksum is published next to
+// the archive as <file>.sha256). They are variables so tests can pin the archive they build.
+var (
+	jdtlsURL    = "https://download.eclipse.org/jdtls/milestones/" + jdtlsVersion + "/" + jdtlsFile
+	jdtlsSHA256 = "b1f2abe0b3cccb462cf64fb4a5587c7d09df60cf8be7748b152cbd89d018bdc4"
 )
 
 // runCommand runs an installer command; its error message ends with the first line of its output.

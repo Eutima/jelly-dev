@@ -255,6 +255,16 @@ python_tool() {
     fi
 }
 
+# jdtls is pinned to one milestone; raise the version, file and checksum together (jdtlsVersion in internal/tools/run.go too)
+JDTLS_URL=https://download.eclipse.org/jdtls/milestones/1.63.0/jdt-language-server-1.63.0-202610191322.tar.gz
+JDTLS_SHA256=b1f2abe0b3cccb462cf64fb4a5587c7d09df60cf8be7748b152cbd89d018bdc4
+
+# sha256_of FILE prints the SHA-256 of a file (sha256sum, or shasum on macOS)
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+    else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+
 lsp_jdtls() {
     if have jdtls; then log "ok       jdtls (Java)"; return 0; fi
     if [ "$pm" = brew ]; then
@@ -267,16 +277,17 @@ lsp_jdtls() {
     target=${XDG_DATA_HOME:-$HOME/.local/share}/jdtls
     log "install  jdtls (download to $target)"
     if [ -n "${JD_DRY_RUN:-}" ]; then
-        log "[dry-run] download https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz to $target and link $install_dir/jdtls"
+        log "[dry-run] download $JDTLS_URL to $target and link $install_dir/jdtls"
         return 0
     fi
     archive=$(mktemp)
-    if fetch "https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz" "$archive" &&
+    if fetch "$JDTLS_URL" "$archive" &&
+        [ "$(sha256_of "$archive")" = "$JDTLS_SHA256" ] &&
         mkdir -p "$target" "$install_dir" && tar -xzf "$archive" -C "$target" && [ -f "$target/bin/jdtls" ]; then
         chmod +x "$target/bin/jdtls"
         ln -sf "$target/bin/jdtls" "$install_dir/jdtls"
     else
-        problem "jdtls could not be downloaded from download.eclipse.org/jdtls"
+        problem "jdtls could not be downloaded from download.eclipse.org/jdtls (or the checksum of the pinned release 1.63.0 differs)"
     fi
     rm -f "$archive"
 }

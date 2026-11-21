@@ -89,8 +89,10 @@ preview with `JD_DRY_RUN=1`):
 
 System packages are installed with apt, dnf, pacman, zypper, apk or brew (through `sudo` unless you are root) and winget on
 Windows. A tool that cannot be installed is reported at the end; jd itself works without them (the language servers are
-used by the IDE from milestone 2 on). The jdtls and groovy-language-server downloads come from their official sites over
-HTTPS and are not checksum-verified.
+used by the IDE from milestone 2 on). jdtls is downloaded from download.eclipse.org over
+HTTPS as one pinned milestone (1.63.0) and verified against its SHA-256 before it is unpacked; a download that differs is
+refused. The groovy-language-server download comes from its GitHub releases over HTTPS and is not checksum-verified (the
+project publishes no release to pin).
 
 **Languages**: the language servers and formatters are installed per language: `python`, `html`, `css`, `json`, `yaml`, `docker` (Dockerfile), `compose` (Docker Compose), `javascript`
 (JavaScript and TypeScript), `angular`, `go`, `rust`, `c`, `cpp` (C++), `java`, `groovy`. The first time jd starts in a terminal it asks which ones you work

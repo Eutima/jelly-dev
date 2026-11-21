@@ -70,6 +70,8 @@ expect "html server via npm" "$out" "npm install -g --prefix $HOME/.local vscode
 expect "prettier via npm" "$out" "npm install -g --prefix $HOME/.local prettier"
 expect "black via pip" "$out" "python3 -m pip install --user black"
 expect "jdtls download is planned" "$out" "download https://download.eclipse.org/jdtls"
+expect "jdtls is a pinned milestone" "$out" "jdtls/milestones/1.63.0/"
+expect_not "jdtls is never a moving snapshot" "$out" "snapshots"
 expect "groovy server download is planned" "$out" "groovy-language-server release jar"
 
 out=$(plan apt-get "" "lsp")
