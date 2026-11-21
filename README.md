@@ -36,6 +36,8 @@ Merge: `jelly-diff merge <base> <local> <remote> <merged>` shows ours | result |
 merged automatically; conflicts start with the base lines. The result pane has a line cursor:
 
 - `j`/`k`/arrows move the cursor (the change under it is selected), `n`/`p` jump to the next/previous change.
+- Clicking the `»` (ours) or `«` (theirs) arrow in the gutter of a change applies that side, like `o`/`t` (three-pane
+  layout only).
 - `o` takes ours, `t` theirs, `b` both, `r` reverts the change to the base.
 - `m` (auto-resolve) resolves every conflict that is none in fact: a change of whitespace only, or both sides editing
   different words of the same lines. Real conflicts stay open; one `u` undoes the whole step.

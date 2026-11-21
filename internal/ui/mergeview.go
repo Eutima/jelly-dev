@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	markerWidth        = 2   // edge column: current-change bar and state symbol
-	fullChromeHeight   = 10  // from this terminal height on the header has three lines and the footer two
+	markerWidth        = 2  // edge column: current-change bar and state symbol
+	fullChromeHeight   = 10 // from this terminal height on the header has three lines and the footer two
+	fullHeaderLines    = 3
 	fullChromeLines    = 5   // header (title, pane labels, progress) + footer (actions, shortcuts)
 	compactChromeLines = 2   // pane labels + one status line
 	threePaneWidth     = 72  // narrower terminals show one pane at a time
@@ -475,4 +476,44 @@ func (m MergeModel) compactFooter() string {
 	return renderSegments([]barPart{
 		{summary, m.theme.Footer}, badge, {"   n/p o t b e u s q", m.theme.Footer},
 	}, m.width, m.theme.Footer)
+}
+
+// headerLines is the number of lines above the panes.
+func (m MergeModel) headerLines() int {
+	if m.height >= fullChromeHeight {
+		return fullHeaderLines
+	}
+	return 1
+}
+
+// click handles a left click: on a » or « arrow of a change it selects the change and applies ours or theirs.
+func (m *MergeModel) click(x, y int) {
+	if m.editing || m.width < threePaneWidth {
+		return
+	}
+	index := m.offset + y - m.headerLines()
+	if y < m.headerLines() || index < 0 || index >= len(m.rows) || y-m.headerLines() >= m.bodyHeight() {
+		return
+	}
+	_, widths := m.layout()
+	left := markerWidth + widths[paneOurs]
+	right := left + gutterWidth + widths[paneResult]
+	side := -1
+	switch {
+	case x >= left && x < left+gutterWidth:
+		side = paneOurs
+	case x >= right && x < right+gutterWidth:
+		side = paneTheirs
+	}
+	if side < 0 || !m.arrowShown(m.rows[index], side) {
+		return
+	}
+	m.setCursor(index)
+	m.notice("", false)
+	if side == paneOurs {
+		m.resolve(ChoiceOurs)
+	} else {
+		m.resolve(ChoiceTheirs)
+	}
+	m.clamp()
 }

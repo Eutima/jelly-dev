@@ -502,3 +502,45 @@ func TestMergeView_ShowsUnavailableActionsAsFaint_WhenNothingSelected(t *testing
 		t.Fatalf("completion message expected:\n%s", view)
 	}
 }
+
+// clickArrow clicks the gutter arrow of the first row of change number index (0-based) on the left or right side.
+func clickArrow(t *testing.T, model MergeModel, index, side int) MergeModel {
+	t.Helper()
+	_, widths := model.layout()
+	x := markerWidth + widths[paneOurs] + 1
+	if side == paneTheirs {
+		x = markerWidth + widths[paneOurs] + gutterWidth + widths[paneResult] + 1
+	}
+	y := model.headerLines() + model.starts[index] - model.offset
+	updated, _ := model.Update(tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	return updated.(MergeModel)
+}
+
+func TestMergeModel_AppliesOursOrTheirs_WhenArrowClicked(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = clickArrow(t, model, 0, paneOurs)
+	if got := model.Result()[1]; got != "X" || model.Unresolved() != 1 {
+		t.Fatalf("» must apply ours: result %v unresolved %d", model.Result(), model.Unresolved())
+	}
+	model = clickArrow(t, model, 1, paneTheirs)
+	if got := model.Result()[7]; got != "Y2" || model.Unresolved() != 0 {
+		t.Fatalf("« must apply theirs: result %v unresolved %d", model.Result(), model.Unresolved())
+	}
+}
+
+func TestMergeModel_IgnoresClick_WhenNotOnAnArrow(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	before := model.Result()
+	press := func(x, y int) {
+		updated, _ := model.Update(tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		model = updated.(MergeModel)
+	}
+	press(0, 0)                                 // header
+	press(markerWidth+2, model.headerLines()+1) // text of the ours pane
+	press(markerWidth+1, model.headerLines()+4) // unchanged row, wrong x
+	_, widths := model.layout()
+	press(markerWidth+widths[paneOurs]+1, model.headerLines()) // arrow column of an unchanged row
+	if !reflect.DeepEqual(model.Result(), before) || len(model.history) != 0 {
+		t.Fatalf("nothing may change: %v", model.Result())
+	}
+}

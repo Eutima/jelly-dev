@@ -249,6 +249,9 @@ func (m MergeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.clamp()
 	case tea.MouseMsg:
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			m.click(msg.X, msg.Y)
+		}
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
 			m.offset -= wheelLines
@@ -487,13 +490,11 @@ func (m MergeModel) gutter(row mergeRow, side int) string {
 	if m.current >= 0 && m.changed[m.current] == row.chunk {
 		style = m.theme.GutterCur
 	}
-	changedBySide := !equalLines(chunk.Ours, chunk.Base)
 	arrow := " » "
 	if side == paneTheirs {
-		changedBySide = !equalLines(chunk.Theirs, chunk.Base)
 		arrow = " « "
 	}
-	if row.first && changedBySide {
+	if m.arrowShown(row, side) {
 		return style.Render(arrow)
 	}
 	return style.Render(" ┃ ")
@@ -514,4 +515,17 @@ func (m MergeModel) WithHighlight(filenames ...string) MergeModel {
 	m.paneSyntax[paneTheirs] = highlightLines(filenames, theirs)
 	m.rebuild()
 	return m
+}
+
+// arrowShown tells whether the gutter of a row draws the » (side ours) or « (side theirs) arrow: on the first row
+// of a change that the neighbouring side contributes to. The arrow is also the click target that applies it.
+func (m MergeModel) arrowShown(row mergeRow, side int) bool {
+	chunk := m.chunks[row.chunk]
+	if chunk.Kind == merge.Unchanged || !row.first {
+		return false
+	}
+	if side == paneTheirs {
+		return !equalLines(chunk.Theirs, chunk.Base)
+	}
+	return !equalLines(chunk.Ours, chunk.Base)
 }
