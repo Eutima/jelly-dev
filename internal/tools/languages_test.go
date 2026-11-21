@@ -32,9 +32,9 @@ func TestParseLanguages_KeepsTheCatalogOrderAndKnowsAll(t *testing.T) {
 
 func TestToolsFor_LanguageServersAndFormattersOnceEach(t *testing.T) {
 	got := ToolsFor(DefaultLanguages())
-	want := []string{"pyright", "vscode-langservers-extracted", "prettier", "black"} // in the order of Defaults()
+	want := []string{"pyright", "vscode-langservers-extracted", "yaml-language-server", "dockerfile-language-server", "compose-language-service", "prettier", "black"} // the order of Defaults() is the order of the tools
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("python, html, css and json need %v, got %v", want, got)
+		t.Fatalf("the default languages need %v, got %v", want, got)
 	}
 	if ToolsFor(nil) != nil {
 		t.Fatal("no language needs no tool")
@@ -46,8 +46,8 @@ func TestToolsFor_LanguageServersAndFormattersOnceEach(t *testing.T) {
 			}
 		}
 	}
-	if !reflect.DeepEqual(DefaultLanguages(), []string{"python", "html", "css", "json"}) {
-		t.Fatalf("the defaults are python, html, css and json: %v", DefaultLanguages())
+	if !reflect.DeepEqual(DefaultLanguages(), []string{"python", "html", "css", "json", "yaml", "docker", "compose"}) {
+		t.Fatalf("the defaults are python, html, css, json, yaml, docker and compose: %v", DefaultLanguages())
 	}
 }
 
@@ -97,8 +97,8 @@ func TestInstaller_OnlyInstallsToolsOfTheChosenLanguages(t *testing.T) {
 	// without any choice the defaults decide
 	fresh := NewInstaller(t.TempDir())
 	fresh.env = env
-	if got := fresh.Pending(true); !reflect.DeepEqual(got, []string{"black", "prettier", "pyright", "vscode-langservers-extracted"}) {
-		t.Fatalf("the defaults are python, html, css, json: %v", got)
+	if got := fresh.Pending(true); !reflect.DeepEqual(got, []string{"black", "compose-language-service", "dockerfile-language-server", "prettier", "pyright", "vscode-langservers-extracted", "yaml-language-server"}) {
+		t.Fatalf("the defaults need these tools: %v", got)
 	}
 }
 

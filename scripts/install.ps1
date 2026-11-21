@@ -4,7 +4,7 @@
 #              JD_SKIP_GIT_CONFIG=1 (do not set jd as git's diff and merge tool),
 #              JD_SKIP_DEPS=1 (do not check or install dependencies),
 #              JD_DEPS (groups to handle, comma separated; default basics,terminal,runtimes,lsp),
-#              JD_LANGS (languages to install language servers and formatters for: python, html, css, json, javascript, angular,
+#              JD_LANGS (languages to install language servers and formatters for: python, html, css, json, yaml, docker, compose, javascript, angular,
 #              go, java, groovy, all or none; default all),
 #              JD_DRY_RUN=1 (print what would be installed),
 #              JD_BIN (path of an installed jd.exe, for the pip package that runs this script itself on its first start:
@@ -116,7 +116,7 @@ function Install-Download([string]$label, [string]$url, [scriptblock]$finish) {
     try { & $finish } catch { Write-Problem "$label could not be installed from ${url}: $($_.Exception.Message)" }
 }
 
-# Test-Lang tells whether the tools of a language are wanted: JD_LANGS lists the languages (python, html, css, json,
+# Test-Lang tells whether the tools of a language are wanted: JD_LANGS lists the languages (python, html, css, json, yaml, docker, compose,
 # javascript, angular, go, java, groovy), "none" means no language, "all" every one; without it every language is wanted.
 function Test-Lang([string[]]$ids) {
     if (-not $env:JD_LANGS) { return $true }
@@ -134,7 +134,7 @@ function Install-Dependencies {
     # the language servers and formatters need Go, Node.js, Python and Java: choosing them installs the runtimes as well
     if ((Test-Group 'runtimes') -or (Test-Group 'lsp')) {
         if (Test-Lang @('go')) { Ensure-Winget 'Go' 'GoLang.Go' @('go') }
-        if (Test-Lang @('python', 'html', 'css', 'json', 'javascript', 'angular')) { Ensure-Winget 'Node.js and npm' 'OpenJS.NodeJS.LTS' @('npm') }
+        if (Test-Lang @('python', 'html', 'css', 'json', 'yaml', 'docker', 'compose', 'javascript', 'angular')) { Ensure-Winget 'Node.js and npm' 'OpenJS.NodeJS.LTS' @('npm') }
         if (Test-Lang @('java', 'groovy')) { Ensure-Winget 'Java JDK' 'EclipseAdoptium.Temurin.21.JDK' @('javac') }
         if (Test-Lang @('python', 'java')) { Ensure-Winget 'Python (runs black and starts the Java language server)' 'Python.Python.3.12' @('python', 'py') }
     }
@@ -152,8 +152,11 @@ function Install-Dependencies {
         if (Test-Lang @('python')) { Install-Npm 'pyright (Python)' 'pyright-langserver' @('pyright') }
         if (Test-Lang @('javascript', 'angular')) { Install-Npm 'typescript-language-server (JavaScript, TypeScript)' 'typescript-language-server' @('typescript', 'typescript-language-server') }
         if (Test-Lang @('html', 'css', 'json')) { Install-Npm 'HTML, CSS and JSON language servers' 'vscode-html-language-server' @('vscode-langservers-extracted') }
+        if (Test-Lang @('yaml')) { Install-Npm 'YAML language server' 'yaml-language-server' @('yaml-language-server') }
+        if (Test-Lang @('docker')) { Install-Npm 'Dockerfile language server' 'docker-langserver' @('dockerfile-language-server-nodejs') }
+        if (Test-Lang @('compose')) { Install-Npm 'Docker Compose language server' 'docker-compose-langserver' @('@microsoft/compose-language-service') }
         if (Test-Lang @('angular')) { Install-Npm 'Angular language server' 'ngserver' @('@angular/language-server', '@angular/language-service', 'typescript') }
-        if (Test-Lang @('html', 'css', 'json', 'javascript', 'angular')) { Install-Npm 'prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)' 'prettier' @('prettier') }
+        if (Test-Lang @('html', 'css', 'json', 'yaml', 'javascript', 'angular')) { Install-Npm 'prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)' 'prettier' @('prettier') }
         if (Test-Lang @('python')) {
         if (Get-Command black -ErrorAction SilentlyContinue) { Write-Host 'ok       black (Python formatter)' }
         else {

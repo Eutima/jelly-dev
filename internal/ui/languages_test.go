@@ -38,25 +38,25 @@ func languageKeys(m LanguagesModel, keys ...string) LanguagesModel {
 	return m
 }
 
-func TestLanguages_StartWithPythonHtmlCssAndJsonChecked(t *testing.T) {
+func TestLanguages_StartWithTheDefaultLanguagesChecked(t *testing.T) {
 	m, outcome := languagesModel(t)
 	view := stripANSI(m.View())
-	for _, want := range []string{"which languages do you work with", "[x] Python", "[x] HTML", "[x] CSS", "[x] JSON", "[ ] Go", "[ ] Java", "pyright, black", "[enter] install"} {
+	for _, want := range []string{"which languages do you work with", "[x] Python", "[x] HTML", "[x] CSS", "[x] JSON", "[x] YAML", "[x] Dockerfile", "[x] Docker Compose", "[ ] Go", "[ ] Java", "pyright, black", "[enter] install"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("the question lacks %q:\n%s", want, view)
 		}
 	}
 	m = languageKeys(m, "enter")
-	if !reflect.DeepEqual(outcome.Chosen, []string{"python", "html", "css", "json"}) || outcome.Skipped {
+	if !reflect.DeepEqual(outcome.Chosen, []string{"python", "html", "css", "json", "yaml", "docker", "compose"}) || outcome.Skipped {
 		t.Fatalf("enter takes the defaults: %+v", outcome)
 	}
 }
 
 func TestLanguages_ToggleAllNoneAndSkip(t *testing.T) {
 	m, outcome := languagesModel(t)
-	m = languageKeys(m, " ") // the first entry, Python, unchecked
-	m = languageKeys(m, "down", "down", "down", "down", "down", " ")
-	if got := m.checkedIDs(); !reflect.DeepEqual(got, []string{"html", "css", "json", "angular"}) {
+	m = languageKeys(m, " ")                                    // the first entry, Python, unchecked
+	m = languageKeys(m, append(rowsDown("javascript"), " ")...) // down to JavaScript
+	if got := m.checkedIDs(); !reflect.DeepEqual(got, []string{"html", "css", "json", "yaml", "docker", "compose", "javascript"}) {
 		t.Fatalf("space toggles the entry under the cursor: %v", got)
 	}
 	m = languageKeys(m, "a")
@@ -87,7 +87,7 @@ func TestLanguages_AClickTogglesAndTheHintsAreClickable(t *testing.T) {
 	m, outcome := languagesModel(t)
 	updated, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: languagesTop + 1}) // HTML
 	m = updated.(LanguagesModel)
-	if got := m.checkedIDs(); !reflect.DeepEqual(got, []string{"python", "css", "json"}) {
+	if got := m.checkedIDs(); !reflect.DeepEqual(got, []string{"python", "css", "json", "yaml", "docker", "compose"}) {
 		t.Fatalf("a click toggles the row: %v", got)
 	}
 	var x int
@@ -108,4 +108,18 @@ func TestLanguages_AClickTogglesAndTheHintsAreClickable(t *testing.T) {
 		}
 	}
 	t.Fatal("the [space] hint must send the space key")
+}
+
+// rowsDown returns the "down" keys that lead from the first row of the list to the language.
+func rowsDown(id string) []string {
+	for i, l := range tools.Languages() {
+		if l.ID == id {
+			keys := make([]string, i)
+			for j := range keys {
+				keys[j] = "down"
+			}
+			return keys
+		}
+	}
+	panic("unknown language " + id)
 }

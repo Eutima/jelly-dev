@@ -86,9 +86,9 @@ Windows. A tool that cannot be installed is reported at the end; jd itself works
 used by the IDE from milestone 2 on). The jdtls and groovy-language-server downloads come from their official sites over
 HTTPS and are not checksum-verified.
 
-**Languages**: the language servers and formatters are installed per language: `python`, `html`, `css`, `json`, `javascript`
+**Languages**: the language servers and formatters are installed per language: `python`, `html`, `css`, `json`, `yaml`, `docker` (Dockerfile), `compose` (Docker Compose), `javascript`
 (JavaScript and TypeScript), `angular`, `go`, `java`, `groovy`. The first time jd starts in a terminal it asks which ones you work
-with (python, html, css and json are checked; `space` toggles, `a` all, `n` none, `enter` installs, `esc` chooses no language, `ctrl+c` means "not now" and it asks again
+with (python, html, css, json, yaml, docker and compose are checked; `space` toggles, `a` all, `n` none, `enter` installs, `esc` chooses no language, `ctrl+c` means "not now" and it asks again
 at the next start) and remembers the answer in `languages.json` in the config folder. Only the tools of those languages (and the runtimes they need) are installed, by the
 installer script, and later by the IDE when it starts (`:tools` installs what is missing). Change it any time from the command line,
 which needs no root rights:
@@ -101,7 +101,7 @@ jd install-lsp --all                  # every language
 ```
 
 A missing runtime (Node.js, Python, Go, a JDK) is reported; `jd setup` installs those. The installer script takes the same
-choice as `JD_LANGS=python,html,css,json` (also `all` or `none`).
+choice as `JD_LANGS=python,html,css,json,yaml,docker,compose` (also `all` or `none`).
 
 Options (environment variables): `JELLY_DEV_VERSION` (for example `v0.2.0`) picks a release, `INSTALL_DIR` changes
 the target, `JD_SKIP_GIT_CONFIG=1` leaves the git configuration alone.

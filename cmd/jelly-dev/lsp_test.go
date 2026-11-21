@@ -56,7 +56,7 @@ func TestInstallLSP_InstallsTheNamedLanguagesAndAddsThemToTheChosenOnes(t *testi
 	if len(fake.asked) != 1 || strings.Join(fake.asked[0], ",") != "go,java" {
 		t.Fatalf("only the named languages are installed now: %v", fake.asked)
 	}
-	if saved, _ := tools.LoadLanguages(dir); strings.Join(saved, ",") != "python,html,css,json,go,java" {
+	if saved, _ := tools.LoadLanguages(dir); strings.Join(saved, ",") != "python,html,css,json,yaml,docker,compose,go,java" {
 		t.Fatalf("they are added to the defaults (nothing was chosen before): %v", saved)
 	}
 	for _, want := range []string{"Installing the language servers and formatters for: go, java", "gopls", "jdtls", "installed", "2 installed, 0 were there already, 0 failed"} {

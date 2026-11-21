@@ -40,7 +40,7 @@ const (
   jd setup                   run the installer script again: install the tools the IDE needs and set git up
                              (jd setup --mark-done: only record that the installer did it)
   jd install-lsp [--all] [--list] [<language>...]
-                             install the language servers and formatters of the languages (python html css json
+                             install the language servers and formatters of the languages (python html css json yaml docker compose
                              javascript angular go java groovy; none given: the languages chosen so far)
   jd install-git [--apply] [--local]
                              print (or with --apply write, overwriting existing values) the git diff/merge tool settings`

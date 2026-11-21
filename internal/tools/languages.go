@@ -30,6 +30,9 @@ func Languages() []Language {
 		{ID: "html", Name: "HTML", Tools: []string{"vscode-langservers-extracted", "prettier"}},
 		{ID: "css", Name: "CSS, SCSS, Less", Tools: []string{"vscode-langservers-extracted", "prettier"}},
 		{ID: "json", Name: "JSON", Tools: []string{"vscode-langservers-extracted", "prettier"}},
+		{ID: "yaml", Name: "YAML", Tools: []string{"yaml-language-server", "prettier"}},
+		{ID: "docker", Name: "Dockerfile", Tools: []string{"dockerfile-language-server"}},
+		{ID: "compose", Name: "Docker Compose", Tools: []string{"compose-language-service"}},
 		{ID: "javascript", Name: "JavaScript and TypeScript", Tools: []string{"typescript-language-server", "prettier"}},
 		{ID: "angular", Name: "Angular", Tools: []string{"angular-language-server", "typescript-language-server", "prettier"}},
 		{ID: "go", Name: "Go", Tools: []string{"gopls"}},
@@ -39,7 +42,9 @@ func Languages() []Language {
 }
 
 // DefaultLanguages are chosen when the user has not chosen yet.
-func DefaultLanguages() []string { return []string{"python", "html", "css", "json"} }
+func DefaultLanguages() []string {
+	return []string{"python", "html", "css", "json", "yaml", "docker", "compose"}
+}
 
 // ParseLanguages turns "python,html css" (or "all") into language ids, in the order of Languages, without doubles. An
 // unknown name is an error that lists the known ones.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -46,6 +47,11 @@ func DefaultServers() []ServerSpec {
 		{Name: "html", Command: []string{"vscode-html-language-server", "--stdio"}, Extensions: []string{".html", ".htm"}, LanguageID: "html", Formatter: prettier},
 		{Name: "css", Command: []string{"vscode-css-language-server", "--stdio"}, Extensions: []string{".css", ".scss", ".less"}, LanguageIDs: map[string]string{".css": "css", ".scss": "scss", ".less": "less"}, Formatter: prettier},
 		{Name: "json", Command: []string{"vscode-json-language-server", "--stdio"}, Extensions: []string{".json", ".jsonc"}, LanguageID: "json", Formatter: prettier},
+		{Name: "yaml", Command: []string{"yaml-language-server", "--stdio"}, Extensions: []string{".yaml", ".yml"}, LanguageID: "yaml", Formatter: prettier},
+		// Dockerfile, api.dockerfile, Dockerfile.dev; docker-compose.yml, compose.yaml, docker-compose.override.yml. The longest entry
+		// wins, so a Compose file goes to the Compose server and not to the YAML server
+		{Name: "dockerfile", Command: []string{"docker-langserver", "--stdio"}, Extensions: []string{"dockerfile", "dockerfile.*"}, LanguageID: "dockerfile"},
+		{Name: "compose", Command: []string{"docker-compose-langserver", "--stdio"}, Extensions: []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml", "docker-compose.*.yml", "docker-compose.*.yaml", "compose.*.yml", "compose.*.yaml"}, LanguageID: "dockercompose"},
 		{Name: "jdtls", Command: []string{"jdtls"}, Extensions: []string{".java"}, LanguageID: "java", RootMarkers: []string{"pom.xml", "build.gradle", "build.gradle.kts"}},
 		{Name: "groovy", Command: []string{"groovy-language-server"}, Extensions: []string{".groovy", ".gradle"}, LanguageID: "groovy", RootMarkers: []string{"build.gradle", "settings.gradle"}},
 	}
@@ -86,6 +92,24 @@ func LoadServers(configPath string) ([]ServerSpec, error) {
 	return servers, nil
 }
 
+// matchesName tells whether a file name (in lower case) belongs to an entry of a server's extensions: ".go" matches the end of the
+// name (".component.html" too); a pattern with * or ? ("dockerfile.*", "docker-compose.*.yml") matches the whole name; a plain name
+// ("dockerfile") matches the whole name or the end of it after a dot, a dash or an underscore ("api.dockerfile"), not "mydockerfile".
+func matchesName(name, ext string) bool {
+	switch {
+	case strings.ContainsAny(ext, "*?["):
+		matched, _ := path.Match(ext, name)
+		return matched
+	case strings.HasPrefix(ext, "."):
+		return strings.HasSuffix(name, ext) && len(name) > len(ext)-1
+	case name == ext:
+		return true
+	case strings.HasSuffix(name, ext):
+		return strings.ContainsRune(".-_", rune(name[len(name)-len(ext)-1]))
+	}
+	return false
+}
+
 // specFor returns the server for a file and the language id to send for it. An extension may have several dots
 // (".component.html"); the longest match wins, so Angular templates go to the Angular server and other HTML to the HTML server.
 func specFor(servers []ServerSpec, path string) (ServerSpec, string, bool) {
@@ -94,7 +118,7 @@ func specFor(servers []ServerSpec, path string) (ServerSpec, string, bool) {
 	for i, spec := range servers {
 		for _, candidate := range spec.Extensions {
 			ext := strings.ToLower(candidate)
-			if strings.HasSuffix(lower, ext) && len(lower) > len(ext)-1 && len(ext) > bestLen {
+			if matchesName(lower, ext) && len(ext) > bestLen {
 				best, bestLen, bestExt = i, len(ext), ext
 			}
 		}

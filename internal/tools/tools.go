@@ -47,9 +47,14 @@ func Defaults() []Tool {
 			Packages: []string{"vscode-langservers-extracted"}, Purpose: "language servers for HTML, CSS and JSON"},
 		{Name: "angular-language-server", Binary: "ngserver", Kind: NPM,
 			Packages: []string{"@angular/language-server", "@angular/language-service", "typescript"}, Purpose: "language server for Angular templates"},
+		{Name: "yaml-language-server", Binary: "yaml-language-server", Kind: NPM, Packages: []string{"yaml-language-server"}, Purpose: "language server for YAML"},
+		{Name: "dockerfile-language-server", Binary: "docker-langserver", Kind: NPM,
+			Packages: []string{"dockerfile-language-server-nodejs"}, Purpose: "language server for Dockerfiles"},
+		{Name: "compose-language-service", Binary: "docker-compose-langserver", Kind: NPM,
+			Packages: []string{"@microsoft/compose-language-service"}, Purpose: "language server for Docker Compose files"},
 		{Name: "jdtls", Binary: "jdtls", Kind: Download, Purpose: "language server for Java"},
 		{Name: "groovy-language-server", Binary: "groovy-language-server", Kind: Download, Purpose: "language server for Groovy"},
-		{Name: "prettier", Binary: "prettier", Kind: NPM, Packages: []string{"prettier"}, Purpose: "formatter for HTML, CSS, JavaScript, TypeScript and JSON"},
+		{Name: "prettier", Binary: "prettier", Kind: NPM, Packages: []string{"prettier"}, Purpose: "formatter for HTML, CSS, JavaScript, TypeScript, JSON and YAML"},
 		{Name: "black", Binary: "black", Kind: Python, Packages: []string{"black"}, Purpose: "formatter for Python"},
 	}
 }

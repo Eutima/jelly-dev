@@ -240,17 +240,17 @@ func TestSetup_AsksWhichLanguagesOnceAndPassesThemToTheInstaller(t *testing.T) {
 	env := fake.env(true, "")
 	env.runUI = answerLanguages(&asked, keyEnter) // the defaults
 	setupOnFirstStart(dir, io.Discard, io.Discard, env)
-	if asked != 1 || len(fake.envs) != 1 || fake.envs[0][0] != "JD_LANGS=python,html,css,json" {
+	if asked != 1 || len(fake.envs) != 1 || fake.envs[0][0] != "JD_LANGS=python,html,css,json,yaml,docker,compose" {
 		t.Fatalf("the question is asked and the answer goes to the installer: asked %d, env %v", asked, fake.envs)
 	}
-	if saved, ok := tools.LoadLanguages(dir); !ok || strings.Join(saved, ",") != "python,html,css,json" {
+	if saved, ok := tools.LoadLanguages(dir); !ok || strings.Join(saved, ",") != "python,html,css,json,yaml,docker,compose" {
 		t.Fatalf("the answer is saved: %v %v", saved, ok)
 	}
 	// jd setup later: nobody is asked again, the saved languages are used
 	if code := run([]string{"setup"}, io.Discard, io.Discard, withConfigDir(env, dir)); code != exitOK {
 		t.Fatalf("code %d", code)
 	}
-	if asked != 1 || len(fake.envs) != 2 || fake.envs[1][0] != "JD_LANGS=python,html,css,json" {
+	if asked != 1 || len(fake.envs) != 2 || fake.envs[1][0] != "JD_LANGS=python,html,css,json,yaml,docker,compose" {
 		t.Fatalf("the question is asked only initially: asked %d, env %v", asked, fake.envs)
 	}
 }
@@ -285,9 +285,9 @@ func TestSetup_OtherLanguagesAreChosenWithTheKeys(t *testing.T) {
 	dir, fake, asked := t.TempDir(), &installerFake{}, 0
 	env := fake.env(true, "")
 	down := tea.KeyMsg{Type: tea.KeyDown}
-	env.runUI = answerLanguages(&asked, keySpace, down, down, down, down, down, down, keySpace, keyEnter) // Python off, Go on
+	env.runUI = answerLanguages(&asked, keySpace, down, down, down, down, down, down, down, down, down, keySpace, keyEnter) // Python off, Go on
 	setupOnFirstStart(dir, io.Discard, io.Discard, env)
-	if fake.envs[0][0] != "JD_LANGS=html,css,json,go" {
+	if fake.envs[0][0] != "JD_LANGS=html,css,json,yaml,docker,compose,go" {
 		t.Fatalf("python off, go on: %v", fake.envs)
 	}
 }
@@ -316,7 +316,7 @@ func TestSetup_JdLangsFromTheEnvironmentOrNoTerminalAsksNobody(t *testing.T) {
 	if code := run([]string{"setup"}, io.Discard, io.Discard, env2); code != exitOK {
 		t.Fatalf("code %d", code)
 	}
-	if asked != 0 || fake2.envs[0][0] != "JD_LANGS=python,html,css,json" {
+	if asked != 0 || fake2.envs[0][0] != "JD_LANGS=python,html,css,json,yaml,docker,compose" {
 		t.Fatalf("without a terminal nobody is asked and the defaults are used: asked %d, %v", asked, fake2.envs)
 	}
 	if _, ok := tools.LoadLanguages(dir); ok {

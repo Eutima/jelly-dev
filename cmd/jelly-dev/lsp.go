@@ -75,7 +75,7 @@ func runInstallLSP(args []string, stdout, stderr io.Writer, env environment) int
 		languages = requested
 	}
 	if len(languages) == 0 {
-		fmt.Fprintln(stderr, "jd: no language chosen: name some, for example: jd install-lsp python html css json (or --all, --list)")
+		fmt.Fprintln(stderr, "jd: no language chosen: name some, for example: jd install-lsp python html css json yaml docker compose (or --all, --list)")
 		return exitUsage
 	}
 	fmt.Fprintf(stdout, "Installing the language servers and formatters for: %s\n", strings.Join(languages, ", "))

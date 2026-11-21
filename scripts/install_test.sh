@@ -108,6 +108,16 @@ expect_not "no typescript server" "$out" "typescript-language-server"
 out=$(FAKE_LANGS="python html;css" plan apt-get "git xclip xterm go npm java python3 pipx" "lsp")
 expect "spaces and semicolons separate languages: html" "$out" "vscode-langservers-extracted"
 expect "spaces and semicolons separate languages: python" "$out" "pyright"
+out=$(FAKE_LANGS="yaml,docker,compose" plan apt-get "git xclip xterm go npm java python3 pipx" "lsp")
+expect "the YAML server" "$out" "yaml-language-server"
+expect "the Dockerfile server" "$out" "dockerfile-language-server-nodejs"
+expect "the Docker Compose server" "$out" "@microsoft/compose-language-service"
+expect "prettier formats YAML" "$out" "prettier"
+expect_not "yaml, docker and compose need no python tool" "$out" "black"
+expect_not "yaml, docker and compose need no pyright" "$out" "pyright"
+out=$(FAKE_LANGS="docker" plan apt-get "git xclip xterm" "runtimes,lsp")
+expect "docker needs node" "$out" "install -y nodejs npm"
+expect_not "docker alone needs no prettier" "$out" "prettier"
 out=$(FAKE_LANGS="go" plan apt-get "git xclip xterm go" "lsp")
 expect "go gets gopls" "$out" "gopls"
 expect_not "go needs no npm tool" "$out" "npm install"
