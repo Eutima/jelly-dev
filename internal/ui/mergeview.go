@@ -381,7 +381,7 @@ func (m MergeModel) hints() [][]hint {
 		view,
 		{
 			{"→/o", "ours", selected, 0}, {"←/t", "theirs", selected, 0}, {"b", "both", selected, 0},
-			{"r", "base", selected, 1}, {"m", "auto-resolve", true, 0}, {"e", "edit", onLine, 0},
+			{"r", "base", selected, 1}, {"m", "auto-resolve", true, 0}, {"ctrl+←/→", "all", m.Unresolved() > 0, 1}, {"e", "edit", onLine, 0},
 		},
 		{{"d", "del", onLine, 2}, {"i", "ins", len(m.rows) > 0, 2}},
 		{{"u", "undo", len(m.history) > 0, 0}, save, {"q", "quit", true, 0}},

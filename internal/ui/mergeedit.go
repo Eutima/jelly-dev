@@ -86,6 +86,28 @@ func (m *MergeModel) autoResolve() {
 	}
 }
 
+// resolveAll takes one side for every conflict that is still unresolved. Conflicts that were decided already and
+// changes that merged automatically stay as they are. One undo reverts it all.
+func (m *MergeModel) resolveAll(choice Choice) {
+	var chunks []int
+	for _, chunk := range m.changed {
+		if m.chunks[chunk].Kind == merge.Conflict && m.choices[chunk] == ChoiceAuto {
+			chunks = append(chunks, chunk)
+		}
+	}
+	if len(chunks) == 0 {
+		m.notice("No unresolved conflicts left", true)
+		return
+	}
+	for i, chunk := range chunks {
+		m.setChoice(chunk, choice, nil)
+		m.history[len(m.history)-1].joined = i > 0
+	}
+	m.rebuild()
+	m.notice(fmt.Sprintf("✓ Used %s for %d conflict(s) in the whole file (u undoes)", choiceName(choice), len(chunks)), false)
+	m.keepVisible()
+}
+
 // setCustom stores (or removes) the hand-edited lines of a chunk in a fresh map, so older copies of the
 // model are not affected.
 func (m *MergeModel) setCustom(chunk int, lines []string, present bool) {

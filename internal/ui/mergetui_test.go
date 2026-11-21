@@ -658,3 +658,27 @@ func TestMergeModel_AppliesOursOrTheirs_WhenArrowKeysPressed(t *testing.T) {
 		t.Fatalf("left arrow must take theirs: %v", model.Result())
 	}
 }
+
+func TestMergeModel_TakesOneSideForAllConflicts_WhenCtrlArrowPressed(t *testing.T) {
+	base := "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl\nm\n"
+	ours := "a\nX\nc\nd\ne\nf\ng\nX2\ni\nJ\nk\nl\nm\n"   // j is changed by ours only: merges automatically
+	theirs := "a\nY\nc\nd\ne\nf\ng\nY2\ni\nj\nk\nL\nm\n" // l is changed by theirs only: merges automatically
+	model, _ := newMergeTestModel(base, ours, theirs, &saver{})
+	taken, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlRight})
+	result := taken.(MergeModel)
+	want := split("a\nX\nc\nd\ne\nf\ng\nX2\ni\nJ\nk\nL\nm\n")
+	if !reflect.DeepEqual(result.Result(), want) || result.Unresolved() != 0 {
+		t.Fatalf("ctrl+right must take ours for every conflict and keep the automatic merges: %v", result.Result())
+	}
+	again, _ := result.Update(tea.KeyMsg{Type: tea.KeyCtrlRight})
+	if !strings.Contains(again.(MergeModel).View(), "No unresolved conflicts left") {
+		t.Fatal("a second press must say that nothing is left")
+	}
+	if undone := mergePress(result, "u"); undone.Unresolved() != 2 {
+		t.Fatalf("one undo must revert the whole step: unresolved %d", undone.Unresolved())
+	}
+	theirsAll, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlLeft})
+	if got := theirsAll.(MergeModel).Result(); got[1] != "Y" || got[7] != "Y2" {
+		t.Fatalf("ctrl+left must take theirs: %v", got)
+	}
+}
