@@ -36,8 +36,8 @@ func DarkThemeFor(r *lipgloss.Renderer) Theme {
 	text := base.Foreground(hex("#bcbec4"))
 	word := base.Foreground(hex("#ffffff"))
 	return Theme{
-		Header:         base.Foreground(hex("#ced0d6")).Background(hex("#2b2d30")).Bold(true),
-		Footer:         base.Foreground(hex("#868a91")).Background(hex("#2b2d30")),
+		Header:         word.Background(hex("#2b2d30")).Bold(true),
+		Footer:         base.Foreground(hex("#f0f0f0")).Background(hex("#2b2d30")),
 		LineNumber:     base.Foreground(hex("#4e5157")),
 		Equal:          text,
 		Added:          text.Background(hex("#294436")),
@@ -51,8 +51,8 @@ func DarkThemeFor(r *lipgloss.Renderer) Theme {
 		ConflictWord:   word.Background(hex("#8c4256")),
 		Gutter:         base.Foreground(hex("#4e5157")),
 		GutterCur:      base.Foreground(hex("#56a8f5")).Bold(true),
-		Selected:       text.Background(hex("#2f4d78")),
-		SelectedDim:    text.Background(hex("#3a3d41")),
+		Selected:       word.Background(hex("#2f4d78")),
+		SelectedDim:    word.Background(hex("#3a3d41")),
 		StatusAdded:    base.Foreground(hex("#6aab73")).Bold(true),
 		StatusDeleted:  base.Foreground(hex("#c75450")).Bold(true),
 		StatusModified: base.Foreground(hex("#56a8f5")).Bold(true),

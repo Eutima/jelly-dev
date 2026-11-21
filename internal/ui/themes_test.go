@@ -108,3 +108,26 @@ func TestMonoTheme_MarksDeletionsAsStruckThrough_WhenRendered(t *testing.T) {
 		t.Fatalf("expected strikethrough: %q", view)
 	}
 }
+
+// On terminals with a small palette the colours are mapped to the nearest of 16, and grey text on a coloured bar or on a
+// highlighted row became unreadable: everything that is highlighted in the dark theme has white (or near white) text.
+func TestDarkTheme_HighlightedTextIsWhite(t *testing.T) {
+	theme := DarkTheme()
+	for name, style := range map[string]lipgloss.Style{
+		"header": theme.Header, "selected": theme.Selected, "selected (not focused)": theme.SelectedDim, "footer": theme.Footer,
+	} {
+		got, ok := style.GetForeground().(lipgloss.Color)
+		if !ok || (got != "#ffffff" && got != "#f0f0f0") {
+			t.Errorf("%s text must be white, it is %v", name, style.GetForeground())
+		}
+	}
+}
+
+func TestTopBar_ShortcutHintsAreNotFaint(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, sampleFiles)
+	for _, part := range model.topBar().parts {
+		if part.style.GetFaint() {
+			t.Fatalf("the hint %q on the blue bar must not be faint", part.text)
+		}
+	}
+}

@@ -801,7 +801,7 @@ func (m ProjectModel) treeView(width int) string {
 		}
 		footer = style.Render(padRight(" "+sanitize(m.status), width))
 	case m.toolStatus != "":
-		footer = m.theme.Footer.Faint(true).Render(padRight(" "+sanitize(m.toolStatus), width))
+		footer = m.theme.Footer.Render(padRight(" "+sanitize(m.toolStatus), width))
 	}
 	return strings.Join(append(lines, footer), "\n")
 }

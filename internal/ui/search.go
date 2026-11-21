@@ -389,7 +389,7 @@ func (m SearchModel) View() string {
 		if active {
 			return m.theme.Selected.Bold(true).Render(" " + label + " ")
 		}
-		return m.theme.Header.Faint(true).Render(" " + label + " ")
+		return m.theme.Header.Render(" " + label + " ")
 	}
 	title := tab("Files", m.mode == searchFiles) + tab("Text", m.mode == searchText) + m.theme.Header.Render(padRight("  search the project", max(m.width-14, 0)))
 	lines := []string{title, m.inputLine()}

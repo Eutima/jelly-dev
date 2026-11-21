@@ -122,7 +122,7 @@ func (m ProjectModel) overlayDialog(screen string) string {
 	rows := []string{
 		m.theme.Header.Render(padRight(" Unsaved changes in "+sanitize(m.dlg.file), width)),
 		m.dialogBar().render(width, m.theme.Footer),
-		m.theme.Footer.Faint(true).Render(padRight(" ←/→ choose, enter confirms, esc cancels", width)),
+		m.theme.Footer.Render(padRight(" ←/→ choose, enter confirms, esc cancels", width)),
 	}
 	for i, row := range rows {
 		if y+i < len(lines) {

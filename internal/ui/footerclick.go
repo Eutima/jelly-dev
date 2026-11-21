@@ -63,6 +63,7 @@ func (b *bar) place(keys []string, parts ...barPart) {
 func (b *bar) command(key, label string, enabled bool, theme Theme) {
 	keyStyle, labelStyle := theme.Header, theme.Footer
 	if !enabled {
+		// a command that cannot be used now is dim on purpose; every usable one keeps full white text
 		keyStyle, labelStyle = theme.Footer.Faint(true), theme.Footer.Faint(true)
 	}
 	var keys []string

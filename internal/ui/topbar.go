@@ -33,7 +33,7 @@ func (m ProjectModel) topBar() *bar {
 	}
 	for _, button := range buttons {
 		label := barPart{" " + button[1] + " ", m.theme.Header}
-		result.button([]string{button[0]}, []barPart{label, {"(" + button[2] + ") ", m.theme.Header.Faint(true)}}, []barPart{label})
+		result.button([]string{button[0]}, []barPart{label, {"(" + button[2] + ") ", m.theme.Header}}, []barPart{label})
 		result.add(barPart{" ", m.theme.Footer})
 	}
 	return result

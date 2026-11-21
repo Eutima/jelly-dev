@@ -311,7 +311,7 @@ func (m WelcomeModel) View() string {
 	if m.typing {
 		return m.promptView(lines)
 	}
-	lines = append(lines, m.theme.Header.Faint(true).Render(padRight(" Recent projects", m.width)))
+	lines = append(lines, m.theme.Header.Render(padRight(" Recent projects", m.width)))
 	for y := 0; y < m.bodyHeight(); y++ {
 		i := m.top + y
 		switch {
@@ -335,7 +335,7 @@ func (m WelcomeModel) View() string {
 
 // promptView is the screen while a folder is typed: the matching folders replace the list of projects.
 func (m WelcomeModel) promptView(lines []string) string {
-	lines = append(lines, m.theme.Header.Faint(true).Render(padRight(" Folders ("+fmt.Sprint(len(m.matches))+")", m.width)))
+	lines = append(lines, m.theme.Header.Render(padRight(" Folders ("+fmt.Sprint(len(m.matches))+")", m.width)))
 	for y := 0; y < m.bodyHeight(); y++ {
 		i := m.top + y
 		switch {

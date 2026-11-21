@@ -385,7 +385,7 @@ func (m MergeModel) paneLabels(panes []int, widths [mergePanes]int) string {
 		case len(panes) == 1:
 			label += "   (v: switch pane)"
 		}
-		style := m.theme.Header.Faint(true)
+		style := m.theme.Header
 		if pane == paneResult {
 			style = m.theme.Selected.Bold(true)
 		}
@@ -551,7 +551,7 @@ func (m MergeModel) actionBar() *bar {
 		if m.choices[chunk] != ChoiceAuto {
 			key("⌫", "cancel")
 		}
-		result.add(barPart{" [o/t/r] pick+next  [m] auto-resolve", footer.Faint(true)})
+		result.add(barPart{" [o/t/r] pick+next  [m] auto-resolve", footer})
 	case m.Unresolved() > 0:
 		result.add(barPart{" Press [n] to jump to the next conflict, [m] to auto-resolve the simple ones", footer})
 	case m.dirty:

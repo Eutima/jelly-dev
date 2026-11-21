@@ -215,7 +215,7 @@ func (m ProjectModel) termHeader() *bar {
 	result.click([]string{actionNewTab}, barPart{"[+]", m.theme.Footer})
 	result.add(barPart{" ", m.theme.Footer})
 	result.click([]string{actionCloseTab}, barPart{"[×]", m.theme.Footer})
-	result.hint(barPart{"  " + leaveTermKey + " editor  alt+t new  alt+w close", m.theme.Footer.Faint(true)})
+	result.hint(barPart{"  " + leaveTermKey + " editor  alt+t new  alt+w close", m.theme.Footer})
 	return result
 }
 
