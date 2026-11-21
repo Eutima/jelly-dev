@@ -125,6 +125,9 @@ func TestRun_SetupRunsTheInstallerAlways(t *testing.T) {
 			t.Fatalf("jd setup must run it every time: code %d calls %v %s", code, fake.calls, stderr.String())
 		}
 	}
+	if code := run([]string{"setup", "bogus"}, &stdout, &stderr, fake.env(false, "")); code != exitUsage {
+		t.Fatalf("an unknown argument is a usage error: %d", code)
+	}
 	fake.err = errors.New("exit status 1")
 	if code := run([]string{"setup"}, &stdout, &stderr, fake.env(false, "")); code != exitFailure {
 		t.Fatalf("a failing installer must fail jd setup: %d", code)
@@ -164,5 +167,45 @@ func TestRunInstallerScript_ConfiguresGitWithTheInstalledJdOnly(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(home); len(entries) != 0 {
 		t.Fatalf("the installer must not write shell profiles or tools here: %v", entries)
+	}
+}
+
+// The curl | sh installer does the whole setup itself and leaves the mark, so jd does not run the script on its first start.
+func TestRun_SetupMarkDoneKeepsTheFirstStartFromRunningTheInstaller(t *testing.T) {
+	dir, fake := t.TempDir(), &installerFake{}
+	env := fake.env(true, "")
+	env.getenv = func(name string) string {
+		if name == "JD_CONFIG_DIR" {
+			return dir
+		}
+		return ""
+	}
+	if code := run([]string{"setup", "--mark-done"}, io.Discard, io.Discard, env); code != exitOK {
+		t.Fatalf("code %d", code)
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("marking must not run the installer: %v", fake.calls)
+	}
+	setupOnFirstStart(dir, io.Discard, io.Discard, env)
+	if len(fake.calls) != 0 {
+		t.Fatalf("after the installer the first start has nothing to do: %v", fake.calls)
+	}
+}
+
+func TestRun_SetupMarkDoneFailsWhenTheConfigFolderCannotBeWritten(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := testEnv(noUI)
+	env.getenv = func(name string) string {
+		if name == "JD_CONFIG_DIR" {
+			return filepath.Join(blocker, "sub") // below a file: it cannot be created
+		}
+		return ""
+	}
+	var stderr bytes.Buffer
+	if code := run([]string{"setup", "--mark-done"}, io.Discard, &stderr, env); code != exitFailure || stderr.Len() == 0 {
+		t.Fatalf("an unwritable config folder must fail with a message: %d %q", code, stderr.String())
 	}
 }

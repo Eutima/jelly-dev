@@ -392,6 +392,13 @@ add_to_path() {
     esac
 }
 
+# mark_setup_done tells jd that this script did the setup, so jd does not run it again on its first start (the pip package
+# does that; after this installer there is nothing left to do). A dry run changes nothing and leaves no mark.
+mark_setup_done() {
+    [ -z "${JD_DRY_RUN:-}" ] || return 0
+    "$install_dir/jd" setup --mark-done >/dev/null 2>&1 || true
+}
+
 main() {
     if [ -z "${JD_BIN:-}" ]; then
         install_jd
@@ -401,6 +408,7 @@ main() {
     fi
     configure_git # after the dependencies: git may have been installed just now
     if [ -z "${JD_BIN:-}" ]; then
+        mark_setup_done
         add_to_path
     fi
 }

@@ -38,6 +38,7 @@ const (
   jd merge <a> <b>           merge b into a without git (two files, or two directories); the result is written to a
   jd --version               print the version
   jd setup                   run the installer script again: install the tools the IDE needs and set git up
+                             (jd setup --mark-done: only record that the installer did it)
   jd install-git [--apply] [--local]
                              print (or with --apply write, overwriting existing values) the git diff/merge tool settings`
 )
@@ -115,8 +116,8 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 		printVersion(stdout)
 		return exitOK
 	}
-	if len(args) == 1 && args[0] == "setup" {
-		return runSetup(stdout, stderr, env)
+	if len(args) > 0 && args[0] == "setup" {
+		return runSetup(args[1:], stdout, stderr, env)
 	}
 	if len(args) > 0 && args[0] == "install-git" {
 		return runInstallGit(args[1:], stdout, stderr, env) // needs no theme, so a bad theme must not block it

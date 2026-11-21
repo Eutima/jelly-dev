@@ -101,16 +101,44 @@ main_calls() {
         install_dependencies() { calls="$calls deps"; }
         configure_git() { calls="$calls git:${JD_BIN:-default}"; }
         add_to_path() { calls="$calls path"; }
+        mark_setup_done() { calls="$calls mark"; }
         main
         echo "$calls"
     )
 }
 out=$(main_calls)
-expect "the installer downloads jd and sets the PATH" "$out" "install_jd deps git:default path"
+expect "the installer downloads jd, marks the setup done and sets the PATH" "$out" "install_jd deps git:default mark path"
 out=$(JD_BIN=/opt/jd main_calls)
 expect "with JD_BIN the dependencies and git are handled" "$out" "deps git:/opt/jd"
 expect_not "with JD_BIN jd is not downloaded" "$out" "install_jd"
 expect_not "with JD_BIN the PATH stays" "$out" "path"
+expect_not "with JD_BIN jd marks the setup itself" "$out" "mark"
+
+# mark_setup_done calls the installed jd, leaves nothing on a dry run and never fails the installation.
+# shellcheck disable=SC1091,SC2329,SC2034 # install.sh is sourced
+mark_run() { # mark_run <jd script body> [JD_DRY_RUN]
+    (
+        JD_INSTALL_NO_MAIN=1
+        export JD_INSTALL_NO_MAIN
+        [ -n "${2:-}" ] && JD_DRY_RUN=$2 && export JD_DRY_RUN
+        . "$here/install.sh"
+        install_dir=$(mktemp -d)
+        printf '#!/bin/sh\n%s\n' "$1" >"$install_dir/jd"
+        chmod 755 "$install_dir/jd"
+        mark_setup_done
+        echo "returned $?"
+    )
+}
+log_file=$(mktemp)
+out=$(mark_run "echo \"\$@\" > '$log_file'")
+expect "the installer asks jd to record the setup" "$(cat "$log_file")" "setup --mark-done"
+expect "marking succeeds" "$out" "returned 0"
+: >"$log_file"
+mark_run "echo \"\$@\" > '$log_file'" 1 >/dev/null
+if [ -s "$log_file" ]; then echo "FAIL a dry run must not mark: $(cat "$log_file")"; failures=$((failures + 1)); else echo "ok   a dry run leaves no mark"; fi
+out=$(mark_run "exit 3")
+expect "a failing jd does not fail the installation" "$out" "returned 0"
+rm -f "$log_file"
 
 if [ "$failures" -gt 0 ]; then echo "$failures failure(s)"; exit 1; fi
 echo "all install tests passed"

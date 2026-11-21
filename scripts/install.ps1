@@ -197,6 +197,9 @@ if (-not $env:JD_SKIP_GIT_CONFIG) {
     }
 }
 if (-not $env:JD_BIN) {
+    # jd must not run this script again on its first start (the pip package does that); a dry run leaves no mark
+    # (a failed mark only means a second setup run on the first start, never a failed install)
+    if (-not $env:JD_DRY_RUN) { try { & (Join-Path $installDir 'jd.exe') setup --mark-done 2>&1 | Out-Null } catch { } }
     # Make jd available in this session right away (other open terminals need a restart).
     if (@($env:Path -split ';') -notcontains $installDir) { $env:Path = "$env:Path;$installDir" }
     Write-Host "Installed $installDir\jd.exe (open new terminals to pick up PATH; run: jd --version)"

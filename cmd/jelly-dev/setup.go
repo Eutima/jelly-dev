@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/eutima/jelly-dev/internal/project"
 	"github.com/eutima/jelly-dev/scripts"
 )
 
@@ -65,8 +66,32 @@ func runInstallerForSelf(stdout, stderr io.Writer, env environment) error {
 	return run(exe, os.Stdin, stdout, stderr)
 }
 
-// runSetup handles `jd setup`: it runs the installer script now, whatever happened on the first start.
-func runSetup(stdout, stderr io.Writer, env environment) int {
+// markSetupDone records that the installer script did its work, so the first start does not run it again.
+func markSetupDone(configDir string) error {
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(configDir, setupMarker), []byte("the installer script did the setup\n"), 0o600)
+}
+
+// runSetup handles `jd setup`: it runs the installer script now, whatever happened on the first start. `jd setup
+// --mark-done` only records that the installer did its work (install.sh and install.ps1 call it when they installed jd).
+func runSetup(args []string, stdout, stderr io.Writer, env environment) int {
+	if len(args) == 1 && args[0] == "--mark-done" {
+		dir, err := project.ConfigDir(env.getenv)
+		if err == nil {
+			err = markSetupDone(dir)
+		}
+		if err != nil {
+			printError(stderr, err)
+			return exitFailure
+		}
+		return exitOK
+	}
+	if len(args) > 0 {
+		fmt.Fprintf(stderr, "jd: unknown argument %q\n%s\n", args[0], usage)
+		return exitUsage
+	}
 	if env.runInstaller == nil {
 		fmt.Fprintln(stderr, "jd: setup is not available here")
 		return exitFailure
@@ -100,12 +125,7 @@ func setupOnFirstStart(configDir string, stdout, stderr io.Writer, env environme
 	if env.getenv("JD_DRY_RUN") != "" {
 		return // a dry run installed nothing: the real first start is still to come
 	}
-	if err := os.MkdirAll(configDir, 0o700); err == nil {
-		err = os.WriteFile(marker, []byte("jd ran the installer script on its first start\n"), 0o600)
-		if err != nil {
-			fmt.Fprintf(stderr, "jd: warning: cannot remember that the installer ran (%v)\n", err)
-		}
-	} else {
+	if err := markSetupDone(configDir); err != nil {
 		fmt.Fprintf(stderr, "jd: warning: cannot remember that the installer ran (%v)\n", err)
 	}
 }
