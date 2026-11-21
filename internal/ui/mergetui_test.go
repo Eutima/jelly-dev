@@ -612,3 +612,33 @@ func TestMergeModel_IgnoresClick_WhenEditingOrNarrow(t *testing.T) {
 		t.Fatal("click in the single pane layout must do nothing")
 	}
 }
+
+func TestMergeView_HidesAppliedButton_WhenSideWasApplied(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = resize(model, 120, 20)
+	row := model.rows[model.starts[0]]
+	for _, want := range [][3]any{{paneOurs, true, true}, {paneTheirs, true, true}} {
+		side := want[0].(int)
+		if !model.buttonShown(row, side, true) || !model.buttonShown(row, side, false) {
+			t.Fatalf("side %d: both buttons expected on an unresolved conflict", side)
+		}
+	}
+	model = clickArrow(t, model, 0, paneOurs) // apply ours
+	row = model.rows[model.starts[0]]
+	if model.buttonShown(row, paneOurs, true) || !model.buttonShown(row, paneOurs, false) {
+		t.Fatal("» must be gone after ours was applied, × stays to take it back")
+	}
+	if !model.buttonShown(row, paneTheirs, true) || model.buttonShown(row, paneTheirs, false) {
+		t.Fatal("« stays for theirs, × of theirs is pointless because theirs is already left out")
+	}
+	history := len(model.history)
+	model = clickArrow(t, model, 0, paneOurs) // clicking where » was must do nothing
+	if len(model.history) != history {
+		t.Fatal("a hidden button must not be clickable")
+	}
+	model = clickArrow(t, model, 0, paneTheirs) // now both
+	row = model.rows[model.starts[0]]
+	if model.buttonShown(row, paneOurs, true) || model.buttonShown(row, paneTheirs, true) {
+		t.Fatal("no apply button may be left when both sides are applied")
+	}
+}

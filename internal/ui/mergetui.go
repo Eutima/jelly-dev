@@ -494,13 +494,20 @@ func (m MergeModel) gutter(row mergeRow, side int) string {
 	if m.current >= 0 && m.changed[m.current] == row.chunk {
 		style = m.theme.GutterCur
 	}
-	if !m.arrowShown(row, side) {
+	apply, discard := m.buttonShown(row, side, true), m.buttonShown(row, side, false)
+	if !apply && !discard {
 		return style.Render("  ┃  ")
 	}
-	if side == paneTheirs {
-		return style.Render(" « × ")
+	glyph := func(shown bool, symbol string) string {
+		if shown {
+			return symbol
+		}
+		return " "
 	}
-	return style.Render(" × » ")
+	if side == paneTheirs {
+		return style.Render(" " + glyph(apply, "«") + " " + glyph(discard, "×") + " ")
+	}
+	return style.Render(" " + glyph(discard, "×") + " " + glyph(apply, "»") + " ")
 }
 
 // WithHighlight returns the model with syntax highlighting; the lexer is chosen by the first file name
@@ -531,4 +538,11 @@ func (m MergeModel) arrowShown(row mergeRow, side int) bool {
 		return !equalLines(chunk.Theirs, chunk.Base)
 	}
 	return !equalLines(chunk.Ours, chunk.Base)
+}
+
+// buttonShown tells whether the apply (» or «) or the discard (×) button of a side is drawn and clickable on a
+// row: only on the first row of a change that the side contributes to, and only while the click would change the
+// result (a button disappears once its action has been done).
+func (m MergeModel) buttonShown(row mergeRow, side int, apply bool) bool {
+	return m.arrowShown(row, side) && m.sideChoice(row.chunk, side, apply) != m.choices[row.chunk]
 }

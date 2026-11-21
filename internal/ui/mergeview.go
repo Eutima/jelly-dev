@@ -488,7 +488,8 @@ func (m MergeModel) headerLines() int {
 	return 1
 }
 
-// click handles a left click: on a » or « arrow of a change it selects the change and applies ours or theirs.
+// click handles a left click on a gutter button (», « or ×) of a change: it selects the change and applies or
+// discards that side.
 func (m *MergeModel) click(x, y int) {
 	if m.editing || m.width < threePaneWidth {
 		return
@@ -507,7 +508,7 @@ func (m *MergeModel) click(x, y int) {
 	case x >= right && x < right+mergeGutterWidth:
 		side, apply = paneTheirs, x-right < mergeGutterWidth-discardCells
 	}
-	if side < 0 || !m.arrowShown(m.rows[index], side) {
+	if side < 0 || !m.buttonShown(m.rows[index], side, apply) {
 		return
 	}
 	m.setCursor(index)
