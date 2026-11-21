@@ -25,6 +25,11 @@ type CodeNavigator interface {
 	References(ctx context.Context, path, text string, row, col int) ([]lsp.Place, error)
 	// Format returns the text of a file formatted.
 	Format(ctx context.Context, path, text string) (string, error)
+	// FormatterChoices lists the formatters to pick from when Format finds none for a file, FormatWith formats with the
+	// one picked and RememberFormatter makes Format use it for this file type from then on.
+	FormatterChoices(path string) []lsp.FormatterChoice
+	FormatWith(ctx context.Context, path, text string, choice lsp.FormatterChoice) (string, error)
+	RememberFormatter(path string, choice lsp.FormatterChoice) error
 	// Complete returns the suggestions at a position.
 	Complete(ctx context.Context, path, text string, row, col int) ([]lsp.CompletionItem, error)
 }
@@ -323,7 +328,11 @@ type formatResultMsg struct {
 	original  string // the text that was sent
 	formatted string
 	err       error
+	remember  *lsp.FormatterChoice // the formatter to remember for the file type once its result was applied
 }
+
+// FormatPickMsg asks the project window to let the user choose a formatter for the file: :format found none.
+type FormatPickMsg struct{ Path, Text string }
 
 // formatCommand starts formatting the file in the editor (:format).
 func (m *EditorModel) formatCommand() tea.Cmd {
@@ -346,33 +355,52 @@ func (m *EditorModel) formatCommand() tea.Cmd {
 	}
 }
 
+// rememberFormatter stores the formatter the user picked for this file type, now that it has worked on this file; the note
+// tells the user. Nothing to remember (a normal :format) gives no note.
+func (m EditorModel) rememberFormatter(choice *lsp.FormatterChoice) string {
+	if choice == nil || m.nav == nil {
+		return ""
+	}
+	if err := m.nav.RememberFormatter(m.doc.Path, *choice); err != nil {
+		return " · could not remember " + choice.Name + ": " + err.Error()
+	}
+	return " · " + choice.Name + " is used for this file type from now on"
+}
+
 // handleFormatResult replaces the text by the formatted one, as one undoable change.
-func (m EditorModel) handleFormatResult(msg formatResultMsg) EditorModel {
+func (m EditorModel) handleFormatResult(msg formatResultMsg) (EditorModel, tea.Cmd) {
 	var missing *lsp.NotInstalledError
+	noFormatter := errors.As(msg.err, &missing) || errors.Is(msg.err, lsp.ErrNoServer) || errors.Is(msg.err, lsp.ErrCannotFormat)
 	switch {
+	case noFormatter && m.forwardEx && m.doc.Path != "":
+		// the project window lets the user choose a formatter from a searchable list
+		m.notice("No formatter found for this file: choose one", false)
+		path := m.doc.Path
+		return m, func() tea.Msg { return FormatPickMsg{Path: path, Text: msg.original} }
 	case errors.As(msg.err, &missing):
 		m.notice(msg.err.Error(), true)
-		return m
+		return m, nil
 	case errors.Is(msg.err, lsp.ErrNoServer):
 		m.notice("No formatter for this file type (add a server or formatter in lsp.json)", true)
-		return m
+		return m, nil
 	case errors.Is(msg.err, lsp.ErrCannotFormat):
 		m.notice("The language server cannot format this file (set a formatter in lsp.json)", true)
-		return m
+		return m, nil
 	case msg.err != nil:
 		m.notice("Format failed: "+msg.err.Error(), true)
-		return m
+		return m, nil
 	case strings.Join(m.vim.Lines(), "\n") != msg.original:
 		m.notice("The text changed while it was formatted: not applied, run :format again", true)
-		return m
+		return m, nil
 	}
 	lines := diff.SplitLines(msg.formatted)
+	note := m.rememberFormatter(msg.remember)
 	if strings.Join(lines, "\n") == msg.original {
-		m.notice("Already formatted", false)
-		return m
+		m.notice("Already formatted"+note, false)
+		return m, nil
 	}
 	m.vim.ReplaceLines(lines)
 	m.scrollToCursor()
-	m.notice(fmt.Sprintf("Formatted (%d lines) - u undoes", len(lines)), false)
-	return m
+	m.notice(fmt.Sprintf("Formatted (%d lines) - u undoes", len(lines))+note, false)
+	return m, nil
 }

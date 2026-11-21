@@ -142,7 +142,7 @@ func (m EditorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case completionResultMsg:
 		return m.handleCompletionResult(msg), nil
 	case formatResultMsg:
-		return m.handleFormatResult(msg), nil
+		return m.handleFormatResult(msg)
 	case navResultMsg:
 		return m.handleNavResult(msg)
 	case JumpMsg:

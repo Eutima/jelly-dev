@@ -80,6 +80,7 @@ type ProjectModel struct {
 	search        *SearchModel        // the open project search, nil when closed
 	knownFiles    []string            // the file list of the last search, shown at once the next time
 	dlg           *unsavedDialog      // the question about unsaved changes, nil when none is open
+	pick          *formatPick         // the list of formatters to choose from, nil when closed
 	terms         []*terminal.Session // the shells (tabs) of the panel under the editor
 	termActive    int                 // the tab that is shown
 	termShown     bool                // whether the panel is visible (hidden shells keep running)
@@ -264,6 +265,8 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.termUpdated(msg)
 	case CloseRequestMsg:
 		return m.askToClose(true)
+	case FormatPickMsg:
+		return m.openFormatPicker(msg)
 	case externalDoneMsg:
 		if msg.err != nil {
 			m.say(fmt.Sprintf("%s: %v", msg.what, msg.err), true)
@@ -411,6 +414,9 @@ func (m ProjectModel) jumpToPlace(place lsp.Place, back bool) (tea.Model, tea.Cm
 func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.dlg != nil {
 		return m.dialogKey(msg)
+	}
+	if m.pick != nil {
+		return m.updateFormatPicker(msg)
 	}
 	if m.picker != nil {
 		return m.updatePicker(msg)
@@ -683,6 +689,9 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.dlg != nil {
 		return m.clickDialog(msg)
 	}
+	if m.pick != nil {
+		return m.updateFormatPicker(msg)
+	}
 	if m.picker != nil {
 		return m.updatePicker(msg)
 	}
@@ -762,6 +771,9 @@ func (m ProjectModel) View() string {
 	screen := m.topBar().render(m.width, m.theme.Footer) + "\n" + m.body()
 	if m.dlg != nil {
 		return m.overlayDialog(screen)
+	}
+	if m.pick != nil {
+		return m.pick.picker.overlay(screen, m.width, m.height)
 	}
 	return screen
 }

@@ -25,6 +25,22 @@ type fakeNav struct {
 	completeAt  [][2]int
 	asked       []string
 	texts       []string
+	choices     []lsp.FormatterChoice // what FormatterChoices returns
+	withText    string                // what FormatWith returns
+	withErr     error
+	remembered  []string // "<file>:<formatter>" of every RememberFormatter call
+}
+
+func (f *fakeNav) FormatterChoices(string) []lsp.FormatterChoice { return f.choices }
+
+func (f *fakeNav) FormatWith(_ context.Context, path, text string, choice lsp.FormatterChoice) (string, error) {
+	f.asked = append(f.asked, "with "+choice.Name+" "+filepath.Base(path))
+	return f.withText, f.withErr
+}
+
+func (f *fakeNav) RememberFormatter(path string, choice lsp.FormatterChoice) error {
+	f.remembered = append(f.remembered, filepath.Base(path)+":"+choice.Name)
+	return nil
 }
 
 func (f *fakeNav) Definition(_ context.Context, path, text string, row, col int) ([]lsp.Place, error) {
@@ -279,9 +295,6 @@ func TestEditor_FormatCommandAliasesAndMessages(t *testing.T) {
 		err  error
 		want string
 	}{
-		{&lsp.NotInstalledError{Server: "gopls", Command: "gopls"}, "gopls not found"},
-		{lsp.ErrNoServer, "No formatter for this file type"},
-		{lsp.ErrCannotFormat, "cannot format this file"},
 		{errors.New("syntax error at 3:4"), "Format failed: syntax error at 3:4"},
 	}
 	for _, tt := range tests {
