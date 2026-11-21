@@ -12,7 +12,8 @@ import (
 
 const (
 	gutterWidth = 3
-	chromeLines = 2 // header + footer
+	headerLines = 1 // the title line
+	footerMax   = 2 // the footer wraps to at most this many lines
 	wheelLines  = 3
 	signWidth   = 2 // "+ " / "- " / "  " in the unified view
 )
@@ -28,6 +29,7 @@ type DiffModel struct {
 	oldLines    []string
 	newLines    []string
 	showUnified bool
+	footerMin   int // the footer has at least this many lines (a git view keeps both footers equally high)
 	theme       Theme
 
 	width, height int
@@ -152,7 +154,13 @@ func (m *DiffModel) gotoHunk(index int) {
 	m.offset = max(starts[m.current]-m.bodyHeight()/3, 0)
 }
 
-func (m DiffModel) bodyHeight() int { return max(m.height-chromeLines, 1) }
+func (m DiffModel) bodyHeight() int { return max(m.height-headerLines-len(m.footerRows()), 1) }
+
+// footerRows is the footer as wrapped bars: a command that does not fit goes on a second line.
+// A diff next to a file list is padded to footerMin lines so that both footers have the same height.
+func (m DiffModel) footerRows() []*bar {
+	return padRows(m.footerBar().wrap(m.width, footerMax), m.footerMin)
+}
 
 func (m *DiffModel) clamp() {
 	maxOffset := max(m.rowCount()-m.bodyHeight(), 0)
@@ -200,7 +208,7 @@ func (m DiffModel) header(paneWidth, rightWidth int) string {
 	return m.theme.Header.Render(left + strings.Repeat(" ", gutterWidth) + right)
 }
 
-func (m DiffModel) footer() string { return m.footerBar().render(m.width, m.theme.Footer) }
+func (m DiffModel) footer() string { return renderRows(m.footerRows(), m.width, m.theme.Footer) }
 
 // footerBar builds the footer: the position and the clickable commands.
 func (m DiffModel) footerBar() *bar {
@@ -221,10 +229,7 @@ func (m DiffModel) footerBar() *bar {
 
 // footerKeys returns the keys of the footer command at a position of the diff view, nil when there is none.
 func (m DiffModel) footerKeys(x, y int) []string {
-	if y != m.height-1 {
-		return nil
-	}
-	return m.footerBar().visibleKeysAt(x, m.width)
+	return rowKeysAt(m.footerRows(), x, y, m.width, m.height)
 }
 
 func (m DiffModel) renderGutter(row Row) string {

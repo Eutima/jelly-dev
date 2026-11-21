@@ -60,7 +60,7 @@ func (m DirMergeModel) MergedCount() int {
 // Init implements tea.Model.
 func (m DirMergeModel) Init() tea.Cmd { return nil }
 
-func (m DirMergeModel) bodyHeight() int { return max(m.height-chromeLines, 1) }
+func (m DirMergeModel) bodyHeight() int { return max(m.height-headerLines-len(m.footerLines()), 1) }
 
 // Update implements tea.Model.
 func (m DirMergeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -74,8 +74,8 @@ func (m DirMergeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		return m.handleKey(key)
 	}
-	if mouse, ok := msg.(tea.MouseMsg); ok && leftPress(mouse) && mouse.Y == m.height-1 && m.status == "" {
-		if keys := m.footerBar().visibleKeysAt(mouse.X, m.width); keys != nil {
+	if mouse, ok := msg.(tea.MouseMsg); ok && leftPress(mouse) && m.status == "" {
+		if keys := rowKeysAt(m.footerRows(), mouse.X, mouse.Y, m.width, m.height); keys != nil {
 			return replay(m, keys)
 		}
 	}
@@ -168,7 +168,7 @@ func (m DirMergeModel) View() string {
 			lines = append(lines, strings.Repeat(" ", m.width))
 		}
 	}
-	lines = append(lines, m.footer())
+	lines = append(lines, m.footerLines()...)
 	return strings.Join(lines, "\n")
 }
 
@@ -195,14 +195,17 @@ func (m DirMergeModel) fileRow(index int) string {
 	return status + text + style.Render(mark)
 }
 
-// footer shows the message of the last action, or the keys.
-func (m DirMergeModel) footer() string {
+// footerLines are the lines at the bottom: the message of the last action, or the keys; both wrap instead of being cut off.
+func (m DirMergeModel) footerLines() []string {
 	if m.status != "" {
-		// the status can contain file names and error texts: renderText strips control characters and cuts to the width
-		return renderText(" "+m.status, nil, m.width, m.theme.Footer, m.theme.Footer)
+		// the status can contain file names and error texts: sanitize strips control characters
+		return messageLines(sanitize(m.status), m.width, footerMax, m.theme.Footer)
 	}
-	return m.footerBar().render(m.width, m.theme.Footer)
+	return renderRowLines(m.footerRows(), m.width, m.theme.Footer)
 }
+
+// footerRows are the keys as wrapped bars.
+func (m DirMergeModel) footerRows() []*bar { return m.footerBar().wrap(m.width, footerMax) }
 
 // footerBar builds the clickable key hints of the file list.
 func (m DirMergeModel) footerBar() *bar {

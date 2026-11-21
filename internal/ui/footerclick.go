@@ -235,6 +235,54 @@ func (b *bar) keysAtLine(x, y, width, maxLines int) []string {
 	return lines[y].keysAt(x)
 }
 
+// rowKeysAt returns the keys of the clickable region at (x, y) of wrapped footer rows that fill the last lines of a view of
+// the given size, nil when the position is outside them or on no command.
+func rowKeysAt(rows []*bar, x, y, width, height int) []string {
+	first := height - len(rows)
+	if y < first || y >= height || x < 0 || x >= width {
+		return nil
+	}
+	return rows[y-first].keysAt(x)
+}
+
+// padRows adds empty rows until there are at least n.
+func padRows(rows []*bar, n int) []*bar {
+	for len(rows) < n {
+		rows = append(rows, &bar{})
+	}
+	return rows
+}
+
+// renderRowLines draws wrapped footer rows in exactly width columns per row.
+func renderRowLines(rows []*bar, width int, fill lipgloss.Style) []string {
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		out[i] = renderSegments(row.parts, width, fill)
+	}
+	return out
+}
+
+// renderRows is renderRowLines joined by newlines.
+func renderRows(rows []*bar, width int, fill lipgloss.Style) string {
+	return strings.Join(renderRowLines(rows, width, fill), "\n")
+}
+
+// textRows wraps a message at the spaces into at most maxLines bars (each starts with a space); the bars have no clickable parts.
+func textRows(text string, width, maxLines int, style lipgloss.Style) []*bar {
+	lines := wrapWords(text, max(width, 1)-1, maxLines) // one column for the space that starts a line
+	rows := make([]*bar, len(lines))
+	for i, line := range lines {
+		rows[i] = &bar{}
+		rows[i].add(barPart{" " + line, style})
+	}
+	return rows
+}
+
+// messageLines is textRows drawn in exactly width columns per line.
+func messageLines(text string, width, maxLines int, style lipgloss.Style) []string {
+	return renderRowLines(textRows(text, width, maxLines, style), max(width, 1), style)
+}
+
 // render draws the bar in exactly width columns.
 func (b *bar) render(width int, fill lipgloss.Style) string {
 	return renderSegments(b.fitted(width).parts, width, fill)

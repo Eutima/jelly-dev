@@ -316,15 +316,7 @@ func (m MergeModel) footerKeys(x, y int) []string {
 	if m.height < fullChromeHeight {
 		return nil
 	}
-	switch {
-	case y == m.height-1 && m.editing:
-		return m.editorBar().visibleKeysAt(x, m.width)
-	case y == m.height-1:
-		return m.shortcutBar().visibleKeysAt(x, m.width)
-	case y == m.height-2 && !m.editing:
-		return m.actionBar().visibleKeysAt(x, m.width)
-	}
-	return nil
+	return rowKeysAt(m.footerBars(), x, y, m.width, m.height)
 }
 
 func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

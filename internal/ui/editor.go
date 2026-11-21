@@ -561,12 +561,7 @@ func (m EditorModel) popupPlacement() (lines []string, firstRow, x, width int) {
 func (m EditorModel) messageRows() []string {
 	width := max(m.width, 1)
 	wrapped := func(text string, style lipgloss.Style) []string {
-		lines := wrapWords(text, width-1, editorMessageMax) // one column for the space that starts a line
-		rows := make([]string, len(lines))
-		for i, line := range lines {
-			rows[i] = style.Render(padRight(" "+line, width))
-		}
-		return rows
+		return messageLines(text, width, editorMessageMax, style)
 	}
 	switch {
 	case m.vim.Mode() == vimbuf.Command:

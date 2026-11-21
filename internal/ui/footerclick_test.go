@@ -166,12 +166,15 @@ func TestGitFooter_ClicksReachListAndDiffCommands(t *testing.T) {
 	// the list footer (left) and the diff footer (right) are both clickable
 	for _, command := range []string{"[tab]", "[t] split/unified"} {
 		lines := strings.Split(plainText(view), "\n")
-		y := len(lines) - 1
-		x := strings.Index(lines[y], command)
-		if x < 0 {
-			t.Fatalf("%q missing in the footer: %q", command, lines[y])
+		y, x := -1, -1
+		for row := len(lines) - footerMax; row < len(lines); row++ { // the footer may take more than one line
+			if at := strings.Index(lines[row], command); at >= 0 {
+				y, x = row, len([]rune(lines[row][:at]))
+			}
 		}
-		x = len([]rune(lines[y][:x]))
+		if y < 0 {
+			t.Fatalf("%q missing in the footer: %q", command, lines[len(lines)-footerMax:])
+		}
 		updated, _ := model.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: x, Y: y})
 		after := updated.(GitModel)
 		switch command {
@@ -401,4 +404,198 @@ func TestProject_TreeHintsWrapAndTheSecondLineIsClickable(t *testing.T) {
 			t.Fatalf("a click on %v on the second line did nothing", region.keys)
 		}
 	}
+}
+
+// footerText returns the last lines of a view as plain text.
+func footerText(view string, lines int) string {
+	all := strings.Split(plainText(view), "\n")
+	return strings.Join(all[max(len(all)-lines, 0):], "\n")
+}
+
+func TestViewFooters_WrapInNarrowTerminalsInsteadOfDroppingCommands(t *testing.T) {
+	const height = 14
+	for _, width := range []int{34, 44, 60} {
+		views := map[string]struct {
+			view     string
+			commands []string
+		}{}
+		diffUpdated, _ := NewDiffModel("a", "b", []string{"x"}, []string{"y"}).Update(tea.WindowSizeMsg{Width: width, Height: height})
+		views["diff"] = struct {
+			view     string
+			commands []string
+		}{diffUpdated.View(), []string{"[↑↓] next/prev change", "[j/k] scroll", "[t] split/unified", "[q] quit"}}
+		dirUpdated, _ := NewDirMergeModel("left", "right", []source.ChangedFile{{Path: "a.txt"}}, nil).
+			Update(tea.WindowSizeMsg{Width: width, Height: height})
+		views["dirmerge"] = struct {
+			view     string
+			commands []string
+		}{dirUpdated.View(), []string{"[↑↓] files", "[enter] merge into left", "[q] quit"}}
+		for name, tc := range views {
+			footer := footerText(tc.view, footerMax)
+			if got := len(strings.Split(tc.view, "\n")); got != height {
+				t.Errorf("%s at %d columns: the view has %d lines, want %d", name, width, got, height)
+			}
+			for _, command := range tc.commands {
+				// a command may have lost its label to fit; its key must still be there
+				key := command[:strings.Index(command, "]")+1]
+				if !strings.Contains(footer, key) {
+					t.Errorf("%s at %d columns: %s is gone from the footer:\n%s", name, width, key, footer)
+				}
+			}
+		}
+	}
+}
+
+func TestGitView_FootersWrapAndKeepTheViewHeight(t *testing.T) {
+	for _, width := range []int{40, 70, 140} {
+		model, _ := newGitTestModel(width, 14)
+		model = settle(model)
+		view := model.View()
+		lines := strings.Split(view, "\n")
+		if len(lines) != 14 {
+			t.Fatalf("width %d: %d lines, want 14", width, len(lines))
+		}
+		for i, line := range lines {
+			if got := lipgloss.Width(line); got != width {
+				t.Errorf("width %d line %d is %d columns wide", width, i, got)
+			}
+		}
+		footer := footerText(view, footerMax)
+		for _, key := range []string{"[↑↓]", "[enter]", "[tab]", "[q]", "[t]"} {
+			if !strings.Contains(footer, key) {
+				t.Errorf("width %d: %s is gone from the footer:\n%s", width, key, footer)
+			}
+		}
+	}
+}
+
+func TestMergeFooter_WrapsInANarrowHighTerminal(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	for _, width := range []int{40, 60, 90} {
+		sized, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: 24})
+		view := sized.View()
+		if got := len(strings.Split(view, "\n")); got != 24 {
+			t.Fatalf("width %d: the view has %d lines, want 24", width, got)
+		}
+		footer := footerText(view, 4)
+		for _, key := range []string{"[n/p]", "[m]", "[e]", "[u]", "[s]", "[q]"} {
+			if !strings.Contains(footer, key) {
+				t.Errorf("width %d: %s is gone from the footer:\n%s", width, key, footer)
+			}
+		}
+	}
+}
+
+func TestMergeFooter_CommandOnTheSecondLineIsClickable(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	sized, _ := model.Update(tea.WindowSizeMsg{Width: 40, Height: 24})
+	view := sized.View()
+	lines := strings.Split(plainText(view), "\n")
+	// the quit command is the last one: it sits on the last line when the shortcuts wrap
+	y := len(lines) - 1
+	x := strings.Index(lines[y], "[q]")
+	if x < 0 {
+		t.Fatalf("[q] is not on the last footer line: %q", lines[y])
+	}
+	if keys := sized.(MergeModel).footerKeys(len([]rune(lines[y][:x])), y); len(keys) == 0 {
+		t.Fatal("[q] on the wrapped line must be clickable")
+	}
+}
+
+func TestWelcomeFooter_WrapsInANarrowTerminal(t *testing.T) {
+	model, _ := NewWelcomeModel(nil, nil, nil)
+	for _, width := range []int{36, 50} {
+		sized, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: 12})
+		view := sized.View()
+		if got := len(strings.Split(view, "\n")); got != 12 {
+			t.Fatalf("width %d: %d lines, want 12", width, got)
+		}
+		footer := footerText(view, footerMax)
+		for _, key := range []string{"[enter]", "[o]", "[d]", "[q]"} {
+			if !strings.Contains(footer, key) {
+				t.Errorf("width %d: %s is gone from the footer:\n%s", width, key, footer)
+			}
+		}
+	}
+}
+
+func TestWelcomeFooter_LongMessageWrapsAndKeepsTheHeight(t *testing.T) {
+	model, _ := NewWelcomeModel(nil, nil, nil)
+	sized, _ := model.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
+	welcome := sized.(WelcomeModel)
+	welcome.status = "Cannot open /very/long/path/to/a/folder that does not exist anywhere"
+	view := welcome.View()
+	if got := len(strings.Split(view, "\n")); got != 12 {
+		t.Fatalf("%d lines, want 12", got)
+	}
+	if !strings.Contains(plainText(view), "anywhere") {
+		t.Fatalf("the message is cut off:\n%s", plainText(view))
+	}
+}
+
+func TestSearchFooter_WrapsAndStaysClickable(t *testing.T) {
+	model, _ := newSearch(DarkTheme(), t.TempDir(), searchFiles, "", 34, 12, nil)
+	view := model.View()
+	if got := len(strings.Split(view, "\n")); got != 12 {
+		t.Fatalf("%d lines, want 12", got)
+	}
+	footer := footerText(view, footerMax)
+	for _, key := range []string{"[tab]", "[esc]"} {
+		if !strings.Contains(footer, key) {
+			t.Fatalf("%s is gone from the footer:\n%s", key, footer)
+		}
+	}
+	lines := strings.Split(plainText(view), "\n")
+	for y := len(lines) - footerMax; y < len(lines); y++ {
+		if x := strings.Index(lines[y], "[esc]"); x >= 0 {
+			if keys := rowKeysAt(model.footerRows(), len([]rune(lines[y][:x])), y, model.width, model.height); len(keys) == 0 {
+				t.Fatal("[esc] must be clickable on its wrapped line")
+			}
+			return
+		}
+	}
+	t.Fatal("[esc] not found")
+}
+
+func TestMergeView_KeepsItsHeightInShortAndEditingStates(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	for _, height := range []int{9, 10, 12, 13, 14, 30} {
+		sized, _ := model.Update(tea.WindowSizeMsg{Width: 36, Height: height})
+		if got := len(strings.Split(sized.View(), "\n")); got != height {
+			t.Errorf("height %d: the view has %d lines", height, got)
+		}
+	}
+	editing, _, _ := editModel(t, editBase, editOurs, editTheirs)
+	narrow, _ := mergePress(editing, "e").Update(tea.WindowSizeMsg{Width: 36, Height: 24})
+	view := narrow.View()
+	if got := len(strings.Split(view, "\n")); got != 24 {
+		t.Fatalf("editing: the view has %d lines, want 24", got)
+	}
+	if !strings.Contains(footerText(view, 2), "[:q!]") && !strings.Contains(footerText(view, 2), "[:w]") {
+		t.Fatalf("the editor hints are gone:\n%s", footerText(view, 3))
+	}
+}
+
+func TestDiffAndDirMergeFooters_SecondLineIsClickable(t *testing.T) {
+	diffModel, _ := NewDiffModel("a", "b", []string{"x"}, []string{"y"}).Update(tea.WindowSizeMsg{Width: 30, Height: 10})
+	lines := strings.Split(plainText(diffModel.View()), "\n")
+	y := len(lines) - 1
+	x := strings.Index(lines[y], "[q]")
+	if x < 0 {
+		t.Fatalf("[q] is not on the last diff footer line: %q", lines[y])
+	}
+	if _, cmd := diffModel.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: len([]rune(lines[y][:x])), Y: y}); cmd == nil {
+		t.Fatal("[q] on the wrapped diff footer must quit")
+	}
+	dir, _ := NewDirMergeModel("left", "right", []source.ChangedFile{{Path: "a.txt"}}, nil).Update(tea.WindowSizeMsg{Width: 20, Height: 10})
+	lines = strings.Split(plainText(dir.View()), "\n")
+	for y := len(lines) - footerMax; y < len(lines); y++ {
+		if x := strings.Index(lines[y], "[q]"); x >= 0 {
+			if _, cmd := dir.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: len([]rune(lines[y][:x])), Y: y}); cmd == nil {
+				t.Fatal("[q] on the wrapped dirmerge footer must quit")
+			}
+			return
+		}
+	}
+	t.Fatal("[q] not found in the dirmerge footer")
 }

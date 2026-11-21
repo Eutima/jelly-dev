@@ -189,7 +189,7 @@ func (m *GitModel) applyLoaded(msg loadedMsg) tea.Cmd {
 	}
 	m.loadedFile = msg.index
 	m.message = msg.message
-	m.diff = msg.diff.withSize(m.diffWidth(), m.height)
+	m.diff = m.sizedDiff(msg.diff)
 	if m.arrive != 0 {
 		m.diff.gotoHunk(map[bool]int{true: 0, false: -1}[m.arrive > 0])
 		m.arrive = 0
@@ -234,7 +234,22 @@ func describeLoadError(err error) string {
 	}
 }
 
-func (m GitModel) listBodyHeight() int { return max(m.height-chromeLines, 1) }
+func (m GitModel) listBodyHeight() int { return max(m.height-headerLines-m.footerHeight(), 1) }
+
+// footerHeight is the number of footer lines of both panes: the diff footer is as high as the taller of the two.
+func (m GitModel) footerHeight() int { return len(m.diff.footerRows()) }
+
+// listFooterRows is the footer under the file list as wrapped bars.
+// It is padded to the height of the diff footer.
+func (m GitModel) listFooterRows() []*bar {
+	return padRows(m.listFooterBar().wrap(m.listWidth(), footerMax), m.footerHeight())
+}
+
+// sizedDiff fits a diff into the right pane and tells it how high the list footer is.
+func (m GitModel) sizedDiff(d DiffModel) DiffModel {
+	d.footerMin = len(m.listFooterBar().wrap(m.listWidth(), footerMax))
+	return d.withSize(m.diffWidth(), m.height)
+}
 
 func (m *GitModel) ensureVisible() {
 	body := m.listBodyHeight()
@@ -252,7 +267,7 @@ func (m GitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.diff = m.diff.withSize(m.diffWidth(), m.height)
+		m.diff = m.sizedDiff(m.diff)
 		m.ensureVisible()
 		return m, nil
 	case loadedMsg:
@@ -358,7 +373,7 @@ func (m GitModel) listView() string {
 		}
 		lines = append(lines, m.fileRow(index, width))
 	}
-	lines = append(lines, m.listFooterBar().render(width, m.theme.Footer))
+	lines = append(lines, renderRowLines(m.listFooterRows(), width, m.theme.Footer)...)
 	return strings.Join(lines, "\n")
 }
 
@@ -375,12 +390,11 @@ func (m GitModel) listFooterBar() *bar {
 // footerKeys returns the keys of the footer command at a screen position: the list footer on the left, the diff
 // footer on the right of the divider.
 func (m GitModel) footerKeys(x, y int) []string {
-	if y != m.height-1 {
-		return nil
-	}
-	if list := m.listWidth(); x < list {
-		return m.listFooterBar().visibleKeysAt(x, list)
-	} else if x >= list+separatorW {
+	list := m.listWidth()
+	switch {
+	case x < list:
+		return rowKeysAt(m.listFooterRows(), x, y, list, m.height)
+	case x >= list+separatorW:
 		return m.diff.footerKeys(x-list-separatorW, y)
 	}
 	return nil
@@ -447,7 +461,9 @@ func (m GitModel) messageView(message string) string {
 			lines = append(lines, renderText("", nil, width, plain, plain))
 		}
 	}
-	lines = append(lines, m.theme.Footer.Render(padRight("", width)))
+	for i := 0; i < m.footerHeight(); i++ {
+		lines = append(lines, m.theme.Footer.Render(padRight("", width)))
+	}
 	return strings.Join(lines, "\n")
 }
 
