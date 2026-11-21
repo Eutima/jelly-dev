@@ -394,15 +394,16 @@ func TestProject_TreeHintsWrapAndTheSecondLineIsClickable(t *testing.T) {
 	updated, cmd := model.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: region.from + 1, Y: y})
 	got := settleProject(updated.(ProjectModel), cmd)
 	switch region.keys[0] {
-	case "ctrl+f":
-		if got.search == nil {
-			t.Fatal("a click on [ctrl+f] on the second line opens the search")
+	case "d":
+		if got.dlg == nil {
+			t.Fatal("a click on [d] on the second line asks before deleting")
 		}
-	default:
-		t.Logf("the second line starts with %v", region.keys)
-		if got.search == nil && got.picker == nil && got.focus == model.focus && !got.termShown {
+	case "e", "n":
+		if got.name == nil && got.focus == model.focus {
 			t.Fatalf("a click on %v on the second line did nothing", region.keys)
 		}
+	default:
+		t.Fatalf("unexpected command %v on the second line", region.keys)
 	}
 }
 

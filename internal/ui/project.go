@@ -84,6 +84,7 @@ type ProjectModel struct {
 	pickerOutcome *WelcomeOutcome     // what the picker chose
 	search        *SearchModel        // the open project search, nil when closed
 	knownFiles    []string            // the file list of the last search, shown at once the next time
+	name          *namePrompt         // the prompt for a new file name, nil when none is open
 	dlg           *unsavedDialog      // the question about unsaved changes, nil when none is open
 	pick          *formatPick         // the list of formatters to choose from, nil when closed
 	langs         *languagePick       // the list of languages (:addlang), nil when closed
@@ -458,6 +459,9 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.dlg != nil {
 		return m.dialogKey(msg)
 	}
+	if m.name != nil {
+		return m.nameKey(msg)
+	}
 	if m.pick != nil {
 		return m.updateFormatPicker(msg)
 	}
@@ -523,6 +527,14 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if parent := m.tree.Parent(node); parent != nil {
 				m.sel = m.indexOf(parent)
 			}
+		}
+	case "n":
+		return m.startCreate(node), nil
+	case "d":
+		return m.askToDelete(node), nil
+	case "e":
+		if node != nil && !node.Dir {
+			return m.activate(node, false)
 		}
 	case "R":
 		m.tree.Refresh()
@@ -739,6 +751,9 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.dlg != nil {
 		return m.clickDialog(msg)
 	}
+	if m.name != nil {
+		return m, nil
+	}
 	if m.pick != nil {
 		return m.updateFormatPicker(msg)
 	}
@@ -806,7 +821,7 @@ func (m ProjectModel) editorOffset() int {
 func (m ProjectModel) treeFooterBar() *bar {
 	result := &bar{}
 	result.add(barPart{" ", m.theme.Footer})
-	for _, h := range [][2]string{{"ctrl+p", "projects"}, {"ctrl+f", "files"}, {"ctrl+g", "text"}, {"ctrl+t", "terminal"}, {"enter", "open"}, {"w", "window"}} {
+	for _, h := range [][2]string{{"n", "new"}, {"d", "delete"}, {"e", "edit"}} {
 		result.command(h[0], h[1], true, m.theme)
 	}
 	return result
@@ -826,6 +841,9 @@ func (m ProjectModel) View() string {
 	screen := m.topBar().render(m.width, m.theme.Footer) + "\n" + m.body()
 	if m.dlg != nil {
 		return m.overlayDialog(screen)
+	}
+	if m.name != nil {
+		return m.nameView(screen)
 	}
 	if m.pick != nil {
 		return m.pick.picker.overlay(screen, m.width, m.height)

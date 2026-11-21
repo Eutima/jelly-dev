@@ -29,6 +29,7 @@ type unsavedDialog struct {
 	hint    string
 	buttons []dialogButton
 	choice  int
+	strict  bool                                    // ctrl+c and ctrl+d never confirm (for what cannot be undone)
 	then    func(ProjectModel) (tea.Model, tea.Cmd) // the blocked action, run once the question is answered with yes, save or discard
 }
 
@@ -65,7 +66,7 @@ func (m ProjectModel) dialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.dialogAction(d.buttons[d.choice].action)
 	case "ctrl+c", "ctrl+d":
-		if d.buttons[0].action == "yes" { // the key that asked also confirms
+		if d.buttons[0].action == "yes" && !d.strict { // the key that asked also confirms
 			return m.dialogAction("yes")
 		}
 		return m.dialogAction("cancel") // in the save dialog ctrl+c and ctrl+d both mean: do not go on
@@ -137,14 +138,19 @@ func (m ProjectModel) clickDialog(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 // overlayDialog draws the dialog over the middle rows of a rendered screen.
 func (m ProjectModel) overlayDialog(screen string) string {
-	lines := strings.Split(screen, "\n")
-	x, y := m.dialogOrigin()
 	width := min(dialogBox, m.width)
-	rows := []string{
+	return m.overlayRows(screen, []string{
 		m.theme.Header.Render(padRight(" "+sanitize(m.dlg.title), width)),
 		m.dialogBar().render(width, m.theme.Footer),
 		m.theme.Footer.Render(padRight(m.dlg.hint, width)),
-	}
+	})
+}
+
+// overlayRows draws rows of the dialog width over the middle rows of a rendered screen.
+func (m ProjectModel) overlayRows(screen string, rows []string) string {
+	lines := strings.Split(screen, "\n")
+	x, y := m.dialogOrigin()
+	width := min(dialogBox, m.width)
 	for i, row := range rows {
 		if y+i < len(lines) {
 			line := lines[y+i]

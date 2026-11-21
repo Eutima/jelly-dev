@@ -231,7 +231,9 @@ matches complete their common part, further presses walk through them; `shift+ta
 while you type and can be chosen with the arrows; `enter` opens the folder here, `ctrl+w` in a new window.
 
 Tree keys: `j`/`k` move, `enter`/`o` open a file or toggle a folder, `h`/`l` collapse/expand, `R` refresh, `w` new window,
-`ctrl+e` or `tab` switch to the editor, `q` quit (`ctrl+e` switches back to the tree). Entries of `.git` and the root
+`n` new file (asks for the name; it goes into the selected folder, or next to the selected file; end the name with `/` for a
+folder; it cannot leave the project), `d` delete the selected file or folder after a question that starts on *No*, `e` edit
+(open) the file; the footer under the tree shows only these three. `ctrl+e` or `tab` switch to the editor, `q` quit (`ctrl+e` switches back to the tree). Entries of `.git` and the root
 `.gitignore` (names and globs) are hidden. The mouse works in the tree, the editor and the footers.
 
 Editor: normal, insert and visual mode with the keys listed under "Merge" (the same engine), line numbers, syntax highlighting,
