@@ -88,6 +88,11 @@ func (m DiffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.clamp()
 	case tea.MouseMsg:
+		if leftPress(msg) {
+			if keys := m.footerKeys(msg.X, msg.Y); keys != nil {
+				return replay(m, keys)
+			}
+		}
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
 			m.offset -= wheelLines
@@ -195,7 +200,10 @@ func (m DiffModel) header(paneWidth, rightWidth int) string {
 	return m.theme.Header.Render(left + strings.Repeat(" ", gutterWidth) + right)
 }
 
-func (m DiffModel) footer() string {
+func (m DiffModel) footer() string { return m.footerBar().render(m.width, m.theme.Footer) }
+
+// footerBar builds the footer: the position and the clickable commands.
+func (m DiffModel) footerBar() *bar {
 	position := "no changes"
 	if n := m.HunkCount(); n > 0 {
 		position = fmt.Sprintf("%d changes", n)
@@ -203,8 +211,20 @@ func (m DiffModel) footer() string {
 			position = fmt.Sprintf("change %d/%d", m.current+1, n)
 		}
 	}
-	text := fmt.Sprintf(" %s   n/p next/prev change   j/k scroll   t split/unified   q quit", position)
-	return m.theme.Footer.Render(padRight(text, m.width))
+	result := &bar{}
+	result.add(barPart{" " + position + "   ", m.theme.Footer})
+	for _, h := range [][2]string{{"n/p", "next/prev change"}, {"j/k", "scroll"}, {"t", "split/unified"}, {"q", "quit"}} {
+		result.command(h[0], h[1], true, m.theme)
+	}
+	return result
+}
+
+// footerKeys returns the keys of the footer command at a position of the diff view, nil when there is none.
+func (m DiffModel) footerKeys(x, y int) []string {
+	if y != m.height-1 {
+		return nil
+	}
+	return m.footerBar().visibleKeysAt(x, m.width)
 }
 
 func (m DiffModel) renderGutter(row Row) string {

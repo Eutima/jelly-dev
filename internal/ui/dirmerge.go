@@ -74,6 +74,11 @@ func (m DirMergeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		return m.handleKey(key)
 	}
+	if mouse, ok := msg.(tea.MouseMsg); ok && leftPress(mouse) && mouse.Y == m.height-1 && m.status == "" {
+		if keys := m.footerBar().visibleKeysAt(mouse.X, m.width); keys != nil {
+			return replay(m, keys)
+		}
+	}
 	return m, nil
 }
 
@@ -192,10 +197,19 @@ func (m DirMergeModel) fileRow(index int) string {
 
 // footer shows the message of the last action, or the keys.
 func (m DirMergeModel) footer() string {
-	text := " ↑↓ files  enter merge into " + sanitize(m.leftLabel) + "  q quit"
 	if m.status != "" {
-		text = " " + m.status
+		// the status can contain file names and error texts: renderText strips control characters and cuts to the width
+		return renderText(" "+m.status, nil, m.width, m.theme.Footer, m.theme.Footer)
 	}
-	// the status can contain file names and error texts: renderText strips control characters and cuts to the width
-	return renderText(text, nil, m.width, m.theme.Footer, m.theme.Footer)
+	return m.footerBar().render(m.width, m.theme.Footer)
+}
+
+// footerBar builds the clickable key hints of the file list.
+func (m DirMergeModel) footerBar() *bar {
+	result := &bar{}
+	result.add(barPart{" ", m.theme.Footer})
+	result.command("↑↓", "files", true, m.theme)
+	result.command("enter", "merge into "+sanitize(m.leftLabel), true, m.theme)
+	result.command("q", "quit", true, m.theme)
+	return result
 }

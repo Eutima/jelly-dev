@@ -513,13 +513,16 @@ func (m MergeModel) editorBody(width int) string {
 	return out.String()
 }
 
-// editorHints is the second footer line while the editor is open.
-func (m MergeModel) editorHints() string {
-	footer := m.theme.Footer
-	return renderSegments([]barPart{
-		{" esc", m.theme.Header}, {" normal  ", footer}, {"i", m.theme.Header}, {" insert  ", footer},
-		{"v/V", m.theme.Header}, {" visual  ", footer}, {":w", m.theme.Header}, {" apply  ", footer},
-		{":wq", m.theme.Header}, {" apply+leave  ", footer}, {":q", m.theme.Header}, {" leave  ", footer},
-		{":q!", m.theme.Header}, {" discard  ", footer}, {"ctrl+d", m.theme.Header}, {" leave (asks)", footer},
-	}, m.width, footer)
+// editorBar builds the hint bar under the editor.
+func (m MergeModel) editorBar() *bar {
+	result := &bar{}
+	result.add(barPart{" ", m.theme.Footer})
+	for _, h := range [][2]string{{"esc", "normal"}, {"i", "insert"}, {"v/V", "visual"}, {":w", "apply"}, {":wq", "apply+leave"},
+		{":q", "leave"}, {":q!", "discard"}, {"ctrl+d", "leave (asks)"}} {
+		result.command(h[0], h[1], !m.editConfirm, m.theme)
+	}
+	return result
 }
+
+// editorHints is the second footer line while the editor is open.
+func (m MergeModel) editorHints() string { return m.editorBar().render(m.width, m.theme.Footer) }

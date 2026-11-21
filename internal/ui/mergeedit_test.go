@@ -586,3 +586,7 @@ func TestMergeEditor_KeepsCursorLineVisible_WhenWalkingOverContext(t *testing.T)
 		t.Fatalf("the first line must be shown after gg:\n%s", plainView(model))
 	}
 }
+
+func stripANSI(text string) string {
+	return regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(text, "")
+}

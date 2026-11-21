@@ -288,7 +288,10 @@ func (m MergeModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.clamp()
 	case tea.MouseMsg:
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		if leftPress(msg) {
+			if keys := m.footerKeys(msg.X, msg.Y); keys != nil {
+				return replay(m, keys)
+			}
 			m.click(msg.X, msg.Y)
 		}
 		switch msg.Button {
@@ -305,6 +308,23 @@ func (m MergeModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 	}
 	return m, nil
+}
+
+// footerKeys returns the keys of the footer command at the screen position, nil when there is none. The compact
+// one-line footer of small terminals is not clickable.
+func (m MergeModel) footerKeys(x, y int) []string {
+	if m.height < fullChromeHeight {
+		return nil
+	}
+	switch {
+	case y == m.height-1 && m.editing:
+		return m.editorBar().visibleKeysAt(x, m.width)
+	case y == m.height-1:
+		return m.shortcutBar().visibleKeysAt(x, m.width)
+	case y == m.height-2 && !m.editing:
+		return m.actionBar().visibleKeysAt(x, m.width)
+	}
+	return nil
 }
 
 func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

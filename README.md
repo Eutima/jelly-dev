@@ -66,6 +66,10 @@ Keys in the merge view (conflicts):
 | `s` | save (when every conflict is resolved) |
 | `q` | quit |
 
+The commands in the footers are written as `[key] action` and can be clicked (when they are not dimmed): a click does what the key
+does. This works in the diff, git, directory and merge views, and for the editor commands (`[:w]`, `[:q]`, ...); the one-line
+footer of very small terminals is not clickable.
+
 Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage error. A merge exits 0 only after saving.
 
 `playground/` has sample files, two directory trees, merge inputs and a script that creates git repositories with

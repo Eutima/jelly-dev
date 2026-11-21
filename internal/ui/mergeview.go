@@ -466,64 +466,75 @@ func (m MergeModel) hints() [][]hint {
 	}
 }
 
-// shortcutLine draws the shortcut groups, dropping the less important hints when the width is short.
-func (m MergeModel) shortcutLine() string {
+// shortcutBar builds the shortcut groups, dropping the less important hints when the width is short.
+func (m MergeModel) shortcutBar() *bar {
 	groups := m.hints()
-	build := func(maxDrop int) []barPart {
-		var segments []barPart
+	build := func(maxDrop int) *bar {
+		result := &bar{}
+		result.add(barPart{" ", m.theme.Footer})
+		first := true
 		for _, group := range groups {
-			var parts []barPart
+			part := &bar{}
 			for _, h := range group {
-				if h.drop > maxDrop {
-					continue
+				if h.drop <= maxDrop {
+					part.command(h.key, h.label, h.enabled, m.theme)
 				}
-				keyStyle, labelStyle := m.theme.Header, m.theme.Footer
-				if !h.enabled {
-					keyStyle, labelStyle = m.theme.Footer.Faint(true), m.theme.Footer.Faint(true)
-				}
-				parts = append(parts, barPart{h.key, keyStyle}, barPart{" " + h.label + "  ", labelStyle})
 			}
-			if len(parts) > 0 {
-				if len(segments) > 0 {
-					segments = append(segments, barPart{"│ ", m.theme.Footer.Faint(true)})
-				}
-				segments = append(segments, parts...)
+			if len(part.parts) == 0 {
+				continue
+			}
+			if !first {
+				result.add(barPart{"│ ", m.theme.Footer.Faint(true)})
+			}
+			first = false
+			offset := result.width
+			result.add(part.parts...)
+			for _, r := range part.regions {
+				result.regions = append(result.regions, region{from: r.from + offset, to: r.to + offset, keys: r.keys})
 			}
 		}
-		return segments
+		return result
 	}
-	var segments []barPart
+	var result *bar
 	for maxDrop := 2; maxDrop >= 0; maxDrop-- {
-		segments = append([]barPart{{" ", m.theme.Footer}}, build(maxDrop)...)
-		if segmentsWidth(segments) <= m.width {
+		if result = build(maxDrop); result.width <= m.width {
 			break
 		}
 	}
-	return renderSegments(segments, m.width, m.theme.Footer)
+	return result
 }
 
+// shortcutLine draws the shortcut groups.
+func (m MergeModel) shortcutLine() string { return m.shortcutBar().render(m.width, m.theme.Footer) }
+
 // actionLine is the first footer line: a message, the editor hints or the actions for the selected change.
-func (m MergeModel) actionLine() string {
+func (m MergeModel) actionLine() string { return m.actionBar().render(m.width, m.theme.Footer) }
+
+// actionBar builds the action line: a message, the editor status or the actions for the selected change.
+func (m MergeModel) actionBar() *bar {
 	footer := m.theme.Footer
+	result := &bar{}
 	switch {
 	case m.editing && m.status == "":
-		return renderSegments([]barPart{{" " + m.editingStatus(), m.theme.Header}}, m.width, footer)
+		result.add(barPart{" " + m.editingStatus(), m.theme.Header})
+		return result
 	case m.status != "" && m.warn:
-		return renderSegments([]barPart{{" ! " + m.status, m.theme.Warning.Background(footer.GetBackground())}}, m.width, footer)
+		result.add(barPart{" ! " + m.status, m.theme.Warning.Background(footer.GetBackground())})
+		return result
 	case m.status != "":
-		return renderSegments([]barPart{{" " + m.status, m.theme.Header}}, m.width, footer)
+		result.add(barPart{" " + m.status, m.theme.Header})
+		return result
 	}
-	key := func(k, label string) []barPart {
-		return []barPart{{"[" + k + "]", m.theme.Header}, {" " + label + "  ", footer}}
+	key := func(k, label string) {
+		result.command(k, label, true, m.theme)
 	}
-	var segments []barPart
 	switch {
 	case m.current >= 0:
 		title := "Resolve change"
 		if number := m.conflictNumber(m.changed[m.current]); number > 0 {
 			title = fmt.Sprintf("Resolve conflict %d/%d", number, m.ConflictCount())
 		}
-		segments = append(segments, barPart{" " + title + "   ", m.theme.Header})
+		result.add(barPart{" " + title + "   ", m.theme.Header})
 		chunk := m.changed[m.current]
 		mark := func(side int) string {
 			if m.sideIncluded(chunk, side) {
@@ -532,23 +543,23 @@ func (m MergeModel) actionLine() string {
 			return ""
 		}
 		for _, k := range [][2]string{{"→", "ours" + mark(paneOurs)}, {"←", "theirs" + mark(paneTheirs)}, {"b", "both"}, {"e", "edit"}} {
-			segments = append(segments, key(k[0], k[1])...)
+			key(k[0], k[1])
 		}
 		if m.stateOf(chunk) == stateUnresolved {
-			segments = append(segments, key("x", "ignore")...)
+			key("x", "ignore")
 		}
 		if m.choices[chunk] != ChoiceAuto {
-			segments = append(segments, key("⌫", "cancel")...)
+			key("⌫", "cancel")
 		}
-		segments = append(segments, barPart{" o/t/r pick+next  m auto-resolve", footer.Faint(true)})
+		result.add(barPart{" [o/t/r] pick+next  [m] auto-resolve", footer.Faint(true)})
 	case m.Unresolved() > 0:
-		segments = []barPart{{" Press n to jump to the next conflict, m to auto-resolve the simple ones", footer}}
+		result.add(barPart{" Press [n] to jump to the next conflict, [m] to auto-resolve the simple ones", footer})
 	case m.dirty:
-		segments = []barPart{{" ✓ All conflicts resolved · press s to save, or n to review the changes", m.theme.StatusAdded.Background(footer.GetBackground())}}
+		result.add(barPart{" ✓ All conflicts resolved · press [s] to save, or [n] to review the changes", m.theme.StatusAdded.Background(footer.GetBackground())})
 	default:
-		segments = []barPart{{" ✓ Result saved · press q to quit", m.theme.StatusAdded.Background(footer.GetBackground())}}
+		result.add(barPart{" ✓ Result saved · press [q] to quit", m.theme.StatusAdded.Background(footer.GetBackground())})
 	}
-	return renderSegments(segments, m.width, footer)
+	return result
 }
 
 func (m MergeModel) footer() string {
@@ -570,7 +581,7 @@ func (m MergeModel) compactFooter() string {
 	badge.style = m.theme.Footer
 	summary := fmt.Sprintf(" %d left · ", m.Unresolved())
 	return renderSegments([]barPart{
-		{summary, m.theme.Footer}, badge, {"   n/p o t b e u s q", m.theme.Footer},
+		{summary, m.theme.Footer}, badge, {"   [n/p] [o] [t] [b] [e] [u] [s] [q]", m.theme.Footer},
 	}, m.width, m.theme.Footer)
 }
 

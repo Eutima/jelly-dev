@@ -244,6 +244,11 @@ func (m GitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.frame++
 		return m, jellyTick(m.interval)
 	case tea.MouseMsg:
+		if leftPress(msg) {
+			if keys := m.footerKeys(msg.X, msg.Y); keys != nil {
+				return replay(m, keys)
+			}
+		}
 		return m.forwardToDiff(msg)
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -327,9 +332,32 @@ func (m GitModel) listView() string {
 		}
 		lines = append(lines, m.fileRow(index, width))
 	}
-	hint := " ↑↓ files  enter open  tab focus  q quit"
-	lines = append(lines, m.theme.Footer.Render(padRight(hint, width)))
+	lines = append(lines, m.listFooterBar().render(width, m.theme.Footer))
 	return strings.Join(lines, "\n")
+}
+
+// listFooterBar builds the footer under the file list.
+func (m GitModel) listFooterBar() *bar {
+	result := &bar{}
+	result.add(barPart{" ", m.theme.Footer})
+	for _, h := range [][2]string{{"↑↓", "files"}, {"enter", "open"}, {"tab", "focus"}, {"q", "quit"}} {
+		result.command(h[0], h[1], true, m.theme)
+	}
+	return result
+}
+
+// footerKeys returns the keys of the footer command at a screen position: the list footer on the left, the diff
+// footer on the right of the divider.
+func (m GitModel) footerKeys(x, y int) []string {
+	if y != m.height-1 {
+		return nil
+	}
+	if list := m.listWidth(); x < list {
+		return m.listFooterBar().visibleKeysAt(x, list)
+	} else if x >= list+separatorW {
+		return m.diff.footerKeys(x-list-separatorW, y)
+	}
+	return nil
 }
 
 func (m GitModel) fileRow(index, width int) string {
