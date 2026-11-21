@@ -73,9 +73,47 @@ func (m WelcomeModel) finish() (tea.Model, tea.Cmd) {
 // Init implements tea.Model.
 func (m WelcomeModel) Init() tea.Cmd { return nil }
 
-func (m WelcomeModel) bodyHeight() int { return max(m.height-welcomeChrome, 1) }
+func (m WelcomeModel) bodyHeight() int {
+	return max(m.height-welcomeTop-len(m.messageRows())-len(m.footerRows()), 1)
+}
 
-const welcomeChrome = 5 // title, blank line, list header, prompt/message line, hints
+const welcomeTop = 3 // title, blank line, list header
+
+// messageRows are the lines under the list: the prompt of the folder being typed, or the last message (it wraps instead of being
+// cut off); there is always at least one.
+func (m WelcomeModel) messageRows() []*bar {
+	switch {
+	case m.typing:
+		text := "Open folder: " + sanitize(string(m.input)) + "█"
+		if m.status != "" {
+			text += "   ! " + sanitize(m.status)
+		}
+		return textRows(text, m.width, footerMax, m.theme.Equal)
+	case m.status != "" && m.warn:
+		return textRows(sanitize(m.status), m.width, footerMax, m.theme.Warning)
+	case m.status != "":
+		return textRows(sanitize(m.status), m.width, footerMax, m.theme.Equal)
+	}
+	return []*bar{{}}
+}
+
+// footerRows are the hints as wrapped bars.
+func (m WelcomeModel) footerRows() []*bar {
+	if m.typing {
+		return m.promptHintBar().wrap(m.width, footerMax)
+	}
+	return m.hintBar().wrap(m.width, footerMax)
+}
+
+// promptHintBar is the hint line while a folder is typed (its keys go to the prompt, so it is not clickable).
+func (m WelcomeModel) promptHintBar() *bar {
+	result := &bar{}
+	result.add(barPart{" ", m.theme.Footer})
+	for _, h := range []string{"[tab] complete", "[↑↓] choose", "[enter] open here", "[ctrl+w] new window", "[esc] back"} {
+		result.hint(barPart{h + "  ", m.theme.Footer})
+	}
+	return result
+}
 
 // Update implements tea.Model.
 func (m WelcomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -269,13 +307,13 @@ func (m WelcomeModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case msg.Button == tea.MouseButtonWheelDown:
 		m.top = min(m.top+wheelLines, max(len(m.entries)-m.bodyHeight(), 0))
 	case leftPress(msg):
-		if msg.Y == m.height-1 {
-			if keys := m.hintBar().visibleKeysAt(msg.X, m.width); keys != nil {
+		if msg.Y >= m.height-len(m.footerRows()) {
+			if keys := rowKeysAt(m.footerRows(), msg.X, msg.Y, m.width, m.height); keys != nil {
 				return replayKeys(m, keys)
 			}
 			return m, nil
 		}
-		if row := m.top + msg.Y - 3; msg.Y >= 3 && msg.Y < 3+m.bodyHeight() && row < len(m.entries) {
+		if row := m.top + msg.Y - welcomeTop; msg.Y >= welcomeTop && msg.Y < welcomeTop+m.bodyHeight() && row < len(m.entries) {
 			m.selected = row
 			return m.choose()
 		}
@@ -323,14 +361,7 @@ func (m WelcomeModel) View() string {
 			lines = append(lines, strings.Repeat(" ", m.width))
 		}
 	}
-	switch {
-	case m.status != "" && m.warn:
-		lines = append(lines, m.theme.Warning.Render(padRight(" "+sanitize(m.status), m.width)))
-	default:
-		lines = append(lines, renderText(" "+m.status, nil, m.width, m.theme.Equal, m.theme.Equal))
-	}
-	lines = append(lines, m.hintBar().render(m.width, m.theme.Footer))
-	return strings.Join(lines, "\n")
+	return m.withBottom(lines)
 }
 
 // promptView is the screen while a folder is typed: the matching folders replace the list of projects.
@@ -351,12 +382,13 @@ func (m WelcomeModel) promptView(lines []string) string {
 			lines = append(lines, strings.Repeat(" ", m.width))
 		}
 	}
-	text := " Open folder: " + string(m.input) + "█"
-	if m.status != "" {
-		text += "   ! " + m.status
-	}
-	lines = append(lines, renderText(text, nil, m.width, m.theme.Equal, m.theme.Equal))
-	lines = append(lines, m.theme.Footer.Render(padRight(" [tab] complete  [↑↓] choose  [enter] open here  [ctrl+w] new window  [esc] back", m.width)))
+	return m.withBottom(lines)
+}
+
+// withBottom adds the message lines and the hints under the list.
+func (m WelcomeModel) withBottom(lines []string) string {
+	lines = append(lines, renderRowLines(m.messageRows(), m.width, m.theme.Equal)...)
+	lines = append(lines, renderRowLines(m.footerRows(), m.width, m.theme.Footer)...)
 	return strings.Join(lines, "\n")
 }
 

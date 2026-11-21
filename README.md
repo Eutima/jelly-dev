@@ -1,6 +1,6 @@
 # Jelly Dev
 
-<p align="center"><img src="docs/jelly-dev-logo.png" alt="Jelly Dev logo" width="384"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/jelly-dev-logo.png" alt="Jelly Dev logo" width="384"></p>
 
 A terminal diff and merge tool with a JetBrains-style UI: side-by-side panes, colored change blocks and
 word-level highlights. It diffs files, directories and the clipboard, shows `git diff` and acts as a three-pane
@@ -11,6 +11,40 @@ word-level highlights. It diffs files, directories and the clipboard, shows `git
 - Owner: Roy
 - License: MIT
 - Stack: Go + Bubble Tea (deliberate deviation from the Python tool default)
+
+## Screenshots
+
+Taken from the [playground](playground/README.md) examples (`python3 playground/screenshots.py` makes them again).
+
+![Compare two files](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/diff.png)
+*Compare two files: side by side, with syntax colours and word-level highlights (`t` switches to the unified view, `↓`/`↑` jump between the changes).*
+
+![`jd git`](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/git.png)
+*`jd git`: the changes of a git repository, a file list next to the diff of the selected file.*
+
+![Compare two directories (`jd <dir-a> <dir-b>`)](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/directories.png)
+*Compare two directories (`jd <dir-a> <dir-b>`): every added, removed and changed file.*
+
+![Three-way merge (`jd merge`, also git's merge tool)](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/merge.png)
+*Three-way merge (`jd merge`, also git's merge tool): ours, result and theirs, per conflict `→` ours, `←` theirs, `b` both, `e` edit.*
+
+![The project window](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide.png)
+*The project window: file tree, file tabs and a vim-style editor with syntax colours; `ctrl+p` projects, `ctrl+t` terminal, `ctrl+f` and `ctrl+g` search.*
+
+![A shell in a panel under the editor (several tabs), like in VS Code.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide-terminal.png)
+*A shell in a panel under the editor (several tabs), like in VS Code.*
+
+![Search in the files of the project (`ctrl+g`), file names with `ctrl+f`.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide-search.png)
+*Search in the files of the project (`ctrl+g`), file names with `ctrl+f`.*
+
+![A 16 colour terminal: the ansi theme](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ansi-theme.png)
+*A terminal with 16 colours: jd chooses the `ansi` theme by itself, drawn in reverse video so that it is readable in any palette.*
+
+![`:addlang` adds a language](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/addlang.png)
+*`:addlang` lists all languages: pick one and its language server and formatter are installed.*
+
+![The first start asks which languages to install language servers and formatters for.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/languages.png)
+*The first start asks which languages to install language servers and formatters for.*
 
 ## Install
 
@@ -51,12 +85,45 @@ preview with `JD_DRY_RUN=1`):
 | `basics` | git; on Linux a clipboard tool (wl-clipboard or xclip) | git (winget) |
 | `terminal` | a terminal emulator for new windows (xterm if none is found); in WSL Windows Terminal (`wt.exe`, via winget) | Windows Terminal |
 | `runtimes` | Go, Node.js + npm, Python (pip, pipx), a JDK (also installed when `lsp` is chosen: the servers need them) | Go, Node.js, JDK 21, Python |
-| `lsp` | gopls (`go install`), pyright, typescript-language-server (JavaScript and TypeScript), vscode-langservers-extracted (HTML, CSS, JSON), the Angular language server and the formatter prettier (`npm -g`, into `~/.local`), the formatter black (pipx or `pip --user`), jdtls (download), groovy-language-server (download) | the same |
+| `lsp` | gopls (`go install`), pyright, typescript-language-server (JavaScript and TypeScript), vscode-langservers-extracted (HTML, CSS, JSON), the Angular language server and the formatter prettier (`npm -g`, into `~/.local`), the formatter black (pipx or `pip --user`), jdtls (download) | the same |
 
 System packages are installed with apt, dnf, pacman, zypper, apk or brew (through `sudo` unless you are root) and winget on
 Windows. A tool that cannot be installed is reported at the end; jd itself works without them (the language servers are
-used by the IDE from milestone 2 on). The jdtls and groovy-language-server downloads come from their official sites over
-HTTPS and are not checksum-verified.
+used by the IDE from milestone 2 on). jdtls is downloaded from download.eclipse.org over
+HTTPS as one pinned milestone (1.63.0) and verified against its SHA-256 before it is unpacked; a download that differs is
+refused.
+
+**Languages**: the language servers and formatters are installed per language: `python`, `html`, `css`, `json`, `yaml`, `docker` (Dockerfile), `compose` (Docker Compose), `javascript`
+(JavaScript and TypeScript), `angular`, `go`, `rust`, `c`, `cpp` (C++), `java`. The first time jd starts in a terminal it asks which ones you work
+with (nothing is checked beforehand; `space` toggles, `a` all, `n` none, `enter` installs, `esc` chooses no language, `ctrl+c` means "not now" and it asks again
+at the next start) and remembers the answer in `languages.json` in the config folder. Only the tools of those languages (and the runtimes they need) are installed, by the
+installer script, and later by the IDE when it starts (`:tools` installs what is missing). Change it any time from the command line,
+which needs no root rights:
+
+```
+jd install-lsp --list                 # the languages, the chosen ones marked, and which tools are installed
+jd install-lsp go java                # install the server and the formatter of Go and Java and add them to the chosen ones
+jd install-lsp                        # install what is missing for the chosen languages
+jd install-lsp --all                  # every language
+jd install-lsp --update               # bring the installed tools of the chosen languages to their newest versions
+jd install-lsp --update go python     # the same for the named languages (missing tools are installed)
+```
+
+In the IDE `:addlang` (also `:language`) opens a searchable list of all languages: pick one and its language server **and** its
+formatter are installed (and the language is added to the chosen ones); a language that is installed already shows "enter updates
+it": choosing it brings its language server and formatter to their newest versions (npm and `go install` fetch the latest, pipx or pip
+upgrade, `rustup update` for Rust; `clangd` comes from your package manager and is updated there). Rust uses `rustup` (`rustup component add rust-analyzer
+rustfmt`), C and C++ use `clangd` from your package manager and `clang-format` (pipx). A missing runtime (Node.js, Python, Go, a JDK,
+rustup) is reported; `jd setup` installs those. The installer script takes the same
+choice as `JD_LANGS=python,html,css,json,yaml,docker,compose` (also `all` or `none`).
+
+**Python environments**: the Python language server (pyright) is told which interpreter belongs to the project, so imports of the
+project's packages resolve in a plain venv, with uv and with the normal system Python. In this order: `JD_PYTHON` (the interpreter
+itself), an environment that is active when jd starts (`VIRTUAL_ENV`: venv, virtualenv, `uv run`/activated uv environments, poetry
+shell), the uv environment `UV_PROJECT_ENVIRONMENT`, `.venv`, `venv` or `env` in the project (`uv sync`, `uv venv`,
+`python -m venv .venv`, poetry or pdm in the project; for a project with several Python folders also the one at the top), an active
+conda environment, and for a uv project (`uv.lock`, or `[tool.uv]` in `pyproject.toml`) what `uv python find` says. Without any of
+them the Python on the PATH is used. A `pyrightconfig.json` or `[tool.pyright]` with its own `venv` takes precedence in pyright.
 
 Options (environment variables): `JELLY_DEV_VERSION` (for example `v0.2.0`) picks a release, `INSTALL_DIR` changes
 the target, `JD_SKIP_GIT_CONFIG=1` leaves the git configuration alone.
@@ -131,6 +198,12 @@ last one leaves; `:wa` writes all files, `:qa` leaves when nothing is unsaved an
 The footers and bars adapt to the width: on a narrow terminal the last commands lose their label (the `[key]` stays clickable) and then
 drop out, the first ones stay.
 
+**Narrow terminals**: in every view (project window, diff, git, merge, welcome and search) the footer wraps onto a second line when
+the commands do not fit (labels shrink to the `[key]` and then the last commands drop out only when two lines are not enough), and
+long messages (a file path, an error) wrap at the spaces over up to three lines (two in the other views) instead of ending in "…". The
+merge view keeps its most important shortcuts and only spends a second line per footer bar when the terminal is at least 14 lines
+high; below 10 lines it shows its single compact line.
+
 **Unsaved changes**: closing a tab or switching project asks *Save / Discard / Cancel* (`s`, `d`, `c`,
 `←/→` and `enter`, or a click).
 
@@ -182,15 +255,18 @@ its references (`j`/`k`, `enter` or a click jump), `ctrl+o` returns to where the
 across files; so do `ctrl+c` and `ctrl+d` in normal mode, one step at a time, and only when there is no jump left to undo they close the
 window (unsaved changes block going back to another file, E37). `:format` (`:fmt`) formats the file as one undoable change: with the file type's formatter command when installed (Go: `gofmt`;
 HTML, CSS, SCSS, JavaScript, TypeScript, JSON: `prettier`; Python: `black`), otherwise with the language server (Java is formatted
-by jdtls). `ctrl+space` (or `ctrl+n`) in insert mode opens the completion popup with the server's
+by jdtls). When no formatter is found for the file (no server for the file type, a server that cannot format, a missing server), a
+searchable list of formatters opens (gofmt, goimports, prettier, black, ruff, shfmt, clang-format, rustfmt, jq, xmllint, yamlfmt, taplo ...;
+the ones for the file type come first, missing ones are dim): type to narrow it, `enter` formats with the chosen one and remembers it
+for that file type once its result was applied (`formatters.json` in the config folder; delete the entry there to forget it), `esc` cancels. `ctrl+space` (or `ctrl+n`) in insert mode opens the completion popup with the server's
 suggestions and the words of the file as a fallback: typing narrows it, `ctrl+n`/`ctrl+p` or the arrows choose, `tab` or `enter`
 accept, `esc` closes it. Defaults: gopls (Go), typescript-language-server (JavaScript, TypeScript, JSX), pyright (Python),
-vscode-html/css/json-language-server, jdtls (Java), groovy-language-server; the installer sets them up. Add or change servers in
+vscode-html/css/json-language-server, jdtls (Java); the installer sets them up. Add or change servers in
 `<config dir>/jd/lsp.json`: `{"servers": [{"name": "rust", "command": ["rust-analyzer"], "extensions": [".rs"], "languageId": "rust",
 "rootMarkers": ["Cargo.toml"], "formatter": ["rustfmt", "--emit", "stdout"]}]}` (an entry with the name of a default replaces it).
 
 **Tools are installed for you**: when a project window opens, jd checks for the language servers and formatters (gopls,
-typescript-language-server, pyright, the HTML/CSS/JSON servers, the Angular language server, jdtls, groovy-language-server,
+typescript-language-server, pyright, the HTML/CSS/JSON servers, the Angular language server, jdtls,
 prettier, black) and **installs what is missing in the background**, one after the other, with the language's own tool (`go
 install`, `npm install -g --prefix ~/.local`, `pipx` or `pip --user`, or a download); the progress shows in the status line
 and the result when it is done. A runtime that is missing (Go, Node.js, Python, Java) is reported, not installed: jd never
@@ -300,6 +376,9 @@ go test ./...
 
 Requires Go 1.24 (the toolchain is fetched automatically by Go >= 1.21).
 
+`sh scripts/docker_nonroot_test.sh` runs jd as a normal user (uid 1000, read-only root, no usable `HOME`) in alpine, debian and
+ubuntu containers; it needs a working docker daemon and runs in CI as the `docker-nonroot` job.
+
 Git mode runs the `git` command, so the repository's own git configuration applies; do not open untrusted
 repositories with it. Symbolic links are shown as their target path and are never followed.
 
@@ -341,7 +420,11 @@ Every push to `master` runs the tests (`.github/workflows/release.yml`) and then
 
 Environment variables (see `.env.example`):
 
-- `JELLY_DEV_THEME`: `dark` (default), `light` or `mono` (no colors: bold = added, strikethrough = deleted, reverse video = changed words).
+- `JELLY_DEV_THEME`: `auto` (default), `dark`, `light`, `ansi`, `contrast` or `mono`. `auto` looks at the terminal: no colours gives `mono`
+  (bold = added, strikethrough = deleted, reverse video = changed words), 16 colours gives `ansi`, 256 or more colours gives `dark` or
+  `light` by the background of the terminal. `ansi` sets no fixed background (a terminal with 16 colours maps colours to its own palette, which
+  can turn text into grey on grey): bars and selections are drawn in reverse video, changes in foreground colours of the palette.
+  `contrast` is the same without any dim text, bold where it matters. `:theme <name>` in the IDE switches at once (`:theme` lists them).
 - `NO_COLOR`: any non-empty value selects `mono` unless `JELLY_DEV_THEME` is set.
 
 ### Known limitations

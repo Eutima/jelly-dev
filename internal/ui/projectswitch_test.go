@@ -81,7 +81,7 @@ func TestProject_SwitchesToOtherFolderWithProjectCommand(t *testing.T) {
 		t.Fatalf("the old project's session must be stored first: %+v", session)
 	}
 	view := stripANSI(model.View())
-	if !strings.Contains(view, "app.py") || strings.Contains(view, "README.md") || !strings.Contains(view, "Opened /tmp") {
+	if !strings.Contains(view, "app.py") || strings.Contains(view, "README.md") || !strings.Contains(view, "Opened") || !strings.Contains(view, "/tmp/TestProject_Switche") { // the message wraps in the narrow tree pane
 		t.Fatalf("the window must show the new project:\n%s", view)
 	}
 }

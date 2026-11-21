@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/eutima/jelly-dev/internal/config"
 	"github.com/eutima/jelly-dev/internal/launch"
 	"github.com/eutima/jelly-dev/internal/lsp"
 	"github.com/eutima/jelly-dev/internal/project"
@@ -122,9 +123,16 @@ func runIDE(args []string, stdout, stderr io.Writer, env environment) int {
 		printError(stderr, err)
 		return exitFailure
 	}
-	navigator := newWindowNavigator(open.root, servers)
+	navigator := newWindowNavigator(open.root, servers, filepath.Join(dir, "formatters.json"))
 	defer navigator.Close()
 	hooks := ui.ProjectHooks{
+		Theme: func(name string) (ui.Theme, bool) { // :theme in the window: the attribute themes need their attributes kept as well
+			theme, ok := env.namedTheme(name)
+			if ok && (needsAttributes(name) || name == config.ThemeAuto) && env.enableAttributes != nil {
+				env.enableAttributes()
+			}
+			return theme, ok
+		},
 		Navigator:   navigator,
 		Tools:       tools.NewInstaller(dir),
 		AutoInstall: env.getenv(envNoAutoInstall) == "", // language servers and formatters are installed when a window opens
@@ -174,14 +182,27 @@ func runIDE(args []string, stdout, stderr io.Writer, env environment) int {
 // windowNavigator is the code navigator of a project window. It follows the window when it switches to another project:
 // the language servers of the old project are stopped and new ones start in the new project.
 type windowNavigator struct {
-	servers []lsp.ServerSpec
+	servers       []lsp.ServerSpec
+	formatterFile string
 
 	mu      sync.Mutex
 	manager *lsp.Manager
 }
 
-func newWindowNavigator(root string, servers []lsp.ServerSpec) *windowNavigator {
-	return &windowNavigator{servers: servers, manager: lsp.NewManager(root, servers)}
+func newWindowNavigator(root string, servers []lsp.ServerSpec, formatterFile string) *windowNavigator {
+	w := &windowNavigator{servers: servers, formatterFile: formatterFile}
+	w.manager = w.newManager(root)
+	return w
+}
+
+// newManager starts a manager for a project; the formatters the user picked are kept in formatterFile (a broken file is
+// ignored: the choices only make :format more convenient).
+func (w *windowNavigator) newManager(root string) *lsp.Manager {
+	manager := lsp.NewManager(root, w.servers)
+	if w.formatterFile != "" {
+		_ = manager.UseFormatterFile(w.formatterFile)
+	}
+	return manager
 }
 
 func (w *windowNavigator) current() *lsp.Manager {
@@ -194,7 +215,7 @@ func (w *windowNavigator) current() *lsp.Manager {
 func (w *windowNavigator) switchTo(root string) {
 	w.mu.Lock()
 	old := w.manager
-	w.manager = lsp.NewManager(root, w.servers)
+	w.manager = w.newManager(root)
 	w.mu.Unlock()
 	go old.Close()
 }
@@ -212,6 +233,18 @@ func (w *windowNavigator) References(ctx context.Context, path, text string, row
 
 func (w *windowNavigator) Format(ctx context.Context, path, text string) (string, error) {
 	return w.current().Format(ctx, path, text)
+}
+
+func (w *windowNavigator) FormatterChoices(path string) []lsp.FormatterChoice {
+	return w.current().FormatterChoices(path)
+}
+
+func (w *windowNavigator) FormatWith(ctx context.Context, path, text string, choice lsp.FormatterChoice) (string, error) {
+	return w.current().FormatWith(ctx, path, text, choice)
+}
+
+func (w *windowNavigator) RememberFormatter(path string, choice lsp.FormatterChoice) error {
+	return w.current().RememberFormatter(path, choice)
 }
 
 func (w *windowNavigator) Complete(ctx context.Context, path, text string, row, col int) ([]lsp.CompletionItem, error) {

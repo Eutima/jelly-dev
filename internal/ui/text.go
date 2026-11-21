@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
@@ -235,4 +236,88 @@ func sanitizeEditable(text string) string {
 		}
 		return -1
 	}, text)
+}
+
+// wrapWords breaks text into lines of at most width columns at the spaces (a word longer than a line is cut), and into at most
+// maxLines lines: what does not fit ends the last line with "…". Every step uses up a piece of the text or completes a line, and it
+// stops when maxLines lines are complete, so the work does not grow with the length of the text.
+func wrapWords(text string, width, maxLines int) []string {
+	if width <= 0 || maxLines < 1 {
+		return []string{""}
+	}
+	words := strings.Fields(text)
+	var lines []string
+	var current strings.Builder
+	currentWidth := 0
+	truncated := false
+	endLine := func() { // true when the line limit is reached
+		lines = append(lines, current.String())
+		current.Reset()
+		currentWidth = 0
+	}
+	for w := 0; w < len(words) && !truncated; w++ {
+		word := words[w]
+		for word != "" {
+			space := 0
+			if currentWidth > 0 {
+				space = 1
+			}
+			if wordWidth := runewidth.StringWidth(word); currentWidth+space+wordWidth <= width {
+				if space > 0 {
+					current.WriteByte(' ')
+				}
+				current.WriteString(word)
+				currentWidth += space + wordWidth
+				break
+			}
+			if currentWidth > 0 { // the word starts a new line
+				endLine()
+				if len(lines) >= maxLines {
+					truncated = true
+					break
+				}
+				continue
+			}
+			head := fitPrefix(word, width) // the word is longer than a line: cut it
+			current.WriteString(head)
+			currentWidth = runewidth.StringWidth(head)
+			word = word[len(head):]
+			endLine()
+			if len(lines) >= maxLines {
+				truncated = word != "" || w < len(words)-1
+				break
+			}
+		}
+		if len(lines) >= maxLines {
+			break
+		}
+	}
+	if current.Len() > 0 && len(lines) < maxLines {
+		endLine()
+	}
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	if truncated {
+		last := lines[len(lines)-1]
+		lines[len(lines)-1] = runewidth.Truncate(last, max(width-1, 0), "") + "…"
+	}
+	return lines
+}
+
+// fitPrefix returns the longest start of s that is at most width columns wide, at least its first rune (also when that one is wider,
+// so that a cut always makes progress).
+func fitPrefix(s string, width int) string {
+	used := 0
+	for i, r := range s {
+		w := runewidth.RuneWidth(r)
+		if used+w > width && i > 0 {
+			return s[:i]
+		}
+		used += w
+		if used >= width {
+			return s[:i+utf8.RuneLen(r)]
+		}
+	}
+	return s
 }

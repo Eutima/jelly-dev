@@ -39,6 +39,13 @@ What is where:
 Keys that work everywhere: `q` quit, `j`/`k` or arrows move or scroll, `n`/`p` next/previous change, `g`/`G`
 first/last, mouse wheel scrolls. `t` switches between side-by-side and unified view in the diff views.
 
+## Screenshots
+
+The screenshots in the main README come from these examples: `python3 playground/screenshots.py` runs `jd` in a pseudo terminal on a
+copy of `sandbox/`, sends the keys of each shot, reads the screen with a terminal emulator and writes `docs/screenshots/*.png`
+(`--only diff ide` takes some of them). It needs `pip install pyte pillow`, DejaVu Sans Mono and `playground/setup.sh` to have run.
+Nothing of your own configuration is used: `jd` gets a throw-away home and config folder.
+
 ## 1. Compare two files
 
 ```

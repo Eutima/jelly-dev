@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 )
 
 // Kind is how a tool is installed.
@@ -25,6 +27,10 @@ const (
 	Python
 	// Download tools are fetched from their project's site.
 	Download
+	// Rustup tools are installed with rustup component add.
+	Rustup
+	// System tools come from the package manager of the machine and need root rights: jd only says how (the installer does it).
+	System
 )
 
 // Tool is a language server or formatter.
@@ -34,6 +40,20 @@ type Tool struct {
 	Kind     Kind
 	Packages []string // npm packages, the Go package path, the pip package
 	Purpose  string   // what it is for, e.g. "language server for Go"
+	Hint     string   // how to install a System tool by hand
+}
+
+// ManualInstallError is returned for a tool that jd cannot install (or update) without root rights.
+type ManualInstallError struct {
+	Tool, Hint string
+	Update     bool // the tool is installed, it is its update that has to be done by hand
+}
+
+func (e *ManualInstallError) Error() string {
+	if e.Update {
+		return fmt.Sprintf("%s has to be updated with your package manager: %s", e.Tool, e.Hint)
+	}
+	return fmt.Sprintf("%s has to be installed with your package manager: %s", e.Tool, e.Hint)
 }
 
 // Defaults are the tools jd installs: the servers of lsp.DefaultServers and their formatters.
@@ -47,9 +67,18 @@ func Defaults() []Tool {
 			Packages: []string{"vscode-langservers-extracted"}, Purpose: "language servers for HTML, CSS and JSON"},
 		{Name: "angular-language-server", Binary: "ngserver", Kind: NPM,
 			Packages: []string{"@angular/language-server", "@angular/language-service", "typescript"}, Purpose: "language server for Angular templates"},
+		{Name: "yaml-language-server", Binary: "yaml-language-server", Kind: NPM, Packages: []string{"yaml-language-server"}, Purpose: "language server for YAML"},
+		{Name: "dockerfile-language-server", Binary: "docker-langserver", Kind: NPM,
+			Packages: []string{"dockerfile-language-server-nodejs"}, Purpose: "language server for Dockerfiles"},
+		{Name: "compose-language-service", Binary: "docker-compose-langserver", Kind: NPM,
+			Packages: []string{"@microsoft/compose-language-service"}, Purpose: "language server for Docker Compose files"},
+		{Name: "clangd", Binary: "clangd", Kind: System, Purpose: "language server for C and C++",
+			Hint: "apt install clangd, dnf install clang-tools-extra, apk add clang-extra-tools, pacman -S clang, brew install llvm; or run jd setup"},
+		{Name: "clang-format", Binary: "clang-format", Kind: Python, Packages: []string{"clang-format"}, Purpose: "formatter for C and C++"},
+		{Name: "rust-analyzer", Binary: "rust-analyzer", Kind: Rustup, Packages: []string{"rust-analyzer"}, Purpose: "language server for Rust"},
+		{Name: "rustfmt", Binary: "rustfmt", Kind: Rustup, Packages: []string{"rustfmt"}, Purpose: "formatter for Rust"},
 		{Name: "jdtls", Binary: "jdtls", Kind: Download, Purpose: "language server for Java"},
-		{Name: "groovy-language-server", Binary: "groovy-language-server", Kind: Download, Purpose: "language server for Groovy"},
-		{Name: "prettier", Binary: "prettier", Kind: NPM, Packages: []string{"prettier"}, Purpose: "formatter for HTML, CSS, JavaScript, TypeScript and JSON"},
+		{Name: "prettier", Binary: "prettier", Kind: NPM, Packages: []string{"prettier"}, Purpose: "formatter for HTML, CSS, JavaScript, TypeScript, JSON and YAML"},
 		{Name: "black", Binary: "black", Kind: Python, Packages: []string{"black"}, Purpose: "formatter for Python"},
 	}
 }
@@ -92,7 +121,7 @@ func (e Env) DataDir() string {
 
 // ExtraPaths are the folders tools end up in, which may not be on the PATH of the shell that started jd.
 func (e Env) ExtraPaths() []string {
-	paths := []string{e.BinDir()}
+	paths := []string{e.BinDir(), filepath.Join(e.Home, ".cargo", "bin")}
 	if gobin := e.Getenv("GOBIN"); gobin != "" {
 		paths = append(paths, gobin)
 	}
@@ -128,6 +157,16 @@ func EnsurePath() {
 
 // Installed reports whether the tool's command can be found.
 func (e Env) Installed(t Tool) bool {
+	if t.Kind == Rustup {
+		// rustup puts a proxy for rust-analyzer and rustfmt into ~/.cargo/bin whether the component is installed or not, so the
+		// file on the PATH proves nothing: rustup says whether the toolchain has it
+		if _, err := e.LookPath("rustup"); err != nil {
+			return false
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		return e.Run(ctx, nil, "rustup", "which", t.Binary) == nil
+	}
 	if _, err := e.LookPath(t.Binary); err == nil {
 		return true
 	}
@@ -167,6 +206,10 @@ func (e Env) Install(ctx context.Context, t Tool) error {
 		err = e.installPython(ctx, t)
 	case Download:
 		err = e.installDownload(ctx, t)
+	case Rustup:
+		err = e.installRustup(ctx, t)
+	case System:
+		err = &ManualInstallError{Tool: t.Name, Hint: t.Hint}
 	default:
 		err = fmt.Errorf("unknown kind of tool %q", t.Name)
 	}
@@ -229,8 +272,73 @@ func (e Env) installDownload(ctx context.Context, t Tool) error {
 	switch t.Name {
 	case "jdtls":
 		return e.installJdtls(ctx, t)
-	case "groovy-language-server":
-		return e.installGroovy(ctx, t)
 	}
 	return fmt.Errorf("%s: %w", t.Name, errNoTool)
+}
+
+// installRustup installs a component of the Rust toolchain; without a toolchain the stable one is installed first.
+func (e Env) installRustup(ctx context.Context, t Tool) error {
+	if _, err := e.need(t, "rustup (the Rust toolchain)", "rustup"); err != nil {
+		return err
+	}
+	add := append([]string{"component", "add"}, t.Packages...)
+	if err := e.Run(ctx, nil, "rustup", add...); err != nil {
+		if toolchainErr := e.Run(ctx, nil, "rustup", "default", "stable"); toolchainErr != nil {
+			return err
+		}
+		return e.Run(ctx, nil, "rustup", add...)
+	}
+	return nil
+}
+
+// Update brings an installed tool to its newest version, with the tool that installed it: npm and go install fetch the latest
+// one again, pipx and pip upgrade, rustup updates the toolchain, the downloads are fetched again. A tool of the package manager
+// of the machine (clangd) cannot be updated without root rights: the error says how.
+func (e Env) Update(ctx context.Context, t Tool) error {
+	switch t.Kind {
+	case NPM:
+		return e.installNPM(ctx, t) // npm install -g takes the newest version of a package that is installed already
+	case Go:
+		return e.installGo(ctx, t) // @latest
+	case Python:
+		return e.updatePython(ctx, t)
+	case Download:
+		return e.installDownload(ctx, t)
+	case Rustup:
+		return e.updateRustup(ctx, t)
+	case System:
+		return &ManualInstallError{Tool: t.Name, Hint: t.Hint, Update: true}
+	}
+	return fmt.Errorf("unknown kind of tool %q", t.Name)
+}
+
+func (e Env) updatePython(ctx context.Context, t Tool) error {
+	if _, err := e.LookPath("pipx"); err == nil {
+		err := e.Run(ctx, nil, "pipx", "upgrade", t.Packages[0])
+		if err != nil && strings.Contains(err.Error(), "not installed") {
+			// installed another way (pip): pipx installs it, the newest version (any other failure, the network, is reported as it is)
+			return e.Run(ctx, nil, "pipx", "install", "--force", t.Packages[0])
+		}
+		return err
+	}
+	python, err := e.need(t, "Python (pipx or pip)", "python3", "python", "py")
+	if err != nil {
+		return err
+	}
+	args := []string{"-m", "pip", "install", "--user", "--upgrade", t.Packages[0]}
+	if err := e.Run(ctx, nil, python, args...); err != nil {
+		// a system Python that is managed by the distribution refuses pip; --user keeps the change in the home folder
+		if retryErr := e.Run(ctx, nil, python, append(args, "--break-system-packages")...); retryErr != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// updateRustup updates the toolchain, with its components (rust-analyzer, rustfmt).
+func (e Env) updateRustup(ctx context.Context, t Tool) error {
+	if _, err := e.need(t, "rustup (the Rust toolchain)", "rustup"); err != nil {
+		return err
+	}
+	return e.Run(ctx, nil, "rustup", "update")
 }

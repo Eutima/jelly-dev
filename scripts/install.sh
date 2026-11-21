@@ -8,6 +8,8 @@
 #   JD_SKIP_DEPS=1       do not check or install dependencies
 #   JD_DEPS              dependency groups to handle, comma separated (default basics,terminal,runtimes,lsp)
 #   JD_DRY_RUN=1         print what would be installed instead of installing it
+#   JD_LANGS=<ids>       languages to install language servers and formatters for, comma separated: python html css json yaml docker compose
+#                        javascript angular go rust c cpp java, all, or none (default: all; jd asks on its first start)
 #   JD_BIN=<path>        jd is already installed there (pip, jd runs this script itself on its first start): do not download
 #                        jd and do not change the PATH, only install the dependencies and configure git
 set -eu
@@ -94,6 +96,12 @@ pkg_for() {
         python:pacman) echo python python-pip python-pipx ;;
         python:apk) echo python3 py3-pip pipx ;;
         python:brew) echo python pipx ;;
+        clangd:apt-get) echo clangd ;;
+        clangd:dnf | clangd:zypper) echo clang-tools-extra ;;
+        clangd:pacman) echo clang ;;
+        clangd:apk) echo clang-extra-tools ;;
+        clangd:brew) echo llvm ;;
+        rustup:*) echo rustup ;;
         jdk:apt-get) echo default-jdk-headless ;;
         jdk:dnf | jdk:zypper) echo java-17-openjdk-devel ;;
         jdk:pacman) echo jdk-openjdk ;;
@@ -167,11 +175,33 @@ deps_terminal() {
     esac
 }
 
+# lang_enabled tells whether the tools of a language are wanted: JD_LANGS lists the languages, "none" means no language, all
+# means every one; without it every language is wanted.
+lang_enabled() {
+    [ -n "${JD_LANGS:-}" ] || return 0
+    case ",$(printf '%s' "$JD_LANGS" | tr ' ;' ',,' | tr 'A-Z' 'a-z')," in *",$1,"* | *",all,"*) return 0 ;; esac
+    return 1
+}
+
+# any_lang tells whether the tools of at least one of the languages are wanted.
+any_lang() {
+    for lang in "$@"; do
+        ! lang_enabled "$lang" || return 0
+    done
+    return 1
+}
+
 deps_runtimes() {
-    ensure_tool go "Go" go || true
-    ensure_tool node "Node.js and npm" npm || true
-    ensure_tool jdk "Java JDK" javac || true
-    ensure_tool python "Python 3 and pip" python3 || true
+    lang_enabled go && { ensure_tool go "Go" go || true; }
+    # Node.js also runs the Python server (pyright)
+    any_lang python html css json yaml docker compose javascript angular && { ensure_tool node "Node.js and npm" npm || true; }
+    any_lang java && { ensure_tool jdk "Java JDK" javac || true; }
+    # Python runs black and starts the Java server
+    # Python runs black and clang-format and starts the Java server
+    any_lang python java c cpp && { ensure_tool python "Python 3 and pip" python3 || true; }
+    lang_enabled rust && { ensure_tool rustup "Rust toolchain (rustup)" rustup || true; }
+    any_lang c cpp && { ensure_tool clangd "clangd (C and C++ language server)" clangd || true; }
+    return 0
 }
 
 # fetch downloads a URL to a file.
@@ -225,6 +255,16 @@ python_tool() {
     fi
 }
 
+# jdtls is pinned to one milestone; raise the version, file and checksum together (jdtlsVersion in internal/tools/run.go too)
+JDTLS_URL=https://download.eclipse.org/jdtls/milestones/1.63.0/jdt-language-server-1.63.0-202610191322.tar.gz
+JDTLS_SHA256=b1f2abe0b3cccb462cf64fb4a5587c7d09df60cf8be7748b152cbd89d018bdc4
+
+# sha256_of FILE prints the SHA-256 of a file (sha256sum, or shasum on macOS)
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+    else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+
 lsp_jdtls() {
     if have jdtls; then log "ok       jdtls (Java)"; return 0; fi
     if [ "$pm" = brew ]; then
@@ -237,48 +277,49 @@ lsp_jdtls() {
     target=${XDG_DATA_HOME:-$HOME/.local/share}/jdtls
     log "install  jdtls (download to $target)"
     if [ -n "${JD_DRY_RUN:-}" ]; then
-        log "[dry-run] download https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz to $target and link $install_dir/jdtls"
+        log "[dry-run] download $JDTLS_URL to $target and link $install_dir/jdtls"
         return 0
     fi
     archive=$(mktemp)
-    if fetch "https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz" "$archive" &&
+    if fetch "$JDTLS_URL" "$archive" &&
+        [ "$(sha256_of "$archive")" = "$JDTLS_SHA256" ] &&
         mkdir -p "$target" "$install_dir" && tar -xzf "$archive" -C "$target" && [ -f "$target/bin/jdtls" ]; then
         chmod +x "$target/bin/jdtls"
         ln -sf "$target/bin/jdtls" "$install_dir/jdtls"
     else
-        problem "jdtls could not be downloaded from download.eclipse.org/jdtls"
+        problem "jdtls could not be downloaded from download.eclipse.org/jdtls (or the checksum of the pinned release 1.63.0 differs)"
     fi
     rm -f "$archive"
 }
 
-lsp_groovy() {
-    if have groovy-language-server; then log "ok       groovy-language-server"; return 0; fi
-    have java || { problem "groovy-language-server needs a JDK, which is missing"; return 0; }
-    jar=${XDG_DATA_HOME:-$HOME/.local/share}/groovy-language-server/groovy-language-server-all.jar
-    log "install  groovy-language-server (download to $jar)"
-    if [ -n "${JD_DRY_RUN:-}" ]; then
-        log "[dry-run] download the groovy-language-server release jar to $jar and write $install_dir/groovy-language-server"
-        return 0
-    fi
-    if mkdir -p "$(dirname "$jar")" "$install_dir" &&
-        fetch "https://github.com/GroovyLanguageServer/groovy-language-server/releases/latest/download/groovy-language-server-all.jar" "$jar"; then
-        printf '#!/bin/sh\nexec java -jar "%s" "$@"\n' "$jar" >"$install_dir/groovy-language-server"
-        chmod +x "$install_dir/groovy-language-server"
-    else
-        problem "groovy-language-server could not be downloaded from github.com/GroovyLanguageServer/groovy-language-server"
-    fi
+# lsp_rust adds the language server and the formatter to the Rust toolchain; without a toolchain the stable one is installed.
+# rust_component tells whether the toolchain has a component: rustup keeps a proxy for it in ~/.cargo/bin either way.
+rust_component() { have rustup && rustup which "$1" >/dev/null 2>&1; }
+
+lsp_rust() {
+    if rust_component rust-analyzer && rust_component rustfmt; then log "ok       rust-analyzer and rustfmt (rustup)"; return 0; fi
+    have rustup || { problem "rust-analyzer and rustfmt need rustup, which is missing"; return 0; }
+    log "install  rust-analyzer and rustfmt (rustup)"
+    run rustup component add rust-analyzer rustfmt ||
+        { run rustup default stable && run rustup component add rust-analyzer rustfmt; } ||
+        problem "rust-analyzer and rustfmt could not be installed (rustup component add rust-analyzer rustfmt)"
 }
 
 deps_lsp() {
-    lsp_gopls
-    npm_tool "pyright (Python)" pyright-langserver pyright
-    npm_tool "typescript-language-server (JavaScript, TypeScript)" typescript-language-server typescript typescript-language-server
-    npm_tool "HTML, CSS and JSON language servers" vscode-html-language-server vscode-langservers-extracted
-    npm_tool "Angular language server" ngserver @angular/language-server @angular/language-service typescript
-    lsp_jdtls
-    lsp_groovy
-    npm_tool "prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)" prettier prettier
-    python_tool "black (Python formatter)" black black
+    lang_enabled go && lsp_gopls
+    lang_enabled python && npm_tool "pyright (Python)" pyright-langserver pyright
+    any_lang javascript angular && npm_tool "typescript-language-server (JavaScript, TypeScript)" typescript-language-server typescript typescript-language-server
+    any_lang html css json && npm_tool "HTML, CSS and JSON language servers" vscode-html-language-server vscode-langservers-extracted
+    lang_enabled yaml && npm_tool "YAML language server" yaml-language-server yaml-language-server
+    lang_enabled docker && npm_tool "Dockerfile language server" docker-langserver dockerfile-language-server-nodejs
+    lang_enabled compose && npm_tool "Docker Compose language server" docker-compose-langserver @microsoft/compose-language-service
+    lang_enabled angular && npm_tool "Angular language server" ngserver @angular/language-server @angular/language-service typescript
+    lang_enabled java && lsp_jdtls
+    any_lang html css json yaml javascript angular && npm_tool "prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)" prettier prettier
+    lang_enabled python && python_tool "black (Python formatter)" black black
+    any_lang c cpp && python_tool "clang-format (C and C++ formatter)" clang-format clang-format
+    lang_enabled rust && lsp_rust
+    return 0
 }
 
 install_dependencies() {

@@ -53,12 +53,13 @@ type Client struct {
 	cmd  *exec.Cmd
 	tr   *transport
 
-	mu      sync.Mutex
-	nextID  int
-	pending map[int]chan response
-	docs    map[string]document // open documents by URI
-	closed  bool
-	done    chan struct{}
+	mu       sync.Mutex
+	nextID   int
+	pending  map[int]chan response
+	docs     map[string]document // open documents by URI
+	settings map[string]any      // what the server is told about its configuration (Configure)
+	closed   bool
+	done     chan struct{}
 }
 
 // Start runs a language server (command is its command line) for a project folder and performs the handshake.
@@ -104,7 +105,7 @@ func handshake(ctx context.Context, c *Client, root string) (*Client, error) {
 					"snippetSupport": false, "insertReplaceSupport": true, "documentationFormat": []string{"plaintext"},
 				}},
 			},
-			"workspace": map[string]any{"workspaceFolders": true},
+			"workspace": map[string]any{"workspaceFolders": true, "configuration": true},
 		},
 	}
 	if err := c.call(ctx, "initialize", params, nil); err != nil {
@@ -164,7 +165,18 @@ func (c *Client) answerServerRequest(msg message) {
 			Items []json.RawMessage `json:"items"`
 		}
 		_ = json.Unmarshal(msg.Params, &params)
-		result = make([]any, len(params.Items)) // one null per requested section
+		answers := make([]any, len(params.Items)) // one answer per requested section, null where there is none
+		c.mu.Lock()
+		for i, raw := range params.Items {
+			var item struct {
+				Section string `json:"section"`
+			}
+			if json.Unmarshal(raw, &item) == nil {
+				answers[i] = settingAt(c.settings, item.Section)
+			}
+		}
+		c.mu.Unlock()
+		result = answers
 	}
 	_ = c.tr.write(map[string]any{"jsonrpc": "2.0", "id": msg.ID, "result": result})
 }
@@ -346,4 +358,35 @@ func expandCommand(command []string, root string) []string {
 		out[i] = replacer.Replace(arg)
 	}
 	return out
+}
+
+// Configure tells the server its settings (for example {"python": {"pythonPath": "/p/.venv/bin/python"}}): they are sent now and
+// given back whenever the server asks for a section of them.
+func (c *Client) Configure(settings map[string]any) error {
+	c.mu.Lock()
+	c.settings = settings
+	c.mu.Unlock()
+	return c.notify("workspace/didChangeConfiguration", map[string]any{"settings": settings})
+}
+
+// settingAt returns the part of the settings a section names ("python.analysis" is settings["python"]["analysis"]), nil when
+// there is none; an empty section is all of them.
+func settingAt(settings map[string]any, section string) any {
+	if settings == nil {
+		return nil
+	}
+	if section == "" {
+		return settings
+	}
+	var current any = settings
+	for _, part := range strings.Split(section, ".") {
+		next, ok := current.(map[string]any)
+		if !ok {
+			return nil
+		}
+		if current, ok = next[part]; !ok {
+			return nil
+		}
+	}
+	return current
 }

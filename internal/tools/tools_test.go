@@ -2,8 +2,11 @@ package tools
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,19 +18,20 @@ import (
 
 // machine is a fake computer: which commands exist, which commands were run, which downloads were asked for.
 type machine struct {
-	t        *testing.T
-	home     string
-	have     map[string]bool
-	ran      []string
-	runEnv   [][]string
-	fail     map[string]error // by command name
-	fetched  []string
-	archive  func(dest string) error
-	installs map[string]string // a command that appears after running the key (like npm creating prettier)
+	t          *testing.T
+	home       string
+	have       map[string]bool
+	ran        []string
+	runEnv     [][]string
+	fail       map[string]error // by command name
+	fetched    []string
+	archive    func(dest string) error
+	components map[string]bool   // the components rustup has installed (a proxy file exists for every one of them)
+	installs   map[string]string // a command that appears after running the key (like npm creating prettier)
 }
 
 func newMachine(t *testing.T, have ...string) (*machine, Env) {
-	m := &machine{t: t, home: t.TempDir(), have: map[string]bool{}, fail: map[string]error{}, installs: map[string]string{}}
+	m := &machine{t: t, home: t.TempDir(), have: map[string]bool{}, components: map[string]bool{}, fail: map[string]error{}, installs: map[string]string{}}
 	for _, name := range have {
 		m.have[name] = true
 	}
@@ -40,6 +44,12 @@ func newMachine(t *testing.T, have ...string) (*machine, Env) {
 			return "", errors.New("not found")
 		},
 		Run: func(_ context.Context, extra []string, name string, args ...string) error {
+			if name == "rustup" && len(args) == 2 && args[0] == "which" { // asks, installs nothing: is the component there?
+				if m.components[args[1]] {
+					return nil
+				}
+				return errors.New("unknown binary " + args[1] + " in the toolchain")
+			}
 			m.ran = append(m.ran, name+" "+strings.Join(args, " "))
 			m.runEnv = append(m.runEnv, extra)
 			if err := m.fail[name]; err != nil {
@@ -48,6 +58,7 @@ func newMachine(t *testing.T, have ...string) (*machine, Env) {
 			for key, binary := range m.installs {
 				if strings.Contains(strings.Join(args, " "), key) {
 					m.have[binary] = true
+					m.components[binary] = true
 				}
 			}
 			return nil
@@ -81,7 +92,7 @@ func TestDefaults_CoverServersAndFormatters(t *testing.T) {
 		binaries[tl.Binary] = true
 	}
 	for _, want := range []string{"gopls", "typescript-language-server", "pyright-langserver", "vscode-html-language-server", "ngserver",
-		"jdtls", "groovy-language-server", "prettier", "black"} {
+		"jdtls", "prettier", "black"} {
 		if !binaries[want] {
 			t.Errorf("%s is missing from the default tools", want)
 		}
@@ -174,7 +185,7 @@ func TestInstall_PythonPrefersPipxThenPipAndRetriesForManagedSystems(t *testing.
 
 func TestInstall_ReportsMissingRuntimes(t *testing.T) {
 	_, env := newMachine(t)
-	for name, needs := range map[string]string{"prettier": "npm", "gopls": "Go", "black": "Python", "jdtls": "Java", "groovy-language-server": "Java"} {
+	for name, needs := range map[string]string{"prettier": "npm", "gopls": "Go", "black": "Python", "jdtls": "Java"} {
 		err := env.Install(context.Background(), tool(name))
 		var missing *MissingRuntimeError
 		if !errors.As(err, &missing) || !strings.Contains(missing.Needs, needs) || !strings.Contains(err.Error(), "installer installs it") {
@@ -212,48 +223,32 @@ func TestInstall_AcceptsToolsInFoldersThatAreNotOnThePathYet(t *testing.T) {
 	}
 }
 
-func TestInstall_GroovyDownloadsJarAndWritesLauncher(t *testing.T) {
-	m, env := newMachine(t, "java")
-	err := env.Install(context.Background(), tool("groovy-language-server"))
-	launcher := filepath.Join(env.BinDir(), "groovy-language-server")
-	data, readErr := os.ReadFile(launcher)
-	if err != nil || readErr != nil || !strings.Contains(string(data), "java -jar") || !strings.Contains(string(data), "groovy-language-server-all.jar") {
-		t.Fatalf("%v %v %q", err, readErr, data)
-	}
-	if len(m.fetched) != 1 || !strings.HasPrefix(m.fetched[0], "https://github.com/GroovyLanguageServer/") {
-		t.Fatalf("fetched %v", m.fetched)
-	}
-	if info, _ := os.Stat(launcher); info.Mode()&0o100 == 0 {
-		t.Fatal("the launcher must be executable")
-	}
-}
-
-func jdtlsArchive(files map[string]string) func(string) error {
-	return func(dest string) error {
-		file, err := os.Create(dest)
-		if err != nil {
-			return err
+// jdtlsArchive builds a tar.gz once and pins the installer's checksum to it (restored when the test ends).
+func jdtlsArchive(t *testing.T, files map[string]string) func(string) error {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(zw)
+	for name, content := range files {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(content)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
 		}
-		defer file.Close()
-		zw := gzip.NewWriter(file)
-		defer zw.Close()
-		tw := tar.NewWriter(zw)
-		defer tw.Close()
-		for name, content := range files {
-			if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(content)), Typeflag: tar.TypeReg}); err != nil {
-				return err
-			}
-			if _, err := tw.Write([]byte(content)); err != nil {
-				return err
-			}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatal(err)
 		}
-		return nil
 	}
+	tw.Close()
+	zw.Close()
+	sum := sha256.Sum256(buf.Bytes())
+	previous := jdtlsSHA256
+	jdtlsSHA256 = hex.EncodeToString(sum[:])
+	t.Cleanup(func() { jdtlsSHA256 = previous })
+	return func(dest string) error { return os.WriteFile(dest, buf.Bytes(), 0o644) }
 }
 
 func TestInstall_JdtlsUnpacksArchiveAndWritesLauncher(t *testing.T) {
 	m, env := newMachine(t, "java", "python3")
-	m.archive = jdtlsArchive(map[string]string{"bin/jdtls": "#!/usr/bin/env python3\n", "plugins/x.jar": "jar"})
+	m.archive = jdtlsArchive(t, map[string]string{"bin/jdtls": "#!/usr/bin/env python3\n", "plugins/x.jar": "jar"})
 	if err := env.Install(context.Background(), tool("jdtls")); err != nil {
 		t.Fatal(err)
 	}
@@ -265,24 +260,41 @@ func TestInstall_JdtlsUnpacksArchiveAndWritesLauncher(t *testing.T) {
 		t.Fatalf("launcher %q", data)
 	}
 	m, env = newMachine(t, "java", "python3")
-	m.archive = jdtlsArchive(map[string]string{"readme.txt": "no script"})
+	m.archive = jdtlsArchive(t, map[string]string{"readme.txt": "no script"})
 	if err := env.Install(context.Background(), tool("jdtls")); err == nil {
 		t.Fatal("an archive without the start script must fail")
 	}
 	m, env = newMachine(t, "java", "python3")
-	m.archive = jdtlsArchive(map[string]string{"../../evil": "x"})
+	m.archive = jdtlsArchive(t, map[string]string{"../../evil": "x"})
 	if err := env.Install(context.Background(), tool("jdtls")); err == nil || !strings.Contains(err.Error(), "outside") {
 		t.Fatalf("an archive that escapes the folder must be refused: %v", err)
 	}
 }
 
+func TestInstall_JdtlsRefusesAnArchiveWithAnotherChecksum(t *testing.T) {
+	m, env := newMachine(t, "java", "python3")
+	m.archive = jdtlsArchive(t, map[string]string{"bin/jdtls": "#!/usr/bin/env python3\n"})
+	jdtlsSHA256 = strings.Repeat("0", 64) // the pinned release is another file than the one downloaded
+	err := env.Install(context.Background(), tool("jdtls"))
+	if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("a download that differs from the pin must be refused: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(env.DataDir(), "jdtls")); statErr == nil {
+		t.Fatal("nothing may be unpacked from a refused download")
+	}
+	if !strings.Contains(jdtlsURL, "/milestones/"+jdtlsVersion+"/") || strings.Contains(jdtlsURL, "latest") {
+		t.Fatalf("the download must be a fixed milestone: %s", jdtlsURL)
+	}
+}
+
 func TestInstall_WindowsLauncherIsACmdFile(t *testing.T) {
-	_, env := newMachine(t, "java")
+	m, env := newMachine(t, "java", "python3")
+	m.archive = jdtlsArchive(t, map[string]string{"bin/jdtls": "#!/usr/bin/env python3\n"})
 	env.GOOS = "windows"
-	if err := env.Install(context.Background(), tool("groovy-language-server")); err != nil {
+	if err := env.Install(context.Background(), tool("jdtls")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(env.BinDir(), "groovy-language-server.cmd")); err != nil {
+	if _, err := os.Stat(filepath.Join(env.BinDir(), "jdtls.cmd")); err != nil {
 		t.Fatalf("a .cmd launcher is expected: %v", err)
 	}
 }

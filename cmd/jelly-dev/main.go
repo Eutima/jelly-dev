@@ -39,6 +39,9 @@ const (
   jd --version               print the version
   jd setup                   run the installer script again: install the tools the IDE needs and set git up
                              (jd setup --mark-done: only record that the installer did it)
+  jd install-lsp [--all] [--list] [--update] [<language>...]
+                             install (--update: update) the language servers and formatters of the languages (python html css json yaml docker compose
+                             javascript angular go java; none given: the languages chosen so far)
   jd install-git [--apply] [--local]
                              print (or with --apply write, overwriting existing values) the git diff/merge tool settings`
 )
@@ -57,9 +60,13 @@ type environment struct {
 	runInstaller installerRunner
 	// interactive tells whether jd talks to a terminal; the first-start setup only runs then.
 	interactive func() bool
-	getenv      func(string) string
+	// newTools returns the installer of language servers and formatters (jd install-lsp); configDir holds its state.
+	newTools func(configDir string) languageTools
+	getenv   func(string) string
 	// namedTheme resolves a theme name; tests replace it with a theme that has its own color profile.
 	namedTheme func(name string) (ui.Theme, bool)
+	// detectTheme names the theme that suits the terminal (the default theme "auto"); nil means dark.
+	detectTheme func() string
 	// enableAttributes makes the terminal output keep bold/reverse/strikethrough even when NO_COLOR
 	// switched the color profile to "no styling at all"; the mono theme depends on them.
 	enableAttributes func()
@@ -99,7 +106,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "jd: %v\n", err)
 		os.Exit(exitFailure)
 	}
-	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, writeClipboard: source.WriteClipboard, openGit: openGit, gitConfig: runGitConfig, runInstaller: runInstallerScript, interactive: interactiveTerminal, getenv: os.Getenv, namedTheme: ui.NamedTheme, enableAttributes: enableTextAttributes,
+	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, writeClipboard: source.WriteClipboard, openGit: openGit, gitConfig: runGitConfig, runInstaller: runInstallerScript, interactive: interactiveTerminal, newTools: func(dir string) languageTools { return tools.NewInstaller(dir) }, getenv: os.Getenv, namedTheme: ui.NamedTheme, detectTheme: ui.DetectedThemeName, enableAttributes: enableTextAttributes,
 		busy: newBusy(os.Stderr, stderrIsTerminal()), workDir: workDir, detectAssistants: ai.Detect}
 	tools.EnsurePath() // tools installed below ~/.local/bin and the Go bin folder are found even when the shell's PATH lacks them
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, env))
@@ -119,6 +126,9 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 	if len(args) > 0 && args[0] == "setup" {
 		return runSetup(args[1:], stdout, stderr, env)
 	}
+	if len(args) > 0 && (args[0] == "install-lsp" || args[0] == "install-tools") {
+		return runInstallLSP(args[1:], stdout, stderr, env)
+	}
 	if len(args) > 0 && args[0] == "install-git" {
 		return runInstallGit(args[1:], stdout, stderr, env) // needs no theme, so a bad theme must not block it
 	}
@@ -127,12 +137,19 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 		printError(stderr, err)
 		return exitFailure
 	}
-	theme, ok := env.namedTheme(cfg.Theme)
+	name := cfg.Theme
+	if name == config.ThemeAuto { // the theme that suits the terminal: its number of colours and its background
+		name = config.ThemeDark
+		if env.detectTheme != nil {
+			name = env.detectTheme()
+		}
+	}
+	theme, ok := env.namedTheme(name)
 	if !ok {
-		printError(stderr, fmt.Errorf("unknown theme %q", cfg.Theme))
+		printError(stderr, fmt.Errorf("unknown theme %q", name))
 		return exitFailure
 	}
-	if cfg.Theme == config.ThemeMono {
+	if needsAttributes(name) {
 		env.enableAttributes()
 	}
 	runUI := env.runUI
@@ -359,4 +376,10 @@ func enableTextAttributes() {
 	info, err := os.Stdout.Stat()
 	isTerminal := err == nil && info.Mode()&os.ModeCharDevice != 0
 	lipgloss.SetColorProfile(attributeProfile(lipgloss.ColorProfile(), isTerminal, os.Getenv("TERM")))
+}
+
+// needsAttributes tells whether a theme is drawn with bold, reverse video and strikethrough instead of colours: those must survive on
+// a terminal without colours (NO_COLOR).
+func needsAttributes(theme string) bool {
+	return theme == config.ThemeMono || theme == config.ThemeANSI || theme == config.ThemeContrast
 }

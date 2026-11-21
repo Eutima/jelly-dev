@@ -431,3 +431,42 @@ func TestResolveVersion_PrefersLinkedThenModuleVersion_WhenAvailable(t *testing.
 		})
 	}
 }
+
+// The default theme is auto: jd asks which theme suits the terminal; an explicit JELLY_DEV_THEME or NO_COLOR decides without asking.
+func TestRun_ThemeAutoAsksWhichThemeSuitsTheTerminal(t *testing.T) {
+	a, b := writeFile(t, "a", "x\n"), writeFile(t, "b", "y\n")
+	cases := []struct {
+		name     string
+		env      map[string]string
+		detected string
+		want     string
+		attrs    bool // enableAttributes (the mono theme needs it)
+	}{
+		{"nothing set, a 16 colour terminal", nil, "ansi", "ansi", true},
+		{"nothing set, a dark true colour terminal", nil, "dark", "dark", false},
+		{"nothing set, a light terminal", nil, "light", "light", false},
+		{"nothing set, no colours", nil, "mono", "mono", true},
+		{"auto written out", map[string]string{"JELLY_DEV_THEME": "auto"}, "ansi", "ansi", true},
+		{"an explicit theme wins over the detection", map[string]string{"JELLY_DEV_THEME": "dark"}, "ansi", "dark", false},
+		{"contrast is a theme", map[string]string{"JELLY_DEV_THEME": "contrast"}, "dark", "contrast", true},
+		{"NO_COLOR is mono without asking", map[string]string{"NO_COLOR": "1"}, "dark", "mono", true},
+		{"ansi and contrast are drawn with attributes too", map[string]string{"JELLY_DEV_THEME": "ansi"}, "dark", "ansi", true},
+		{"contrast with NO_COLOR keeps its attributes", map[string]string{"JELLY_DEV_THEME": "contrast", "NO_COLOR": "1"}, "dark", "contrast", true},
+	}
+	for _, tc := range cases {
+		var asked []string
+		attrs := false
+		env := testEnv(func(tea.Model) error { return nil })
+		env.getenv = func(name string) string { return tc.env[name] }
+		env.detectTheme = func() string { return tc.detected }
+		env.enableAttributes = func() { attrs = true }
+		env.namedTheme = func(name string) (ui.Theme, bool) { asked = append(asked, name); return ui.DarkTheme(), true }
+		var stdout, stderr bytes.Buffer
+		if code := run([]string{a, b}, &stdout, &stderr, env); code != exitOK {
+			t.Fatalf("%s: code %d %s", tc.name, code, stderr.String())
+		}
+		if len(asked) != 1 || asked[0] != tc.want || attrs != tc.attrs {
+			t.Errorf("%s: the theme asked for %v (attributes %v), want %s (%v)", tc.name, asked, attrs, tc.want, tc.attrs)
+		}
+	}
+}

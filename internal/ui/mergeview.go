@@ -16,7 +16,6 @@ const (
 	fullChromeHeight   = 10 // from this terminal height on the header has three lines and the footer two
 	fullHeaderLines    = 3
 	discardCells       = 2   // cells of a gutter that belong to the discard cross
-	fullChromeLines    = 5   // header (title, pane labels, progress) + footer (actions, shortcuts)
 	compactChromeLines = 2   // pane labels + one status line
 	threePaneWidth     = 72  // narrower terminals show one pane at a time
 	resultPercent      = 40  // the result pane gets this share of the pane width, ours and theirs split the rest
@@ -60,7 +59,7 @@ func (m MergeModel) stateOf(chunk int) chunkState {
 // chrome returns the number of lines taken by header and footer.
 func (m MergeModel) chrome() int {
 	if m.height >= fullChromeHeight {
-		return fullChromeLines
+		return fullHeaderLines + len(m.footerBars())
 	}
 	return compactChromeLines
 }
@@ -190,6 +189,7 @@ func (m MergeModel) View() string {
 	}
 	panes, widths := m.layout()
 	numWidth := len(fmt.Sprint(max(len(m.rows), 1))) + 1
+	body := m.bodyHeight() // the footer wraps: its height is worked out once
 
 	var out strings.Builder
 	out.WriteString(m.header(panes, widths))
@@ -200,7 +200,7 @@ func (m MergeModel) View() string {
 		return out.String()
 	}
 	drawn := 0
-	for i := m.offset; i < len(m.rows) && drawn < m.bodyHeight(); i++ {
+	for i := m.offset; i < len(m.rows) && drawn < body; i++ {
 		row := m.rows[i]
 		height := m.rowHeight(i, panes, widths, numWidth)
 		var cells [mergePanes][]string
@@ -211,7 +211,7 @@ func (m MergeModel) View() string {
 			}
 			cells[pane] = m.theme.renderCellLines(cell, numWidth, widths[pane], height, !m.noWrap)
 		}
-		for line := 0; line < height && drawn < m.bodyHeight(); line++ {
+		for line := 0; line < height && drawn < body; line++ {
 			out.WriteString(m.marker(i, row, line > 0))
 			for index, pane := range panes {
 				if index > 0 {
@@ -227,7 +227,7 @@ func (m MergeModel) View() string {
 			drawn++
 		}
 	}
-	for ; drawn < m.bodyHeight(); drawn++ {
+	for ; drawn < body; drawn++ {
 		out.WriteByte('\n')
 	}
 	out.WriteString(m.footer())
@@ -463,116 +463,124 @@ func (m MergeModel) hints() [][]hint {
 	}
 }
 
-// shortcutBar builds the shortcut groups, dropping the less important hints when the width is short.
-func (m MergeModel) shortcutBar() *bar {
-	groups := m.hints()
-	build := func(maxDrop int) *bar {
-		result := &bar{}
-		result.add(barPart{" ", m.theme.Footer})
-		first := true
-		for _, group := range groups {
-			part := &bar{}
-			for _, h := range group {
-				if h.drop <= maxDrop {
-					part.command(h.key, h.label, h.enabled, m.theme)
-				}
-			}
-			if len(part.parts) == 0 {
+// footerMaxLines is the number of lines each of the two footer bars may take: a second one only when the terminal is high
+// enough to spare it.
+func (m MergeModel) footerMaxLines() int {
+	if m.height >= fullChromeHeight+4 {
+		return 2
+	}
+	return 1
+}
+
+// shortcutBar builds the shortcut groups; the hints with a higher drop number are left out when maxDrop is smaller.
+func (m MergeModel) shortcutBar(maxDrop int) *bar {
+	result := &bar{}
+	result.add(barPart{" ", m.theme.Footer})
+	first := true
+	for _, group := range m.hints() {
+		shown := false
+		for _, h := range group {
+			if h.drop > maxDrop {
 				continue
 			}
-			if !first {
+			if !shown && !first {
 				result.add(barPart{"│ ", m.theme.Footer.Faint(true)})
 			}
-			first = false
-			offset := result.width
-			result.add(part.parts...)
-			for _, r := range part.regions {
-				result.regions = append(result.regions, region{from: r.from + offset, to: r.to + offset, keys: r.keys})
-			}
-		}
-		return result
-	}
-	var result *bar
-	for maxDrop := 2; maxDrop >= 0; maxDrop-- {
-		if result = build(maxDrop); result.width <= m.width {
-			break
+			shown, first = true, false
+			result.command(h.key, h.label, h.enabled, m.theme)
 		}
 	}
 	return result
 }
 
-// shortcutLine draws the shortcut groups.
-func (m MergeModel) shortcutLine() string { return m.shortcutBar().render(m.width, m.theme.Footer) }
+// shortcutRows are the shortcuts as wrapped bars. The less important hints are left out until the rest fits with its labels
+// on the lines the footer may take (commands that do not fit on a line go on the next one); when even the important ones do
+// not fit like that, they lose their labels, the last ones first.
+func (m MergeModel) shortcutRows() []*bar {
+	maxLines := m.footerMaxLines()
+	var result *bar
+	for maxDrop := 2; maxDrop >= 0; maxDrop-- {
+		result = m.shortcutBar(maxDrop)
+		if len(result.layout(make([]int, len(result.ops)), m.width)) <= maxLines {
+			break
+		}
+	}
+	return result.wrap(m.width, maxLines)
+}
 
-// actionLine is the first footer line: a message, the editor hints or the actions for the selected change.
-func (m MergeModel) actionLine() string { return m.actionBar().render(m.width, m.theme.Footer) }
+// actionRows is the first part of the footer: a message, the editor status or the actions for the selected change.
+func (m MergeModel) actionRows() []*bar {
+	footer := m.theme.Footer
+	maxLines := m.footerMaxLines()
+	text := func(text string, style lipgloss.Style) []*bar { return textRows(text, m.width, maxLines, style) }
+	switch {
+	case m.editing && m.status == "":
+		return text(m.editingStatus(), m.theme.Header)
+	case m.status != "" && m.warn:
+		return text("! "+m.status, m.theme.Header.Background(footer.GetBackground()))
+	case m.status != "":
+		return text(m.status, m.theme.Header)
+	case m.current < 0 && m.Unresolved() > 0:
+		return text("Press [n] to jump to the next conflict, [m] to auto-resolve the simple ones", footer)
+	case m.current < 0 && m.dirty:
+		return text("✓ All conflicts resolved · press [s] to save, or [n] to review the changes", footer.Bold(true))
+	case m.current < 0:
+		return text("✓ Result saved · press [q] to quit", footer.Bold(true))
+	}
+	return m.actionBar().wrap(m.width, maxLines)
+}
 
-// actionBar builds the action line: a message, the editor status or the actions for the selected change.
+// actionBar builds the actions for the selected change (m.current >= 0).
 func (m MergeModel) actionBar() *bar {
 	footer := m.theme.Footer
 	result := &bar{}
-	switch {
-	case m.editing && m.status == "":
-		result.add(barPart{" " + m.editingStatus(), m.theme.Header})
-		return result
-	case m.status != "" && m.warn:
-		result.add(barPart{" ! " + m.status, m.theme.Header.Background(footer.GetBackground())})
-		return result
-	case m.status != "":
-		result.add(barPart{" " + m.status, m.theme.Header})
-		return result
-	}
 	key := func(k, label string) {
 		result.command(k, label, true, m.theme)
 	}
-	switch {
-	case m.current >= 0:
-		title := "Resolve change"
-		if number := m.conflictNumber(m.changed[m.current]); number > 0 {
-			title = fmt.Sprintf("Resolve conflict %d/%d", number, m.ConflictCount())
-		}
-		result.add(barPart{" " + title + "   ", m.theme.Header})
-		chunk := m.changed[m.current]
-		mark := func(side int) string {
-			if m.sideIncluded(chunk, side) {
-				return " ✓"
-			}
-			return ""
-		}
-		for _, k := range [][2]string{{"→", "ours" + mark(paneOurs)}, {"←", "theirs" + mark(paneTheirs)}, {"b", "both"}, {"e", "edit"}} {
-			key(k[0], k[1])
-		}
-		if m.stateOf(chunk) == stateUnresolved {
-			key("x", "ignore")
-		}
-		if m.choices[chunk] != ChoiceAuto {
-			key("⌫", "cancel")
-		}
-		result.add(barPart{" [o/t/r] pick+next  [m] auto-resolve", footer})
-	case m.Unresolved() > 0:
-		result.add(barPart{" Press [n] to jump to the next conflict, [m] to auto-resolve the simple ones", footer})
-	case m.dirty:
-		result.add(barPart{" ✓ All conflicts resolved · press [s] to save, or [n] to review the changes", footer.Bold(true)})
-	default:
-		result.add(barPart{" ✓ Result saved · press [q] to quit", footer.Bold(true)})
+	title := "Resolve change"
+	if number := m.conflictNumber(m.changed[m.current]); number > 0 {
+		title = fmt.Sprintf("Resolve conflict %d/%d", number, m.ConflictCount())
 	}
+	result.add(barPart{" " + title + "   ", m.theme.Header})
+	chunk := m.changed[m.current]
+	mark := func(side int) string {
+		if m.sideIncluded(chunk, side) {
+			return " ✓"
+		}
+		return ""
+	}
+	for _, k := range [][2]string{{"→", "ours" + mark(paneOurs)}, {"←", "theirs" + mark(paneTheirs)}, {"b", "both"}, {"e", "edit"}} {
+		key(k[0], k[1])
+	}
+	if m.stateOf(chunk) == stateUnresolved {
+		key("x", "ignore")
+	}
+	if m.choices[chunk] != ChoiceAuto {
+		key("⌫", "cancel")
+	}
+	result.hint(barPart{" [o/t/r] pick+next  [m] auto-resolve", footer})
 	return result
+}
+
+// footerBars are the bars of the full footer from top to bottom; it is not used by the compact footer of small terminals.
+func (m MergeModel) footerBars() []*bar {
+	if m.editing {
+		return append(m.actionRows(), m.editorBar().wrap(m.width, m.footerMaxLines())...)
+	}
+	return append(m.actionRows(), m.shortcutRows()...)
 }
 
 func (m MergeModel) footer() string {
 	if m.height < fullChromeHeight {
 		return m.compactFooter()
 	}
-	if m.editing {
-		return m.actionLine() + "\n" + m.editorHints()
-	}
-	return m.actionLine() + "\n" + m.shortcutLine()
+	return strings.Join(renderRowLines(m.footerBars(), m.width, m.theme.Footer), "\n")
 }
 
 // compactFooter is the single footer line of small terminals: a message, or counters and the main keys.
 func (m MergeModel) compactFooter() string {
 	if m.editing || m.status != "" {
-		return m.actionLine()
+		return renderRows(m.actionRows(), m.width, m.theme.Footer)
 	}
 	badge := m.saveBadge()
 	badge.style = m.theme.Footer

@@ -4,6 +4,8 @@
 #              JD_SKIP_GIT_CONFIG=1 (do not set jd as git's diff and merge tool),
 #              JD_SKIP_DEPS=1 (do not check or install dependencies),
 #              JD_DEPS (groups to handle, comma separated; default basics,terminal,runtimes,lsp),
+#              JD_LANGS (languages to install language servers and formatters for: python, html, css, json, yaml, docker, compose, javascript, angular,
+#              go, rust, c, cpp, java, all or none; default all),
 #              JD_DRY_RUN=1 (print what would be installed),
 #              JD_BIN (path of an installed jd.exe, for the pip package that runs this script itself on its first start:
 #              jd is not downloaded and the PATH stays as it is, only the dependencies and git are handled).
@@ -114,6 +116,22 @@ function Install-Download([string]$label, [string]$url, [scriptblock]$finish) {
     try { & $finish } catch { Write-Problem "$label could not be installed from ${url}: $($_.Exception.Message)" }
 }
 
+# Test-Lang tells whether the tools of a language are wanted: JD_LANGS lists the languages (python, html, css, json, yaml, docker, compose,
+# javascript, angular, go, java), "none" means no language, "all" every one; without it every language is wanted.
+function Test-Lang([string[]]$ids) {
+    if (-not $env:JD_LANGS) { return $true }
+    $wanted = ($env:JD_LANGS -replace '[\s;]+', ',').ToLower().Split(',')
+    if ($wanted -contains 'all') { return $true }
+    foreach ($id in $ids) { if ($wanted -contains $id) { return $true } }
+    return $false
+}
+
+# Test-RustComponent tells whether the toolchain has a component: rustup keeps a proxy for it in .cargo\bin either way.
+function Test-RustComponent([string]$name) {
+    if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) { return $false }
+    try { & rustup which $name 2>$null | Out-Null; return ($LASTEXITCODE -eq 0) } catch { return $false }
+}
+
 function Install-Dependencies {
     Write-Host ''
     Write-Host 'Checking the tools the IDE needs (skip with JD_SKIP_DEPS=1, choose groups with JD_DEPS)'
@@ -121,13 +139,16 @@ function Install-Dependencies {
     if (Test-Group 'terminal') { Ensure-Winget 'Windows Terminal' 'Microsoft.WindowsTerminal' @('wt') }
     # the language servers and formatters need Go, Node.js, Python and Java: choosing them installs the runtimes as well
     if ((Test-Group 'runtimes') -or (Test-Group 'lsp')) {
-        Ensure-Winget 'Go' 'GoLang.Go' @('go')
-        Ensure-Winget 'Node.js and npm' 'OpenJS.NodeJS.LTS' @('npm')
-        Ensure-Winget 'Java JDK' 'EclipseAdoptium.Temurin.21.JDK' @('javac')
-        Ensure-Winget 'Python (starts the Java language server)' 'Python.Python.3.12' @('python', 'py')
+        if (Test-Lang @('go')) { Ensure-Winget 'Go' 'GoLang.Go' @('go') }
+        if (Test-Lang @('python', 'html', 'css', 'json', 'yaml', 'docker', 'compose', 'javascript', 'angular')) { Ensure-Winget 'Node.js and npm' 'OpenJS.NodeJS.LTS' @('npm') }
+        if (Test-Lang @('java')) { Ensure-Winget 'Java JDK' 'EclipseAdoptium.Temurin.21.JDK' @('javac') }
+        if (Test-Lang @('c', 'cpp')) { Ensure-Winget 'LLVM (clangd and clang-format for C and C++)' 'LLVM.LLVM' @('clangd') }
+        if (Test-Lang @('rust')) { Ensure-Winget 'Rustup (the Rust toolchain)' 'Rustlang.Rustup' @('rustup') }
+        if (Test-Lang @('python', 'java')) { Ensure-Winget 'Python (runs black and starts the Java language server)' 'Python.Python.3.12' @('python', 'py') }
     }
     if (Test-Group 'lsp') {
         New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+        if (Test-Lang @('go')) {
         if (Get-Command gopls -ErrorAction SilentlyContinue) { Write-Host 'ok       gopls (Go)' }
         elseif (-not (Get-Command go -ErrorAction SilentlyContinue)) { Write-Problem 'gopls needs Go, which is missing' }
         else {
@@ -135,11 +156,24 @@ function Install-Dependencies {
             $env:GOBIN = $installDir
             if (-not (Invoke-Step 'go install golang.org/x/tools/gopls@latest' { go install golang.org/x/tools/gopls@latest })) { Write-Problem 'gopls could not be installed (go install golang.org/x/tools/gopls@latest)' }
         }
-        Install-Npm 'pyright (Python)' 'pyright-langserver' @('pyright')
-        Install-Npm 'typescript-language-server (JavaScript, TypeScript)' 'typescript-language-server' @('typescript', 'typescript-language-server')
-        Install-Npm 'HTML, CSS and JSON language servers' 'vscode-html-language-server' @('vscode-langservers-extracted')
-        Install-Npm 'Angular language server' 'ngserver' @('@angular/language-server', '@angular/language-service', 'typescript')
-        Install-Npm 'prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)' 'prettier' @('prettier')
+        }
+        if (Test-Lang @('python')) { Install-Npm 'pyright (Python)' 'pyright-langserver' @('pyright') }
+        if (Test-Lang @('javascript', 'angular')) { Install-Npm 'typescript-language-server (JavaScript, TypeScript)' 'typescript-language-server' @('typescript', 'typescript-language-server') }
+        if (Test-Lang @('html', 'css', 'json')) { Install-Npm 'HTML, CSS and JSON language servers' 'vscode-html-language-server' @('vscode-langservers-extracted') }
+        if (Test-Lang @('yaml')) { Install-Npm 'YAML language server' 'yaml-language-server' @('yaml-language-server') }
+        if (Test-Lang @('docker')) { Install-Npm 'Dockerfile language server' 'docker-langserver' @('dockerfile-language-server-nodejs') }
+        if (Test-Lang @('compose')) { Install-Npm 'Docker Compose language server' 'docker-compose-langserver' @('@microsoft/compose-language-service') }
+        if (Test-Lang @('angular')) { Install-Npm 'Angular language server' 'ngserver' @('@angular/language-server', '@angular/language-service', 'typescript') }
+        if (Test-Lang @('html', 'css', 'json', 'yaml', 'javascript', 'angular')) { Install-Npm 'prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)' 'prettier' @('prettier') }
+        if (Test-Lang @('rust')) {
+            if ((Test-RustComponent 'rust-analyzer') -and (Test-RustComponent 'rustfmt')) { Write-Host 'ok       rust-analyzer and rustfmt' }
+            elseif (-not (Get-Command rustup -ErrorAction SilentlyContinue)) { Write-Problem 'rust-analyzer and rustfmt need rustup, which is missing' }
+            else {
+                Write-Host 'install  rust-analyzer and rustfmt (rustup)'
+                if (-not (Invoke-Step 'rustup component add rust-analyzer rustfmt' { rustup component add rust-analyzer rustfmt })) { Write-Problem 'rust-analyzer and rustfmt could not be installed (rustup component add rust-analyzer rustfmt)' }
+            }
+        }
+        if (Test-Lang @('python')) {
         if (Get-Command black -ErrorAction SilentlyContinue) { Write-Host 'ok       black (Python formatter)' }
         else {
             $python = @('python', 'py') | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
@@ -149,31 +183,27 @@ function Install-Dependencies {
                 if (-not (Invoke-Step 'python -m pip install --user black' { & $python -m pip install --user black })) { Write-Problem 'black could not be installed (python -m pip install --user black)' }
             }
         }
+        }
+        if (Test-Lang @('java')) {
         if (Get-Command jdtls -ErrorAction SilentlyContinue) { Write-Host 'ok       jdtls (Java)' }
         elseif (-not (Get-Command java -ErrorAction SilentlyContinue)) { Write-Problem 'jdtls (Java language server) needs a JDK, which is missing' }
         else {
-            $url = 'https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz'
+            $url = 'https://download.eclipse.org/jdtls/milestones/1.63.0/jdt-language-server-1.63.0-202610191322.tar.gz'
+            $sha256 = 'b1f2abe0b3cccb462cf64fb4a5587c7d09df60cf8be7748b152cbd89d018bdc4' # pinned: raise both together
             Install-Download 'jdtls' $url {
                 $target = Join-Path $env:LOCALAPPDATA 'jdtls'
                 New-Item -ItemType Directory -Path $target -Force | Out-Null
                 $archive = Join-Path ([IO.Path]::GetTempPath()) 'jdtls.tar.gz'
                 Invoke-WebRequest $url -OutFile $archive
+                if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLower() -ne $sha256) {
+                    Remove-Item $archive -Force
+                    throw 'checksum mismatch: the download is not the pinned jdtls release'
+                }
                 tar -xzf $archive -C $target
                 Remove-Item $archive -Force
                 Set-Content -Path (Join-Path $installDir 'jdtls.cmd') -Value "@python `"$target\bin\jdtls`" %*" -Encoding ASCII
             }
         }
-        if (Get-Command groovy-language-server -ErrorAction SilentlyContinue) { Write-Host 'ok       groovy-language-server' }
-        elseif (-not (Get-Command java -ErrorAction SilentlyContinue)) { Write-Problem 'groovy-language-server needs a JDK, which is missing' }
-        else {
-            $url = 'https://github.com/GroovyLanguageServer/groovy-language-server/releases/latest/download/groovy-language-server-all.jar'
-            Install-Download 'groovy-language-server' $url {
-                $dir = Join-Path $env:LOCALAPPDATA 'groovy-language-server'
-                New-Item -ItemType Directory -Path $dir -Force | Out-Null
-                $jar = Join-Path $dir 'groovy-language-server-all.jar'
-                Invoke-WebRequest $url -OutFile $jar
-                Set-Content -Path (Join-Path $installDir 'groovy-language-server.cmd') -Value "@java -jar `"$jar`" %*" -Encoding ASCII
-            }
         }
     }
     if ($script:problems.Count -gt 0) {

@@ -27,7 +27,8 @@ var searchDebounce = 200 * time.Millisecond
 
 const (
 	maxFileResults = 200
-	searchChrome   = 4 // title, input, hint line, and one line of air
+	searchTop      = 2 // title, input
+	searchAir      = 1 // one line of air above the hints
 )
 
 // filesLoadedMsg carries the list of the project's files.
@@ -104,7 +105,12 @@ func (m SearchModel) Files() []string {
 	return m.files
 }
 
-func (m SearchModel) bodyHeight() int { return max(m.height-searchChrome, 1) }
+func (m SearchModel) bodyHeight() int {
+	return max(m.height-searchTop-searchAir-len(m.footerRows()), 1)
+}
+
+// footerRows are the hints as wrapped bars.
+func (m SearchModel) footerRows() []*bar { return m.hintBar().wrap(m.width, footerMax) }
 
 func (m SearchModel) resultCount() int {
 	if m.mode == searchFiles {
@@ -334,8 +340,8 @@ func (m SearchModel) handleMouse(msg tea.MouseMsg) (SearchModel, tea.Cmd) {
 	case msg.Button == tea.MouseButtonWheelDown:
 		m.top = min(m.top+wheelLines, max(m.resultCount()-m.bodyHeight(), 0))
 	case leftPress(msg):
-		if msg.Y == m.height-1 {
-			if keys := m.hintBar().visibleKeysAt(msg.X, m.width); keys != nil {
+		if msg.Y >= m.height-len(m.footerRows()) {
+			if keys := rowKeysAt(m.footerRows(), msg.X, msg.Y, m.width, m.height); keys != nil {
 				model, cmd := replay(searchKeyTarget{m}, keys)
 				return model.(searchKeyTarget).SearchModel, cmd
 			}
@@ -406,7 +412,8 @@ func (m SearchModel) View() string {
 		}
 		lines = append(lines, strings.Repeat(" ", m.width))
 	}
-	lines = append(lines, strings.Repeat(" ", m.width), m.hintBar().render(m.width, m.theme.Footer))
+	lines = append(lines, strings.Repeat(" ", m.width))
+	lines = append(lines, renderRowLines(m.footerRows(), m.width, m.theme.Footer)...)
 	return strings.Join(lines[:min(len(lines), m.height)], "\n")
 }
 

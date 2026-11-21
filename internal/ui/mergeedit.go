@@ -523,6 +523,3 @@ func (m MergeModel) editorBar() *bar {
 	}
 	return result
 }
-
-// editorHints is the second footer line while the editor is open.
-func (m MergeModel) editorHints() string { return m.editorBar().render(m.width, m.theme.Footer) }

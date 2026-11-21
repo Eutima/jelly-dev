@@ -22,6 +22,12 @@ type ToolInstaller interface {
 	Pending(force bool) []string
 	Install(ctx context.Context, name string) error
 	Status() []string
+	// LanguageStates lists the languages with their missing tools (for :addlang), AddLanguage chooses a language and installs
+	// the language server and the formatter that are missing.
+	LanguageStates() []tools.LanguageState
+	AddLanguage(ctx context.Context, id string) ([]tools.InstallResult, error)
+	// UpdateLanguage brings the language server and the formatter of a language to their newest versions.
+	UpdateLanguage(ctx context.Context, id string) ([]tools.InstallResult, error)
 }
 
 // toolsPendingMsg is the answer of the check for missing tools.

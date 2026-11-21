@@ -26,14 +26,17 @@ type Manager struct {
 	servers  []ServerSpec
 	lookPath func(string) (string, error)
 	start    func(ctx context.Context, name string, command []string, root string) (*Client, error)
+	python   func(root string) string // the Python interpreter of a project (see pythonFinder)
 
-	mu      sync.Mutex
-	clients map[string]*Client // by server name and root
+	mu            sync.Mutex
+	clients       map[string]*Client  // by server name and root
+	chosen        map[string][]string // the formatter the user picked, by file type (see formatters.go)
+	formatterFile string              // where the choices are kept; empty: not stored
 }
 
 // NewManager returns a manager for the project in root.
 func NewManager(root string, servers []ServerSpec) *Manager {
-	return &Manager{root: root, servers: servers, lookPath: exec.LookPath, start: Start, clients: map[string]*Client{}}
+	return &Manager{root: root, servers: servers, lookPath: exec.LookPath, start: Start, python: newPythonFinder().Find, clients: map[string]*Client{}, chosen: map[string][]string{}}
 }
 
 // client returns the running server for a file, starting it first when needed.
@@ -47,11 +50,16 @@ func (m *Manager) client(ctx context.Context, path string) (*Client, string, err
 	}
 	root := rootFor(spec, m.root, path)
 	key := spec.Name + "\x00" + root
+	if c := m.running(key); c != nil {
+		return c, languageID, nil
+	}
+	// the interpreter is looked for before the lock is taken: asking uv can take seconds, and every request waits for the lock
+	python := m.pythonFor(spec, root)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if c := m.clients[key]; c != nil {
+	if c := m.clients[key]; c != nil { // somebody else started it in the meantime
 		select {
-		case <-c.done: // the server stopped: start it again
+		case <-c.done:
 			delete(m.clients, key)
 		default:
 			return c, languageID, nil
@@ -60,6 +68,12 @@ func (m *Manager) client(ctx context.Context, path string) (*Client, string, err
 	c, err := m.start(ctx, spec.Name, spec.Command, root)
 	if err != nil {
 		return nil, "", err
+	}
+	if python != "" {
+		if err := c.Configure(map[string]any{"python": map[string]any{"pythonPath": python}}); err != nil {
+			c.Close()
+			return nil, "", fmt.Errorf("%s: tell the server about %s: %w", spec.Name, python, err)
+		}
 	}
 	m.clients[key] = c
 	return c, languageID, nil
@@ -139,4 +153,34 @@ func (m *Manager) Close() {
 		}()
 	}
 	wg.Wait()
+}
+
+// running returns the server for a key when it is started and still alive.
+func (m *Manager) running(key string) *Client {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c := m.clients[key]
+	if c == nil {
+		return nil
+	}
+	select {
+	case <-c.done:
+		delete(m.clients, key) // the server stopped: it is started again
+		return nil
+	default:
+		return c
+	}
+}
+
+// pythonFor returns the Python interpreter pyright has to resolve the imports of the project with ("" for every other server and
+// when there is none: pyright then uses the Python on the PATH).
+func (m *Manager) pythonFor(spec ServerSpec, root string) string {
+	if spec.Name != "pyright" || m.python == nil {
+		return ""
+	}
+	python := m.python(root)
+	if python == "" && root != m.root {
+		python = m.python(m.root) // the environment sits at the top of a project with several Python folders
+	}
+	return python
 }

@@ -35,7 +35,27 @@ func TestHelperServer(t *testing.T) {
 		}
 		_ = json.Unmarshal(body, &msg)
 		reply := func(result any) { send(map[string]any{"jsonrpc": "2.0", "id": msg.ID, "result": result}) }
+		logLine := func(line string) { // what the client told the server, for the tests that look at it
+			if file := os.Getenv("GO_FAKE_LOG"); file != "" {
+				if f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+					_, _ = f.WriteString(line + "\n")
+					f.Close()
+				}
+			}
+		}
 		switch msg.Method {
+		case "":
+			if msg.ID != nil {
+				var response struct{ Result json.RawMessage }
+				_ = json.Unmarshal(body, &response)
+				logLine("response " + string(*msg.ID) + " " + string(response.Result))
+			}
+		case "workspace/didChangeConfiguration":
+			logLine("didChangeConfiguration " + string(msg.Params))
+			// like pyright: after a change the server asks for the sections it uses
+			send(map[string]any{"jsonrpc": "2.0", "id": 903, "method": "workspace/configuration", "params": map[string]any{
+				"items": []any{map[string]any{"section": "python"}, map[string]any{"section": "python.analysis"}, map[string]any{"section": "python.pythonPath"}, 7},
+			}})
 		case "initialize":
 			// servers ask the client things while starting up; the client must answer them
 			send(map[string]any{"jsonrpc": "2.0", "id": 900, "method": "workspace/configuration", "params": map[string]any{"items": []any{1, 2}}})
@@ -274,7 +294,7 @@ func TestDefaultServers_CoverHTMLAndJavaScript(t *testing.T) {
 	for file, want := range map[string][2]string{
 		"index.html": {"html", "html"}, "app.js": {"typescript-language-server", "javascript"}, "x.mjs": {"typescript-language-server", "javascript"},
 		"view.jsx": {"typescript-language-server", "javascriptreact"}, "main.ts": {"typescript-language-server", "typescript"},
-		"a.py": {"pyright", "python"}, "A.java": {"jdtls", "java"}, "build.gradle": {"groovy", "groovy"}, "s.css": {"css", "css"},
+		"a.py": {"pyright", "python"}, "A.java": {"jdtls", "java"}, "s.css": {"css", "css"},
 	} {
 		spec, id, ok := specFor(DefaultServers(), file)
 		if !ok || spec.Name != want[0] || id != want[1] {
@@ -285,7 +305,7 @@ func TestDefaultServers_CoverHTMLAndJavaScript(t *testing.T) {
 
 func TestLoadServers_MergesConfigFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "lsp.json")
-	config := `{"servers":[{"name":"gopls","command":["gopls","-remote=auto"],"extensions":[".go"]},{"name":"rust","command":["rust-analyzer"],"extensions":[".rs"],"languageId":"rust"}]}`
+	config := `{"servers":[{"name":"gopls","command":["gopls","-remote=auto"],"extensions":[".go"]},{"name":"zig","command":["zls"],"extensions":[".zig"],"languageId":"zig"}]}`
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +317,7 @@ func TestLoadServers_MergesConfigFile(t *testing.T) {
 	if len(spec.Command) != 2 || spec.Command[1] != "-remote=auto" {
 		t.Fatalf("a configured server replaces the default: %+v", spec)
 	}
-	if spec, id, ok := specFor(servers, "lib.rs"); !ok || spec.Name != "rust" || id != "rust" {
+	if spec, id, ok := specFor(servers, "main.zig"); !ok || spec.Name != "zig" || id != "zig" {
 		t.Fatalf("a new server is added: %+v", spec)
 	}
 	if servers, err := LoadServers(filepath.Join(t.TempDir(), "missing.json")); err != nil || len(servers) != len(DefaultServers()) {

@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/eutima/jelly-dev/internal/config"
 	"github.com/eutima/jelly-dev/internal/editor"
 	"github.com/eutima/jelly-dev/internal/filetree"
 	"github.com/eutima/jelly-dev/internal/lsp"
@@ -22,7 +23,9 @@ const (
 	maxTreeWidth     = 40
 	treePercent      = 25
 	minProjectWidth  = 50 // narrower terminals show only the focused pane
-	treeChrome       = 2  // header and hint line
+	treeHeaderLines  = 1  // the folder name above the tree
+	treeFooterBars   = 2  // the hint line wraps to at most this many lines
+	treeMessageMax   = 3  // a long message wraps to at most this many lines
 	topBarHeight     = 1  // the bar with the project, terminal and diff buttons
 	focusTree        = 0
 	focusProjectEdit = 1
@@ -51,6 +54,8 @@ type ProjectHooks struct {
 	// ReadClipboard and WriteClipboard connect the editor to the system clipboard; either may be nil.
 	ReadClipboard  func() (string, error)
 	WriteClipboard func(text string) error
+	// Theme resolves a theme name for the command :theme; nil disables the command.
+	Theme func(name string) (Theme, bool)
 	// Terminal returns the command that opens a shell in dir; nil starts $SHELL.
 	Terminal func(dir string) *exec.Cmd
 	// Diff returns the command that shows the changes of the project in dir; nil starts `jd git`.
@@ -80,6 +85,8 @@ type ProjectModel struct {
 	search        *SearchModel        // the open project search, nil when closed
 	knownFiles    []string            // the file list of the last search, shown at once the next time
 	dlg           *unsavedDialog      // the question about unsaved changes, nil when none is open
+	pick          *formatPick         // the list of formatters to choose from, nil when closed
+	langs         *languagePick       // the list of languages (:addlang), nil when closed
 	terms         []*terminal.Session // the shells (tabs) of the panel under the editor
 	termActive    int                 // the tab that is shown
 	termShown     bool                // whether the panel is visible (hidden shells keep running)
@@ -226,7 +233,42 @@ func (m ProjectModel) resizeEditor() ProjectModel {
 // bodyHeight is the height of the panes: the window without the top bar.
 func (m ProjectModel) bodyHeight() int { return max(m.height-topBarHeight, 1) }
 
-func (m ProjectModel) treeBody() int { return max(m.bodyHeight()-treeChrome, 1) }
+// treeBody is the number of rows of the tree: the pane without its header and its footer, which takes more lines when the pane is
+// narrow and the hints or a message do not fit in one.
+func (m ProjectModel) treeBody() int {
+	return max(m.bodyHeight()-treeHeaderLines-len(m.treeFooterRows(m.treeFooterWidth())), 1)
+}
+
+func (m ProjectModel) treeFooterWidth() int {
+	if width := m.treeWidth(); width > 0 {
+		return width
+	}
+	return max(m.width, 1)
+}
+
+// treeFooterRows are the lines under the tree: a message or the progress of the tool installation (wrapped at the spaces, not cut
+// off), else the hints, wrapped onto a second line when they do not fit.
+func (m ProjectModel) treeFooterRows(width int) []string {
+	wrapped := func(text string, style lipgloss.Style) []string {
+		lines := wrapWords(sanitize(text), max(width-1, 1), treeMessageMax)
+		rows := make([]string, len(lines))
+		for i, line := range lines {
+			rows[i] = style.Render(padRight(" "+line, width))
+		}
+		return rows
+	}
+	switch {
+	case m.status != "":
+		style := m.theme.Footer
+		if m.warn {
+			style = m.theme.Warning
+		}
+		return wrapped(m.status, style)
+	case m.toolStatus != "":
+		return wrapped(m.toolStatus, m.theme.Footer)
+	}
+	return m.treeFooterBar().renderLines(width, treeFooterBars, m.theme.Footer)
+}
 
 func (m *ProjectModel) keepSelectionVisible() {
 	body := m.treeBody()
@@ -264,6 +306,10 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.termUpdated(msg)
 	case CloseRequestMsg:
 		return m.askToClose(true)
+	case FormatPickMsg:
+		return m.openFormatPicker(msg)
+	case languageAddedMsg:
+		return m.languageAdded(msg)
 	case externalDoneMsg:
 		if msg.err != nil {
 			m.say(fmt.Sprintf("%s: %v", msg.what, msg.err), true)
@@ -411,6 +457,12 @@ func (m ProjectModel) jumpToPlace(place lsp.Place, back bool) (tea.Model, tea.Cm
 func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.dlg != nil {
 		return m.dialogKey(msg)
+	}
+	if m.pick != nil {
+		return m.updateFormatPicker(msg)
+	}
+	if m.langs != nil {
+		return m.updateLanguagePicker(msg)
 	}
 	if m.picker != nil {
 		return m.updatePicker(msg)
@@ -604,6 +656,10 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 		return m.quit()
 	case "qa!", "qall!":
 		return m.quit()
+	case "theme", "colors", "colorscheme":
+		return m.themeCommand(argument)
+	case "addlang", "addlanguage", "language", "lang", "languages":
+		return m.openLanguagePicker()
 	case "tools":
 		return m.toolsCommand(argument)
 	case "projects", "recent":
@@ -683,6 +739,12 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.dlg != nil {
 		return m.clickDialog(msg)
 	}
+	if m.pick != nil {
+		return m.updateFormatPicker(msg)
+	}
+	if m.langs != nil {
+		return m.updateLanguagePicker(msg)
+	}
 	if m.picker != nil {
 		return m.updatePicker(msg)
 	}
@@ -717,8 +779,10 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case msg.Button == tea.MouseButtonWheelDown:
 		m.top = min(m.top+wheelLines, max(len(m.tree.Visible())-m.treeBody(), 0))
 	case leftPress(msg):
-		if keys := m.treeFooterBar().visibleKeysAt(msg.X, tree); msg.Y == m.bodyHeight()-1 && keys != nil {
-			return replay(m, keys)
+		if m.status == "" && m.toolStatus == "" { // the hints are clickable, a message is not
+			if keys := m.treeFooterBar().keysAtLine(msg.X, msg.Y-treeHeaderLines-m.treeBody(), tree, treeFooterBars); keys != nil {
+				return replay(m, keys)
+			}
 		}
 		row := m.top + msg.Y - 1
 		rows := m.tree.Visible()
@@ -763,6 +827,12 @@ func (m ProjectModel) View() string {
 	if m.dlg != nil {
 		return m.overlayDialog(screen)
 	}
+	if m.pick != nil {
+		return m.pick.picker.overlay(screen, m.width, m.height)
+	}
+	if m.langs != nil {
+		return m.langs.picker.overlay(screen, m.width, m.height)
+	}
 	return screen
 }
 
@@ -796,18 +866,7 @@ func (m ProjectModel) treeView(width int) string {
 		}
 		lines = append(lines, m.treeRow(rows[i], i == m.sel, width))
 	}
-	footer := m.treeFooterBar().render(width, m.theme.Footer)
-	switch {
-	case m.status != "":
-		style := m.theme.Footer
-		if m.warn {
-			style = m.theme.Warning
-		}
-		footer = style.Render(padRight(" "+sanitize(m.status), width))
-	case m.toolStatus != "":
-		footer = m.theme.Footer.Render(padRight(" "+sanitize(m.toolStatus), width))
-	}
-	return strings.Join(append(lines, footer), "\n")
+	return strings.Join(append(lines, m.treeFooterRows(width)...), "\n")
 }
 
 func (m ProjectModel) treeRow(node *filetree.Node, selected bool, width int) string {
@@ -836,4 +895,26 @@ func (m ProjectModel) treeRow(node *filetree.Node, selected bool, width int) str
 		}
 	}
 	return style.Render(padRight(" "+label, width))
+}
+
+// themeCommand is :theme [name]: it switches the colours of the window at once. Without a name it lists the themes. A terminal with
+// few colours gets the "ansi" theme by itself (auto); this is the way to choose another one when that is not right.
+func (m ProjectModel) themeCommand(argument string) (tea.Model, tea.Cmd) {
+	if m.hooks.Theme == nil {
+		m.say("E1: Switching the theme is not available here", true)
+		return m, nil
+	}
+	name := strings.ToLower(strings.TrimSpace(argument))
+	if name == "" {
+		m.say("Themes: "+strings.Join(config.ThemeNames(), ", ")+" (:theme <name>; JELLY_DEV_THEME=<name> keeps it)", false)
+		return m, nil
+	}
+	theme, ok := m.hooks.Theme(name)
+	if !ok {
+		m.say(fmt.Sprintf("E474: Unknown theme %q: %s", name, strings.Join(config.ThemeNames(), ", ")), true)
+		return m, nil
+	}
+	m = m.WithTheme(theme)
+	m.say(fmt.Sprintf("Theme %s (set JELLY_DEV_THEME=%s to keep it)", name, name), false)
+	return m, nil
 }

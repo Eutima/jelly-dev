@@ -4,6 +4,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/muesli/termenv"
+
 	"github.com/eutima/jelly-dev/internal/config"
 	"github.com/eutima/jelly-dev/internal/source"
 )
@@ -21,6 +23,12 @@ func NamedThemeFor(r *lipgloss.Renderer, name string) (Theme, bool) {
 		return LightThemeFor(r), true
 	case config.ThemeMono:
 		return MonoThemeFor(r), true
+	case config.ThemeANSI:
+		return ANSIThemeFor(r), true
+	case config.ThemeContrast:
+		return ContrastThemeFor(r), true
+	case config.ThemeAuto:
+		return NamedThemeFor(r, DetectThemeName(r.ColorProfile(), r.HasDarkBackground()))
 	}
 	return Theme{}, false
 }
@@ -74,7 +82,7 @@ func LightThemeFor(r *lipgloss.Renderer) Theme {
 	text := base.Foreground(hex("#1e1f22"))
 	return Theme{
 		Header:         base.Foreground(hex("#1e1f22")).Background(hex("#dfe1e5")).Bold(true),
-		Footer:         base.Foreground(hex("#6c707e")).Background(hex("#dfe1e5")),
+		Footer:         base.Foreground(hex("#555967")).Background(hex("#dfe1e5")),
 		LineNumber:     base.Foreground(hex("#8c909e")),
 		Equal:          text,
 		Added:          text.Background(hex("#c6f0cf")),
@@ -100,6 +108,63 @@ func LightThemeFor(r *lipgloss.Renderer) Theme {
 		ConflictMark:   base.Foreground(hex("#c2185b")).Bold(true),
 		painter:        newPainter(lightSyntaxStyle),
 	}
+}
+
+// ANSITheme is for terminals with 16 colours. Those map colours to the palette of the terminal theme, so a fixed text colour on a fixed
+// background can end up as grey on grey. This theme sets no background at all: it highlights with reverse video (the terminal's own
+// text and background colours, swapped) and marks changes with foreground colours of the palette, which a terminal theme chooses to
+// be readable on its background.
+func ANSITheme() Theme { return ANSIThemeFor(lipgloss.DefaultRenderer()) }
+
+// ANSIThemeFor is ANSITheme with styles rendered by r.
+func ANSIThemeFor(r *lipgloss.Renderer) Theme {
+	base := r.NewStyle()
+	color := func(n int) lipgloss.TerminalColor { return lipgloss.ANSIColor(n) }
+	green, red, cyan, magenta, yellow := color(2), color(1), color(6), color(5), color(3)
+	return Theme{
+		Header:         base.Reverse(true).Bold(true),
+		Footer:         base.Reverse(true),
+		LineNumber:     base.Faint(true),
+		Equal:          base,
+		Added:          base.Foreground(green),
+		Deleted:        base.Foreground(red),
+		Modified:       base.Foreground(cyan),
+		Filler:         base.Faint(true),
+		AddedWord:      base.Foreground(green).Reverse(true).Bold(true),
+		DeletedWord:    base.Foreground(red).Reverse(true).Bold(true),
+		ModifiedWord:   base.Foreground(cyan).Reverse(true).Bold(true),
+		Conflict:       base.Foreground(magenta),
+		ConflictWord:   base.Foreground(magenta).Reverse(true).Bold(true),
+		Gutter:         base.Faint(true),
+		GutterCur:      base.Bold(true),
+		Selected:       base.Reverse(true),
+		SelectedDim:    base.Underline(true).Bold(true),
+		StatusAdded:    base.Foreground(green).Bold(true),
+		StatusDeleted:  base.Foreground(red).Bold(true),
+		StatusModified: base.Foreground(cyan).Bold(true),
+		Jelly:          base.Foreground(magenta),
+		Ours:           base.Foreground(cyan),
+		Theirs:         base.Foreground(yellow),
+		Warning:        base.Reverse(true).Bold(true),
+		ConflictMark:   base.Foreground(magenta).Bold(true),
+	}
+}
+
+// ContrastTheme is the high contrast theme: like the ANSI theme (no fixed backgrounds, reverse video for what is highlighted) but
+// nothing is dim, and what the other themes show in a lighter tone is shown in the normal text colour, bold where it matters.
+func ContrastTheme() Theme { return ContrastThemeFor(lipgloss.DefaultRenderer()) }
+
+// ContrastThemeFor is ContrastTheme with styles rendered by r.
+func ContrastThemeFor(r *lipgloss.Renderer) Theme {
+	theme := ANSIThemeFor(r)
+	base := r.NewStyle()
+	theme.LineNumber, theme.Filler, theme.Gutter = base, base, base
+	theme.Footer = base.Reverse(true).Bold(true)
+	theme.SelectedDim = base.Reverse(true).Underline(true)
+	theme.Added, theme.Deleted = theme.Added.Bold(true), theme.Deleted.Bold(true).Strikethrough(true) // not red against green alone
+	theme.Modified, theme.Conflict = theme.Modified.Bold(true), theme.Conflict.Bold(true)
+	theme.Ours, theme.Theirs = theme.Ours.Bold(true), theme.Theirs.Bold(true)
+	return theme
 }
 
 // MonoTheme uses only text attributes (bold, strikethrough, reverse, underline), for NO_COLOR and monochrome
@@ -192,6 +257,29 @@ func Themed(model tea.Model, theme Theme) tea.Model {
 		return typed.WithTheme(theme)
 	case WelcomeModel:
 		return typed.WithTheme(theme)
+	case LanguagesModel:
+		return typed.WithTheme(theme)
 	}
 	return model
+}
+
+// DetectThemeName chooses the built-in theme that suits a terminal: without colours the mono theme, with 16 colours the ANSI theme
+// (fixed colours would be mapped to the terminal's palette and may be unreadable), with 256 or more the dark or the light theme,
+// whichever fits the background.
+func DetectThemeName(profile termenv.Profile, darkBackground bool) string {
+	switch profile {
+	case termenv.Ascii:
+		return config.ThemeMono
+	case termenv.ANSI:
+		return config.ThemeANSI
+	}
+	if darkBackground {
+		return config.ThemeDark
+	}
+	return config.ThemeLight
+}
+
+// DetectedThemeName is DetectThemeName for the terminal jd is running in.
+func DetectedThemeName() string {
+	return DetectThemeName(lipgloss.ColorProfile(), lipgloss.HasDarkBackground())
 }
