@@ -1,6 +1,7 @@
 #!/bin/sh
 # Print the next release tag (vX.Y.Z) derived from Conventional Commits since the latest v* tag.
-# Prints nothing (exit 0) when no commit warrants a release.
+# Prints nothing (exit 0) when no commit warrants a release. Counted: the subject of every commit and the "* subject" lines
+# of a squash merge body.
 # With "-" the commits are read from stdin instead of git, in the format of COMMIT_FORMAT below (used by tests).
 set -eu
 
@@ -27,6 +28,21 @@ raise() {
     esac
 }
 
+# classify raises the bump for one commit subject written as a Conventional Commit; anything else is ignored.
+classify() {
+    subject=$1
+    prefix=${subject%%:*}
+    [ "$prefix" != "$subject" ] || return 0
+    case $prefix in
+        *[!a-z0-9\(\)\!,\ -]*) return 0 ;;
+    esac
+    case $prefix in
+        *"!") raise major ;;
+        feat|feat\(*\)) raise minor ;;
+        fix|fix\(*\)|perf|perf\(*\)) raise patch ;;
+    esac
+}
+
 expect_subject=0
 while IFS= read -r line; do
     if [ "$line" = "$marker" ]; then
@@ -36,20 +52,15 @@ while IFS= read -r line; do
     if [ "$expect_subject" -eq 1 ]; then
         [ -n "$line" ] || continue
         expect_subject=0
-        prefix=${line%%:*}
-        [ "$prefix" != "$line" ] || continue
-        case $prefix in
-            *[!a-z0-9\(\)\!,\ -]*) continue ;;
-        esac
-        case $prefix in
-            *"!") raise major ;;
-            feat|feat\(*\)) raise minor ;;
-            fix|fix\(*\)|perf|perf\(*\)) raise patch ;;
-        esac
+        classify "$line"
         continue
     fi
+    # A squash merge lists the squashed commits as "* subject" lines in the body, and its own title is often no
+    # Conventional Commit (for example "Feature/x (#4)"): the listed ones count. (So does a "* feat: ..." bullet in the
+    # body of an ordinary commit; write such examples with a dash.)
     case $line in
         "BREAKING CHANGE:"*|"BREAKING-CHANGE:"*) raise major ;;
+        "* "*) classify "${line#\* }" ;;
     esac
 done <<EOT
 $log

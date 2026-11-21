@@ -29,6 +29,26 @@ check "bang bumps major" "$major" "$m
 feat!: drop old api"
 check "scoped bang bumps major" "$major" "$m
 refactor(api)!: drop old api"
+check "squash merge counts the commits listed in its body" "$minor" "$m
+Feature/vim ide (#4)
+* feat: add thing
+
+- details
+* docs: explain"
+check "squash merge with only fixes gives patch" "$patch" "$m
+Some title (#5)
+* fix: repair
+* chore: tidy"
+check "squash merge without conventional lines gives no release" "" "$m
+Some title (#6)
+* update things
+- feat: a bullet in a description is no commit"
+check "squash merge with a breaking line gives major" "$major" "$m
+Some title (#7)
+* feat(x)!: drop old api"
+check "conventional title and a listed fix keep the higher bump" "$minor" "$m
+feat: add thing (#8)
+* fix: repair"
 check "BREAKING CHANGE footer bumps major" "$major" "$m
 fix: x
 
