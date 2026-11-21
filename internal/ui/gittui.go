@@ -10,8 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/eutima/jelly-diff/internal/diff"
-	"github.com/eutima/jelly-diff/internal/source"
+	"github.com/eutima/jelly-dev/internal/diff"
+	"github.com/eutima/jelly-dev/internal/source"
 )
 
 const (
@@ -54,6 +54,7 @@ type GitModel struct {
 	loadSeq     int                // number of the current load; results of older loads are discarded
 	loadCtx     context.Context    // context of the current load; kept so Init can start the first load
 	cancelLoad  context.CancelFunc // cancels the running load; nil when none
+	arrive      int                // after the load: 1 selects the first change, -1 the last (n and p crossing a file border)
 	ticking     bool               // the wobble animation is scheduled
 	frame       int                // current animation frame
 	interval    time.Duration
@@ -189,7 +190,28 @@ func (m *GitModel) applyLoaded(msg loadedMsg) tea.Cmd {
 	m.loadedFile = msg.index
 	m.message = msg.message
 	m.diff = msg.diff.withSize(m.diffWidth(), m.height)
+	if m.arrive != 0 {
+		m.diff.gotoHunk(map[bool]int{true: 0, false: -1}[m.arrive > 0])
+		m.arrive = 0
+	}
 	return nil
+}
+
+// stepChange handles arrow down (direction 1) and up (-1) in the diff pane: the next or previous change, and at the last or first change of the
+// file the first or last change of the next or previous file. At the end of the list the change wraps within the file.
+func (m GitModel) stepChange(msg tea.KeyMsg, direction int) (tea.Model, tea.Cmd) {
+	if m.loading { // the shown diff is about to be replaced
+		return m, nil
+	}
+	count, current := len(m.diff.starts()), m.diff.current
+	atEnd := count == 0 || (direction > 0 && current == count-1) || (direction < 0 && current <= 0)
+	next := m.selected + direction
+	if !atEnd || next < 0 || next >= len(m.files) {
+		return m.forwardToDiff(msg)
+	}
+	cmd := m.selectFile(next)
+	m.arrive = direction
+	return m, cmd
 }
 
 func describeLoadError(err error) string {
@@ -271,11 +293,15 @@ func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab":
 		m.focus = 1 - m.focus
 		return m, nil
-	case "n", "p", "t":
+	case "t":
 		return m.forwardToDiff(msg)
 	}
 	if m.focus == focusDiff {
 		switch key {
+		case "down":
+			return m.stepChange(msg, 1)
+		case "up":
+			return m.stepChange(msg, -1)
 		case "esc", "left", "h":
 			m.focus = focusList
 			return m, nil

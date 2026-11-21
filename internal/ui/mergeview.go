@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
-	"github.com/eutima/jelly-diff/internal/merge"
+	"github.com/eutima/jelly-dev/internal/merge"
 )
 
 const (
@@ -354,7 +354,7 @@ func (m MergeModel) header(panes []int, widths [mergePanes]int) string {
 	}
 	bg := m.theme.Header.GetBackground()
 	title := []barPart{
-		{" Jelly ", m.theme.StatusModified.Background(bg)}, {"Diff", m.theme.Jelly.Bold(true).Background(bg)},
+		{" Jelly ", m.theme.StatusModified.Background(bg)}, {"Dev", m.theme.Jelly.Bold(true).Background(bg)},
 		{"  " + sanitize(m.titles.Name), m.theme.Header},
 	}
 	status := []barPart{m.conflictSummary(), {"   ", m.theme.Header}, m.saveBadge(), {" ", m.theme.Header}}

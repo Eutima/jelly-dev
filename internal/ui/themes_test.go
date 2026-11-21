@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	"github.com/eutima/jelly-diff/internal/config"
+	"github.com/eutima/jelly-dev/internal/config"
 )
 
 // rendererFor returns a renderer with its own color profile. Themes built from it emit escape sequences

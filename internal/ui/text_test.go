@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/eutima/jelly-diff/internal/diff"
+	"github.com/eutima/jelly-dev/internal/diff"
 )
 
 func TestLayoutText_MarksHighlightedSegments_WhenSpansGiven(t *testing.T) {
@@ -113,11 +113,11 @@ func TestView_FillsExactWidth_WhenUnifiedView(t *testing.T) {
 
 func TestUpdate_NavigatesChangesInUnifiedView_WhenNPressed(t *testing.T) {
 	model := press(newTestModel([]string{"a", "b", "c", "d"}, []string{"A", "b", "c", "D"}), "t")
-	model = press(model, "n")
+	model = press(model, "down")
 	if model.current != 0 || model.offset != 0 {
 		t.Fatalf("current %d offset %d", model.current, model.offset)
 	}
-	if model = press(model, "n"); model.current != 1 {
+	if model = press(model, "down"); model.current != 1 {
 		t.Fatalf("current %d", model.current)
 	}
 }
@@ -126,7 +126,7 @@ func TestUpdate_KeepsSelectedChange_WhenTogglingView(t *testing.T) {
 	lines := manyLines(60)
 	changed := manyLines(60)
 	changed[40] = "changed"
-	model := press(press(newTestModel(lines, changed), "n"), "t")
+	model := press(press(newTestModel(lines, changed), "down"), "t")
 	if model.current != 0 || model.offset != model.unifiedAt[0]-model.bodyHeight()/3 {
 		t.Fatalf("current %d offset %d", model.current, model.offset)
 	}

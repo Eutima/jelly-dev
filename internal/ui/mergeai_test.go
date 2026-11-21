@@ -10,7 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/eutima/jelly-diff/internal/ai"
+	"github.com/eutima/jelly-dev/internal/ai"
 )
 
 // runAssistantKey presses key and, like the bubbletea runtime, executes the returned command and feeds its message back.

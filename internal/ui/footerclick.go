@@ -19,10 +19,24 @@ type bar struct {
 	parts   []barPart
 	regions []region
 	width   int
+	ops     []barOp // what was added, in order: lets the bar shrink to a narrower terminal (see fitted)
+}
+
+// barOp is one step of building a bar. A collapsible one has a short form (nil: none) that replaces it when the bar does not
+// fit, and can be dropped altogether after that; tail is text that follows it and goes with it.
+type barOp struct {
+	parts, short, tail []barPart
+	keys               []string
+	collapsible        bool
 }
 
 // add appends text that is not clickable.
 func (b *bar) add(parts ...barPart) {
+	b.ops = append(b.ops, barOp{parts: parts})
+	b.append(parts...)
+}
+
+func (b *bar) append(parts ...barPart) {
 	for _, part := range parts {
 		b.parts = append(b.parts, part)
 		b.width += runewidth.StringWidth(part.text)
@@ -31,8 +45,14 @@ func (b *bar) add(parts ...barPart) {
 
 // click appends text that sends keys when clicked; nil keys (a disabled command) make it inert.
 func (b *bar) click(keys []string, parts ...barPart) {
+	b.ops = append(b.ops, barOp{parts: parts, keys: keys})
+	b.place(keys, parts...)
+}
+
+// place appends parts and makes them clickable (when there are keys).
+func (b *bar) place(keys []string, parts ...barPart) {
 	from := b.width
-	b.add(parts...)
+	b.append(parts...)
 	if len(keys) > 0 {
 		b.regions = append(b.regions, region{from: from, to: b.width, keys: keys})
 	}
@@ -49,8 +69,72 @@ func (b *bar) command(key, label string, enabled bool, theme Theme) {
 	if enabled {
 		keys = commandKeys(key)
 	}
-	b.click(keys, barPart{"[" + key + "]", keyStyle}, barPart{" " + label, labelStyle})
-	b.add(barPart{"  ", labelStyle})
+	full := []barPart{{"[" + key + "]", keyStyle}, {" " + label, labelStyle}}
+	tail := []barPart{{"  ", labelStyle}}
+	b.ops = append(b.ops, barOp{parts: full, short: full[:1], tail: tail, keys: keys, collapsible: true})
+	b.place(keys, full...)
+	b.append(tail...)
+}
+
+// button appends a clickable part that gives up its hint when the bar is too narrow (short), and the whole button after that.
+func (b *bar) button(keys []string, full, short []barPart) {
+	b.ops = append(b.ops, barOp{parts: full, short: short, keys: keys, collapsible: true})
+	b.place(keys, full...)
+}
+
+// hint appends text that is the first to go when the bar is too narrow.
+func (b *bar) hint(parts ...barPart) {
+	b.ops = append(b.ops, barOp{parts: parts, collapsible: true})
+	b.append(parts...)
+}
+
+// fitted returns the bar for a terminal width columns wide: when it is too wide the commands, from the last to the first,
+// lose their labels (only the key stays), and when that is not enough they drop out, again the last one first.
+func (b *bar) fitted(width int) *bar {
+	if width <= 0 || b.width <= width || len(b.ops) == 0 {
+		return b
+	}
+	state := make([]int, len(b.ops)) // 0 full, 1 short, 2 dropped
+	size := func() int {
+		total := 0
+		for i, op := range b.ops {
+			switch state[i] {
+			case 0:
+				total += segmentsWidth(op.parts) + segmentsWidth(op.tail)
+			case 1:
+				total += segmentsWidth(op.short) + segmentsWidth(op.tail)
+			}
+		}
+		return total
+	}
+	for target := 1; target <= 2 && size() > width; target++ {
+		for i := len(b.ops) - 1; i >= 0 && size() > width; i-- {
+			if !b.ops[i].collapsible || state[i] != target-1 {
+				continue
+			}
+			state[i] = target
+			if target == 1 && b.ops[i].short == nil {
+				state[i] = 2
+			}
+		}
+	}
+	out := &bar{}
+	for i, op := range b.ops {
+		parts := op.parts
+		switch state[i] {
+		case 2:
+			continue
+		case 1:
+			parts = op.short
+		}
+		if len(op.keys) > 0 {
+			out.place(op.keys, parts...)
+		} else {
+			out.append(parts...)
+		}
+		out.append(op.tail...)
+	}
+	return out
 }
 
 // keysAt returns the keys of the clickable region under column x, nil when there is none.
@@ -65,7 +149,7 @@ func (b *bar) keysAt(x int) []string {
 
 // render draws the bar in exactly width columns.
 func (b *bar) render(width int, fill lipgloss.Style) string {
-	return renderSegments(b.parts, width, fill)
+	return renderSegments(b.fitted(width).parts, width, fill)
 }
 
 // visibleKeysAt is keysAt for a bar that is cut to width columns: columns beyond it are not clickable.
@@ -73,7 +157,7 @@ func (b *bar) visibleKeysAt(x, width int) []string {
 	if x < 0 || x >= width {
 		return nil
 	}
-	return b.keysAt(x)
+	return b.fitted(width).keysAt(x)
 }
 
 // commandKeys maps the text shown in brackets to the keys a click on it sends.
@@ -95,6 +179,10 @@ func commandKeys(shown string) []string {
 		return []string{"v"}
 	case "o/t/r":
 		return []string{"o"}
+	case "gd":
+		return []string{"g", "d"}
+	case "gr":
+		return []string{"g", "r"}
 	}
 	if strings.HasPrefix(shown, ":") { // an Ex command: type it and press enter
 		keys := make([]string, 0, len(shown)+1)
@@ -113,7 +201,8 @@ func keyMsg(name string) tea.KeyMsg {
 		"tab": tea.KeyTab, "left": tea.KeyLeft, "right": tea.KeyRight, "up": tea.KeyUp, "down": tea.KeyDown,
 		"pgup": tea.KeyPgUp, "pgdown": tea.KeyPgDown, "home": tea.KeyHome, "end": tea.KeyEnd,
 		"ctrl+c": tea.KeyCtrlC, "ctrl+d": tea.KeyCtrlD, "ctrl+o": tea.KeyCtrlO, "ctrl+t": tea.KeyCtrlT,
-		"ctrl+r": tea.KeyCtrlR, "ctrl+u": tea.KeyCtrlU, "ctrl+k": tea.KeyCtrlK,
+		"ctrl+r": tea.KeyCtrlR, "ctrl+u": tea.KeyCtrlU, "ctrl+k": tea.KeyCtrlK, "ctrl+p": tea.KeyCtrlP, "ctrl+g": tea.KeyCtrlG,
+		"ctrl+n": tea.KeyCtrlN, "ctrl+f": tea.KeyCtrlF, "ctrl+@": tea.KeyCtrlAt,
 	}
 	if keyType, ok := named[name]; ok {
 		return tea.KeyMsg{Type: keyType}

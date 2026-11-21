@@ -1,11 +1,11 @@
 # GoReleaser configuration (schema version 2).
 # Local builds: `goreleaser release --snapshot --clean` (archives in dist/, nothing is published).
 version: 2
-project_name: jelly-diff
+project_name: jelly-dev
 
 builds:
-  - id: jelly-diff
-    main: ./cmd/jelly-diff
+  - id: jelly-dev
+    main: ./cmd/jelly-dev
     binary: jd
     env:
       - CGO_ENABLED=0
@@ -18,7 +18,7 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
-  - id: jelly-diff
+  - id: jelly-dev
     formats: [tar.gz]
     format_overrides:
       - goos: windows
@@ -37,4 +37,4 @@ changelog:
 release:
   github:
     owner: Eutima
-    name: jelly-diff
+    name: jelly-dev

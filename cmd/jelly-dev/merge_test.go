@@ -129,7 +129,7 @@ func TestWriteAtomic_KeepsFileMode_WhenReplacingExistingFile(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0o640 || readFile(t, path) != "new" {
 		t.Fatalf("mode %v err %v", info.Mode(), err)
 	}
-	leftovers, _ := filepath.Glob(filepath.Join(filepath.Dir(path), ".jelly-diff-*"))
+	leftovers, _ := filepath.Glob(filepath.Join(filepath.Dir(path), ".jelly-dev-*"))
 	if len(leftovers) != 0 {
 		t.Fatalf("temp files left: %v", leftovers)
 	}

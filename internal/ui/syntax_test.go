@@ -9,9 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/eutima/jelly-diff/internal/config"
-	"github.com/eutima/jelly-diff/internal/diff"
-	"github.com/eutima/jelly-diff/internal/source"
+	"github.com/eutima/jelly-dev/internal/config"
+	"github.com/eutima/jelly-dev/internal/diff"
+	"github.com/eutima/jelly-dev/internal/source"
 )
 
 func TestHighlightLines_ReturnsKeywordSpan_WhenGoSource(t *testing.T) {

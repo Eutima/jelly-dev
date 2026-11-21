@@ -7,8 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/eutima/jelly-diff/internal/ai"
-	"github.com/eutima/jelly-diff/internal/merge"
+	"github.com/eutima/jelly-dev/internal/ai"
+	"github.com/eutima/jelly-dev/internal/merge"
 )
 
 // aiDoneMsg is the answer of an assistant request.

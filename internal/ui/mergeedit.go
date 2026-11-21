@@ -7,8 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/eutima/jelly-diff/internal/merge"
-	"github.com/eutima/jelly-diff/internal/vimbuf"
+	"github.com/eutima/jelly-dev/internal/merge"
+	"github.com/eutima/jelly-dev/internal/vimbuf"
 )
 
 // moveCursor moves the line cursor by delta rows and scrolls it into view.

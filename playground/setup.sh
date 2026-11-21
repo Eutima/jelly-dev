@@ -1,6 +1,6 @@
 #!/usr/bin/env -S -u BASH_ENV bash
 # -S -u BASH_ENV (GNU env >= 8.30) keeps WSL's BASH_ENV hook from printing an nsenter error; `bash setup.sh` still reads it.
-# Creates (or recreates) playground/sandbox/ with everything needed to try jelly-diff:
+# Creates (or recreates) playground/sandbox/ with everything needed to try jelly-dev:
 #   sandbox/files/        generated extra inputs (binary, CRLF, escape sequences, optional big files)
 #   sandbox/dirs/         two directory trees to compare
 #   sandbox/merge/        inputs for `jd merge`
@@ -38,11 +38,11 @@ export GIT_COMMITTER_NAME="Playground" GIT_COMMITTER_EMAIL="playground@example.c
 
 if command -v go >/dev/null 2>&1; then
   echo "building $jd"
-  (cd "$project" && go build -o "$jd" ./cmd/jelly-diff)
+  (cd "$project" && go build -o "$jd" ./cmd/jelly-dev)
 elif [ -x "$jd" ]; then
   echo "warning: Go is not installed, using the existing (possibly outdated) binary $jd" >&2
 else
-  echo "Go is not installed and $jd does not exist: build jelly-diff first" >&2
+  echo "Go is not installed and $jd does not exist: build jelly-dev first" >&2
   exit 1
 fi
 
@@ -78,7 +78,7 @@ echo "left" > "$sandbox/dirs/left/.git/config"; echo "right" > "$sandbox/dirs/ri
 cp "$here"/merge/*.txt "$sandbox/merge/"
 
 # ---------------------------------------------------------------- helpers for the repositories
-new_repo() { # new_repo <path>: empty repository with a local identity and the jelly-diff tools configured
+new_repo() { # new_repo <path>: empty repository with a local identity and the jelly-dev tools configured
   git init -q -b main "$1"
   git -C "$1" config user.name "Playground"
   git -C "$1" config user.email "playground@example.com"

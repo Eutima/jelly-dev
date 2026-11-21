@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/eutima/jelly-diff/internal/diff"
+	"github.com/eutima/jelly-dev/internal/diff"
 )
 
 const (
@@ -111,9 +111,9 @@ func (m DiffModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c", "ctrl+d", "esc":
 		return m, tea.Quit
-	case "j", "down":
+	case "j":
 		m.offset++
-	case "k", "up":
+	case "k":
 		m.offset--
 	case "pgdown", " ":
 		m.offset += page
@@ -128,9 +128,9 @@ func (m DiffModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.current >= 0 {
 			m.gotoHunk(m.current)
 		}
-	case "n", "tab":
+	case "down", "tab":
 		m.gotoHunk(m.current + 1)
-	case "p", "shift+tab":
+	case "up", "shift+tab":
 		if m.current < 0 {
 			m.gotoHunk(m.HunkCount() - 1)
 		} else {
@@ -213,7 +213,7 @@ func (m DiffModel) footerBar() *bar {
 	}
 	result := &bar{}
 	result.add(barPart{" " + position + "   ", m.theme.Footer})
-	for _, h := range [][2]string{{"n/p", "next/prev change"}, {"j/k", "scroll"}, {"t", "split/unified"}, {"q", "quit"}} {
+	for _, h := range [][2]string{{"↑↓", "next/prev change"}, {"j/k", "scroll"}, {"t", "split/unified"}, {"q", "quit"}} {
 		result.command(h[0], h[1], true, m.theme)
 	}
 	return result

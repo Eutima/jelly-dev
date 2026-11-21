@@ -8,6 +8,11 @@ import (
 func (b *Buffer) handleInsert(key string) {
 	line := b.lines[b.row]
 	switch key {
+	case "esc", "ctrl+c", "left", "right", "up", "down", "home", "end":
+	default:
+		b.revision++ // everything else may change the text
+	}
+	switch key {
 	case "esc", "ctrl+c":
 		b.mode = Normal
 		b.col = max(b.col-1, 0)
@@ -93,10 +98,14 @@ func (b *Buffer) handleCommand(key string) Result {
 		r := []rune(b.cmd)
 		b.cmd = string(r[:len(r)-1])
 	case "enter":
-		cmd := strings.TrimSpace(b.cmd)
-		b.mode, b.cmd = Normal, ""
+		text, prefix := b.cmd, b.cmdPrefix
+		b.mode, b.cmd, b.cmdPrefix = Normal, "", 0
 		b.clampCursor()
-		return b.execute(cmd)
+		if prefix == '/' || prefix == '?' {
+			b.finishSearch(prefix, text)
+			return None
+		}
+		return b.execute(strings.TrimSpace(text))
 	default:
 		if r := []rune(key); len(r) == 1 && r[0] >= ' ' {
 			b.cmd += key
@@ -122,10 +131,17 @@ func (b *Buffer) execute(cmd string) Result {
 		return Quit
 	case "q!":
 		return ForceQuit
+	case "noh", "nohlsearch":
+		b.ClearHighlight()
+		return None
 	}
 	if line, err := strconv.Atoi(cmd); err == nil {
 		b.GotoLine(line)
 		return None
+	}
+	if b.passEx {
+		b.ex = cmd
+		return Ex
 	}
 	b.message = "E492: Not an editor command: " + cmd
 	return None

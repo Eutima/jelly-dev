@@ -1,0 +1,238 @@
+package ui
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+func init() { searchDebounce = time.Millisecond }
+
+var searchFilesFixture = map[string]string{
+	"README.md":                 "# Demo\nsee the quickstart\n",
+	"src/main.go":               "package main\n\nfunc main() {\n\tneedle()\n}\n",
+	"src/util/needle.go":        "package util\n\nfunc needle() {}\n",
+	"node_modules/dep/index.js": "needle in a dependency\n",
+	".venv/lib/python/site.py":  "needle in a venv\n",
+	"docs/notes.txt":            "nothing here\n",
+}
+
+// settle feeds the commands a model returned back into it, like the runtime does, until none is left.
+func settleProject(model ProjectModel, cmd tea.Cmd) ProjectModel {
+	for cmd != nil {
+		msg := cmd()
+		if msg == nil {
+			return model
+		}
+		if batch, ok := msg.(tea.BatchMsg); ok {
+			for _, c := range batch {
+				model = settleProject(model, c)
+			}
+			return model
+		}
+		if _, quit := msg.(tea.QuitMsg); quit {
+			return model
+		}
+		var updated tea.Model
+		updated, cmd = model.Update(msg)
+		model = updated.(ProjectModel)
+	}
+	return model
+}
+
+func projectSend(model ProjectModel, msgs ...tea.Msg) ProjectModel {
+	for _, msg := range msgs {
+		updated, cmd := model.Update(msg)
+		model = settleProject(updated.(ProjectModel), cmd)
+	}
+	return model
+}
+
+func runeKeys(text string) []tea.Msg {
+	var out []tea.Msg
+	for _, r := range text {
+		out = append(out, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	return out
+}
+
+func TestSearch_FindsFilesByNameAndOpensOne(t *testing.T) {
+	model, fx := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlF})
+	if model.search == nil {
+		t.Fatal("ctrl+f must open the search")
+	}
+	model = projectSend(model, runeKeys("needle")...)
+	view := stripANSI(model.View())
+	if !strings.Contains(view, "needle.go") || strings.Contains(view, "node_modules") || strings.Contains(view, ".venv") {
+		t.Fatalf("results:\n%s", view)
+	}
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyEnter})
+	if model.search != nil || model.Editor().Path() != filepath.Join(fx.root, "src", "util", "needle.go") {
+		t.Fatalf("enter must open the file: %q", model.Editor().Path())
+	}
+}
+
+func TestSearch_FindsTextInFilesAndJumpsToTheLine(t *testing.T) {
+	model, fx := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlG})
+	model = projectSend(model, runeKeys("needle")...)
+	// the content search starts after a short pause: deliver the pause by hand
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	view := stripANSI(model.View())
+	for _, want := range []string{"src/main.go:4", "src/util/needle.go:3", "2 matches"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view lacks %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "node_modules") || strings.Contains(view, ".venv") {
+		t.Fatalf("dependency folders must be skipped:\n%s", view)
+	}
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyDown}, tea.KeyMsg{Type: tea.KeyEnter})
+	row, col := model.Editor().Cursor()
+	if model.Editor().Path() != filepath.Join(fx.root, "src", "util", "needle.go") || row != 2 || col != 5 {
+		t.Fatalf("path %q cursor %d,%d", model.Editor().Path(), row, col)
+	}
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}) // normal mode key still works
+	_ = model
+}
+
+func TestSearch_TabSwitchesModeAndKeepsQuery(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlF})
+	model = projectSend(model, runeKeys("demo")...)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyTab})
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	view := stripANSI(model.View())
+	if model.search.mode != searchText || !strings.Contains(view, "README.md:1") || !strings.Contains(view, "> demo") {
+		t.Fatalf("the query must carry over to the content search (smart case):\n%s", view)
+	}
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyTab})
+	if model.search.mode != searchFiles {
+		t.Fatal("tab must switch back")
+	}
+}
+
+func TestSearch_EscapeClosesAndKeepsEditorState(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlF}, tea.KeyMsg{Type: tea.KeyEsc})
+	if model.search != nil || model.focus != focusTree {
+		t.Fatalf("esc must close the search (search %v)", model.search)
+	}
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlG}, tea.KeyMsg{Type: tea.KeyCtrlD})
+	if model.search != nil {
+		t.Fatal("ctrl+d must close the search like ctrl+c")
+	}
+}
+
+func TestSearch_OpensFromEditorAndCommands(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}}, tea.KeyMsg{Type: tea.KeyEnter}) // README.md opens, the editor has the focus
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlF})
+	if model.search == nil || model.search.mode != searchFiles {
+		t.Fatal("ctrl+f in the editor's normal mode must open the file search")
+	}
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ = typeCommand(model, "grep quick")
+	model = settleProject(model, nil)
+	if model.search == nil || model.search.mode != searchText || string(model.search.input) != "quick" {
+		t.Fatalf("`:grep quick` must open the content search with the query: %+v", model.search)
+	}
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	if !strings.Contains(stripANSI(model.View()), "README.md:2") {
+		t.Fatalf("view:\n%s", model.View())
+	}
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ = typeCommand(model, "find util")
+	if model.search == nil || model.search.mode != searchFiles || string(model.search.input) != "util" {
+		t.Fatalf("`:find util` must open the file search: %+v", model.search)
+	}
+}
+
+func TestSearch_InsertModeKeepsCtrlF(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}}, tea.KeyMsg{Type: tea.KeyEnter}) // README.md is the last row
+	model = projectSend(model, runeKeys("i")...)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlF})
+	if model.search != nil {
+		t.Fatal("ctrl+f in insert mode must not open the search")
+	}
+}
+
+func TestSearch_RegexToggleAndInvalidPattern(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlG}, tea.KeyMsg{Type: tea.KeyCtrlR})
+	model = projectSend(model, runeKeys(`func \w+\(`)...)
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	view := stripANSI(model.View())
+	if !strings.Contains(view, "regex") || !strings.Contains(view, "src/main.go:3") {
+		t.Fatalf("regex search:\n%s", view)
+	}
+	model = projectSend(model, runeKeys("(")...)
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	if !strings.Contains(stripANSI(model.View()), "invalid regular expression") {
+		t.Fatalf("an invalid pattern must be explained:\n%s", model.View())
+	}
+}
+
+func TestSearch_IgnoresAnswersOfOlderQueries(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlG})
+	for _, key := range runeKeys("needle") { // like the runtime, but without waiting for the pause
+		updated, _ := model.Update(key)
+		model = updated.(ProjectModel)
+	}
+	oldSeq := model.search.seq
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}) // the query changed: seq moves on
+	model = updated.(ProjectModel)
+	updated, _ = model.Update(textResultMsg{seq: oldSeq, matches: nil})
+	model = updated.(ProjectModel)
+	if !model.search.searching {
+		t.Fatal("an answer to an older query must be ignored")
+	}
+}
+
+func TestSearch_MouseClickOpensResultAndFitsScreen(t *testing.T) {
+	model, fx := newProjectFixture(t, 100, searchFilesFixture)
+	for _, size := range [][2]int{{30, 8}, {100, 14}} {
+		updated, _ := model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		m := projectSend(updated.(ProjectModel), tea.KeyMsg{Type: tea.KeyCtrlF})
+		lines := strings.Split(m.View(), "\n")
+		if len(lines) != size[1] {
+			t.Fatalf("size %v: %d lines", size, len(lines))
+		}
+		for i, line := range lines {
+			if lipgloss.Width(line) > size[0] {
+				t.Fatalf("size %v: line %d is %d wide", size, i, lipgloss.Width(line))
+			}
+		}
+	}
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlF})
+	model = projectSend(model, runeKeys("notes")...)
+	model = projectSend(model, tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 4, Y: 2})
+	if model.Editor().Path() != filepath.Join(fx.root, "docs", "notes.txt") {
+		t.Fatalf("a click must open the result: %q", model.Editor().Path())
+	}
+}
+
+func TestSearch_BackJumpReturnsToPlaceBeforeSearch(t *testing.T) {
+	model, fx := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlF})
+	model = projectSend(model, runeKeys("main.go")...)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyEnter})
+	model = projectSend(model, runeKeys("jj")...)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlF})
+	model = projectSend(model, runeKeys("needle.go")...)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyEnter})
+	if model.Editor().Path() != filepath.Join(fx.root, "src", "util", "needle.go") {
+		t.Fatalf("path %q", model.Editor().Path())
+	}
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlO})
+	if row, _ := model.Editor().Cursor(); model.Editor().Path() != filepath.Join(fx.root, "src", "main.go") || row != 2 {
+		t.Fatalf("ctrl+o must return to the place before the search: %q row %d", model.Editor().Path(), row)
+	}
+}

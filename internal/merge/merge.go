@@ -4,7 +4,7 @@ package merge
 import (
 	"sort"
 
-	"github.com/eutima/jelly-diff/internal/diff"
+	"github.com/eutima/jelly-dev/internal/diff"
 )
 
 // Kind tells what happened to a chunk between base and the two sides.

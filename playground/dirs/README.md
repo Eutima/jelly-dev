@@ -1,6 +1,6 @@
 # Directory trees
 
-`left/` and `right/` are templates for `jelly-diff <dir-a> <dir-b>`. `../setup.sh` copies them to
+`left/` and `right/` are templates for `jelly-dev <dir-a> <dir-b>`. `../setup.sh` copies them to
 `../sandbox/dirs/` and adds a binary file that differs, a symbolic link and a `.git` directory (which is skipped).
 
 | Path | Status in the list |

@@ -12,11 +12,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	"github.com/eutima/jelly-diff/internal/ai"
-	"github.com/eutima/jelly-diff/internal/config"
-	"github.com/eutima/jelly-diff/internal/diff"
-	"github.com/eutima/jelly-diff/internal/source"
-	"github.com/eutima/jelly-diff/internal/ui"
+	"github.com/eutima/jelly-dev/internal/ai"
+	"github.com/eutima/jelly-dev/internal/config"
+	"github.com/eutima/jelly-dev/internal/diff"
+	"github.com/eutima/jelly-dev/internal/source"
+	"github.com/eutima/jelly-dev/internal/tools"
+	"github.com/eutima/jelly-dev/internal/ui"
 )
 
 const (
@@ -26,6 +27,7 @@ const (
 
 	clipboardTitle = "clipboard"
 	usage          = `usage:
+  jd [<folder> | <file>]     open the project window (no argument: the most recent project)
   jd <file-a> <file-b>       compare two files, or two directories
   jd --clip <file>           compare a file with the clipboard (clipboard on the right)
   jd --clip-left <file>      compare the clipboard (left) with a file
@@ -44,11 +46,12 @@ type uiRunner func(model tea.Model) error
 
 // environment holds everything run needs from the outside world, so tests can replace it.
 type environment struct {
-	runUI         uiRunner
-	readClipboard func() (string, error)
-	openGit       func(dir string, spec source.GitSpec) (gitChanges, error)
-	gitConfig     func(scope, key, value string) error
-	getenv        func(string) string
+	runUI          uiRunner
+	readClipboard  func() (string, error)
+	writeClipboard func(text string) error
+	openGit        func(dir string, spec source.GitSpec) (gitChanges, error)
+	gitConfig      func(scope, key, value string) error
+	getenv         func(string) string
 	// namedTheme resolves a theme name; tests replace it with a theme that has its own color profile.
 	namedTheme func(name string) (ui.Theme, bool)
 	// enableAttributes makes the terminal output keep bold/reverse/strikethrough even when NO_COLOR
@@ -56,6 +59,8 @@ type environment struct {
 	enableAttributes func()
 	busy             busyFunc
 	workDir          string
+	// newWindow opens a directory in a new terminal window; nil uses the real terminal launcher.
+	newWindow func(dir string) error
 	// detectAssistants finds the installed assistant CLIs (Claude, Codex); nil means none.
 	detectAssistants func() []ai.Assistant
 }
@@ -88,8 +93,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "jd: %v\n", err)
 		os.Exit(exitFailure)
 	}
-	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, openGit: openGit, gitConfig: runGitConfig, getenv: os.Getenv, namedTheme: ui.NamedTheme, enableAttributes: enableTextAttributes,
+	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, writeClipboard: source.WriteClipboard, openGit: openGit, gitConfig: runGitConfig, getenv: os.Getenv, namedTheme: ui.NamedTheme, enableAttributes: enableTextAttributes,
 		busy: newBusy(os.Stderr, stderrIsTerminal()), workDir: workDir, detectAssistants: ai.Detect}
+	tools.EnsurePath() // tools installed below ~/.local/bin and the Go bin folder are found even when the shell's PATH lacks them
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, env))
 }
 
@@ -128,7 +134,16 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 			return runGit(args[1:], stdout, stderr, env)
 		case "merge":
 			return runMerge(args[1:], stdout, stderr, env)
+		case "edit":
+			return runIDE(args[1:], stdout, stderr, env)
 		}
+	}
+	switch {
+	case len(args) == 1 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help"):
+		fmt.Fprintf(stdout, "%s\n", usage)
+		return exitOK
+	case len(args) == 0 || (len(args) == 1 && args[0] != "" && args[0][0] != '-'):
+		return runIDE(args, stdout, stderr, env)
 	}
 	flags := flag.NewFlagSet("jd", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)

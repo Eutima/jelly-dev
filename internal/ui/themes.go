@@ -4,8 +4,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/eutima/jelly-diff/internal/config"
-	"github.com/eutima/jelly-diff/internal/source"
+	"github.com/eutima/jelly-dev/internal/config"
+	"github.com/eutima/jelly-dev/internal/source"
 )
 
 // NamedTheme returns a built-in theme by name, drawn with lipgloss's default renderer (the real terminal).
@@ -175,7 +175,7 @@ func (m DirMergeModel) WithTheme(theme Theme) DirMergeModel {
 	return m
 }
 
-// Themed applies theme to any of the jelly-diff models and returns other models unchanged.
+// Themed applies theme to any of the jelly-dev models and returns other models unchanged.
 func Themed(model tea.Model, theme Theme) tea.Model {
 	switch typed := model.(type) {
 	case DiffModel:
@@ -185,6 +185,12 @@ func Themed(model tea.Model, theme Theme) tea.Model {
 	case MergeModel:
 		return typed.WithTheme(theme)
 	case DirMergeModel:
+		return typed.WithTheme(theme)
+	case EditorModel:
+		return typed.WithTheme(theme)
+	case ProjectModel:
+		return typed.WithTheme(theme)
+	case WelcomeModel:
 		return typed.WithTheme(theme)
 	}
 	return model

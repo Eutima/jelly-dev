@@ -1,0 +1,286 @@
+package ui
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/eutima/jelly-dev/internal/terminal"
+)
+
+const (
+	minTermPanel    = 6           // header and five rows of the shell
+	minEditorRows   = 4           // the editor keeps at least this many lines when the panel is open
+	actionCloseTab  = "closeterm" // the buttons and tabs of the panel header
+	actionNewTab    = "newterm"
+	actionSelectTab = "tab:"
+	leaveTermKey    = "ctrl+]"
+)
+
+// termUpdateMsg reports that the screen of a shell changed (or that it ended).
+type termUpdateMsg struct{ session *terminal.Session }
+
+// waitForTerminal waits for the next change of the shell's screen.
+func waitForTerminal(session *terminal.Session) tea.Cmd {
+	return func() tea.Msg {
+		<-session.Updates()
+		return termUpdateMsg{session: session}
+	}
+}
+
+// activeTerm is the shell of the shown tab, nil when there is none.
+func (m ProjectModel) activeTerm() *terminal.Session {
+	if m.termActive < 0 || m.termActive >= len(m.terms) {
+		return nil
+	}
+	return m.terms[m.termActive]
+}
+
+// termPanelHeight is the height of the terminal panel including its header line; 0 when it is hidden or does not fit.
+func (m ProjectModel) termPanelHeight() int {
+	if len(m.terms) == 0 || !m.termShown {
+		return 0
+	}
+	height := min(max(m.bodyHeight()/3, minTermPanel), m.bodyHeight()-minEditorRows)
+	if height < 2 {
+		return 0
+	}
+	return height
+}
+
+// editorHeight is the height of the editor: the panes without the terminal panel.
+func (m ProjectModel) editorHeight() int { return max(m.bodyHeight()-m.termPanelHeight(), 1) }
+
+// openTerminal is the terminal button and ctrl+t: it shows the panel (starting the first shell in the project when none
+// runs) and gives it the focus; when the shell already has the focus it hides the panel again (the shells keep running).
+func (m ProjectModel) openTerminal() (tea.Model, tea.Cmd) {
+	if len(m.terms) > 0 && m.termShown && m.focus == focusTerminal {
+		m.termShown, m.focus = false, focusProjectEdit
+		return m.resizeEditor(), nil
+	}
+	if len(m.terms) > 0 {
+		m.termShown, m.focus = true, focusTerminal
+		return m.resizeEditor(), nil
+	}
+	return m.newTerminal()
+}
+
+// newTerminal starts another shell in the project in a new tab and shows it.
+func (m ProjectModel) newTerminal() (tea.Model, tea.Cmd) {
+	command := defaultTerminal
+	if m.hooks.Terminal != nil {
+		command = m.hooks.Terminal
+	}
+	cmd := command(m.root)
+	if cmd == nil {
+		m.say("E1: Cannot start the terminal", true)
+		return m, nil
+	}
+	wasShown := m.termShown
+	m.termShown = true
+	panel := m.termPanelHeight()
+	if len(m.terms) == 0 {
+		panel = min(max(m.bodyHeight()/3, minTermPanel), m.bodyHeight()-minEditorRows) // the panel is not counted yet
+	}
+	m.termShown = wasShown
+	session, err := terminal.Start(cmd, m.root, max(m.editorWidth(), 1), max(panel-1, 1))
+	if err != nil {
+		if err == terminal.ErrUnsupported { // no pseudo terminal here: run the shell in place of the window instead
+			return m.runExternal("terminal", command(m.root))
+		}
+		m.say("E1: "+err.Error(), true)
+		return m, nil
+	}
+	m.terms = append(m.terms, session)
+	m.termActive, m.termShown, m.focus = len(m.terms)-1, true, focusTerminal
+	return m.resizeEditor(), waitForTerminal(session)
+}
+
+// closeTab ends the shell of tab i; with the last one the panel goes away.
+func (m *ProjectModel) closeTermTab(i int) {
+	if i < 0 || i >= len(m.terms) {
+		return
+	}
+	m.terms[i].Close()
+	m.terms = append(m.terms[:i:i], m.terms[i+1:]...)
+	switch {
+	case len(m.terms) == 0:
+		m.termActive, m.termShown = 0, false
+		if m.focus == focusTerminal {
+			m.focus = focusProjectEdit
+		}
+	case m.termActive > i || m.termActive >= len(m.terms):
+		m.termActive = max(min(m.termActive-1, len(m.terms)-1), 0)
+	}
+}
+
+// closeTerminal ends all shells and removes the panel.
+func (m *ProjectModel) closeTerminal() {
+	for len(m.terms) > 0 {
+		m.closeTermTab(len(m.terms) - 1)
+	}
+}
+
+func (m ProjectModel) termUpdated(msg termUpdateMsg) (tea.Model, tea.Cmd) {
+	for i, session := range m.terms {
+		if session != msg.session {
+			continue
+		}
+		if session.Done() {
+			m.closeTermTab(i)
+			return m.resizeEditor(), nil
+		}
+		return m, waitForTerminal(session)
+	}
+	return m, nil // an answer of a shell that was closed
+}
+
+// terminalKey sends a key to the shell. The keys of the window itself: leaveTermKey gives the focus back to the editor,
+// ctrl+t hides the panel, alt+t opens another tab, alt+w closes the shown one and alt+1 ... alt+9 choose a tab.
+func (m ProjectModel) terminalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch {
+	case key == "ctrl+t":
+		return m.openTerminal()
+	case key == leaveTermKey:
+		m.focus = focusProjectEdit
+		return m.resizeEditor(), nil
+	case key == "alt+t":
+		return m.newTerminal()
+	case key == "alt+w":
+		m.closeTermTab(m.termActive)
+		return m.resizeEditor(), nil
+	case len(key) == 5 && strings.HasPrefix(key, "alt+") && key[4] >= '1' && key[4] <= '9':
+		if i := int(key[4] - '1'); i < len(m.terms) {
+			m.termActive = i
+		}
+		return m, nil
+	}
+	session := m.activeTerm()
+	if session == nil {
+		return m, nil
+	}
+	if msg.Paste {
+		session.Paste(string(msg.Runes))
+		return m, nil
+	}
+	session.Write(keyBytes(msg))
+	return m, nil
+}
+
+// clickTerminal handles a click in the panel: a tab, the buttons of the header, anywhere else gives it the focus.
+func (m ProjectModel) clickTerminal(msg tea.MouseMsg, x, y int) (tea.Model, tea.Cmd) {
+	if !leftPress(msg) {
+		return m, nil
+	}
+	if y == 0 {
+		if keys := m.termHeader().visibleKeysAt(x, m.editorWidth()); len(keys) > 0 {
+			m.focus = focusTerminal
+			switch {
+			case keys[0] == actionNewTab:
+				return m.newTerminal()
+			case keys[0] == actionCloseTab:
+				m.closeTermTab(m.termActive)
+				return m.resizeEditor(), nil
+			case strings.HasPrefix(keys[0], actionSelectTab):
+				if i, err := strconv.Atoi(strings.TrimPrefix(keys[0], actionSelectTab)); err == nil && i < len(m.terms) {
+					m.termActive = i
+				}
+			}
+			return m, nil
+		}
+	}
+	m.focus = focusTerminal
+	return m, nil
+}
+
+func (m ProjectModel) termHeader() *bar {
+	result := &bar{}
+	style := m.theme.Header
+	if m.focus == focusTerminal {
+		style = m.theme.Selected.Bold(true)
+	}
+	result.add(barPart{" TERMINAL ", style})
+	for i, session := range m.terms {
+		tab := m.theme.Footer
+		if i == m.termActive {
+			tab = m.theme.Header
+		}
+		result.click([]string{actionSelectTab + strconv.Itoa(i)}, barPart{fmt.Sprintf(" %d:%s ", i+1, sanitize(session.Name())), tab})
+	}
+	result.add(barPart{" ", m.theme.Footer})
+	result.click([]string{actionNewTab}, barPart{"[+]", m.theme.Footer})
+	result.add(barPart{" ", m.theme.Footer})
+	result.click([]string{actionCloseTab}, barPart{"[×]", m.theme.Footer})
+	result.hint(barPart{"  " + leaveTermKey + " editor  alt+t new  alt+w close", m.theme.Footer.Faint(true)})
+	return result
+}
+
+// editorColumn is the editor with the terminal panel under it.
+func (m ProjectModel) editorColumn() string {
+	panel := m.termPanelHeight()
+	session := m.activeTerm()
+	if panel == 0 || session == nil {
+		return m.withTabBar(m.editor.View())
+	}
+	width := max(m.editorWidth(), 1)
+	rows := session.Lines(m.focus == focusTerminal)
+	lines := []string{m.termHeader().render(width, m.theme.Footer)}
+	for y := 0; y < panel-1; y++ {
+		line := strings.Repeat(" ", width)
+		if y < len(rows) {
+			line = rows[y]
+		}
+		lines = append(lines, lipgloss.NewStyle().MaxWidth(width).Render(line))
+	}
+	return m.withTabBar(m.editor.View()) + "\n" + strings.Join(lines, "\n")
+}
+
+// keyBytes is what a terminal sends to the shell for a key.
+func keyBytes(msg tea.KeyMsg) []byte {
+	var out []byte
+	switch msg.Type {
+	case tea.KeyRunes:
+		out = []byte(string(msg.Runes))
+	case tea.KeySpace:
+		out = []byte{' '}
+	case tea.KeyBackspace:
+		out = []byte{0x7f}
+	case tea.KeyShiftTab:
+		return []byte("\x1b[Z")
+	case tea.KeyUp:
+		out = []byte("\x1b[A")
+	case tea.KeyDown:
+		out = []byte("\x1b[B")
+	case tea.KeyRight:
+		out = []byte("\x1b[C")
+	case tea.KeyLeft:
+		out = []byte("\x1b[D")
+	case tea.KeyHome:
+		out = []byte("\x1b[H")
+	case tea.KeyEnd:
+		out = []byte("\x1b[F")
+	case tea.KeyPgUp:
+		out = []byte("\x1b[5~")
+	case tea.KeyPgDown:
+		out = []byte("\x1b[6~")
+	case tea.KeyDelete:
+		out = []byte("\x1b[3~")
+	case tea.KeyInsert:
+		out = []byte("\x1b[2~")
+	default:
+		if msg.Type >= 0 && msg.Type < 32 || msg.Type == tea.KeyEscape { // control keys, tab, enter, esc
+			out = []byte{byte(msg.Type)}
+			if msg.Type == tea.KeyEnter {
+				out = []byte{'\r'}
+			}
+		}
+	}
+	if msg.Alt && len(out) > 0 {
+		out = append([]byte{0x1b}, out...)
+	}
+	return out
+}

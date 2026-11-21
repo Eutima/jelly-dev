@@ -9,7 +9,7 @@ import (
 
 // Environment variable names.
 const (
-	EnvTheme   = "JELLY_DIFF_THEME"
+	EnvTheme   = "JELLY_DEV_THEME"
 	EnvNoColor = "NO_COLOR" // https://no-color.org: any non-empty value disables colors
 )
 
@@ -20,7 +20,7 @@ const (
 	ThemeMono  = "mono"
 )
 
-// ErrInvalidTheme is returned for an unknown JELLY_DIFF_THEME value.
+// ErrInvalidTheme is returned for an unknown JELLY_DEV_THEME value.
 var ErrInvalidTheme = errors.New("invalid theme")
 
 // Config is the tool configuration.
@@ -29,7 +29,7 @@ type Config struct {
 }
 
 // Load builds the configuration from environment variables read through getenv.
-// An explicit JELLY_DIFF_THEME wins; otherwise NO_COLOR selects the mono theme and dark is the default.
+// An explicit JELLY_DEV_THEME wins; otherwise NO_COLOR selects the mono theme and dark is the default.
 func Load(getenv func(string) string) (Config, error) {
 	raw := getenv(EnvTheme)
 	name := strings.ToLower(strings.TrimSpace(raw))

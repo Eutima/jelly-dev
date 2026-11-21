@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
-	"github.com/eutima/jelly-diff/internal/diff"
+	"github.com/eutima/jelly-dev/internal/diff"
 )
 
 const (
@@ -224,4 +224,15 @@ func padRight(text string, width int) string {
 		return text + strings.Repeat(" ", gap)
 	}
 	return runewidth.Truncate(text, width, "")
+}
+
+// sanitizeEditable drops everything that must not end up in a typed line: line breaks and control characters.
+// Tabs are kept.
+func sanitizeEditable(text string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\t' || !isControl(r) {
+			return r
+		}
+		return -1
+	}, text)
 }

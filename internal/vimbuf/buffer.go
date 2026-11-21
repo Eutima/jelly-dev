@@ -53,6 +53,8 @@ const (
 	Quit
 	// ForceQuit: leave and discard changes (:q!).
 	ForceQuit
+	// Ex: a command the buffer does not know was typed; the caller reads it with ExCommand (only when PassUnknownEx is on).
+	Ex
 )
 
 type snapshot struct {
@@ -71,11 +73,13 @@ type Buffer struct {
 
 	anchorRow, anchorCol int // start of the visual selection
 
-	count   string // digits typed before a command
-	opCount int    // count typed before an operator, 0 when none
-	op      rune   // pending operator: d, c or y
-	prefix  rune   // pending first key of a two key command: g or r
-	cmd     string // text of the command line
+	count     string // digits typed before a command
+	opCount   int    // count typed before an operator, 0 when none
+	op        rune   // pending operator: d, c or y
+	prefix    rune   // pending first key of a two key command: g or r
+	cmd       string // text of the command line
+	cmdPrefix rune   // what the command line is for: 0 or ':' a command, '/' or '?' a search
+	find      search // the last search
 
 	register     []string // unnamed register; one entry per line
 	registerLine bool     // the register holds whole lines
@@ -86,6 +90,11 @@ type Buffer struct {
 	noLines  bool // all lines were deleted: the buffer shows one empty line but holds no text
 	message  string
 	page     int
+
+	clip     *clipboardSync // the system clipboard, nil when the buffer is not connected to it
+	passEx   bool           // unknown ":" commands are handed to the caller instead of being an error
+	ex       string         // the last command handed to the caller
+	revision int            // counts the changes of the text
 }
 
 // New returns a buffer for lines; origin has one entry per line. An empty text gives one empty line.
@@ -107,6 +116,16 @@ func New(lines []string, origin []int) *Buffer {
 	}
 	return b
 }
+
+// PassUnknownEx makes commands the buffer does not know (":e file", ":w file", ...) a result of the key press
+// (Ex, read with ExCommand) instead of an error message, so the caller can handle them.
+func (b *Buffer) PassUnknownEx(on bool) { b.passEx = on }
+
+// ExCommand returns the last command that was handed to the caller (without the colon).
+func (b *Buffer) ExCommand() string { return b.ex }
+
+// Revision counts the changes of the text; it differs after every key press that changed a line.
+func (b *Buffer) Revision() int { return b.revision }
 
 // SetPage sets the number of lines a page holds (for pgup, pgdown, ctrl+d and ctrl+u).
 func (b *Buffer) SetPage(lines int) { b.page = max(lines, 2) }
@@ -139,6 +158,12 @@ func (b *Buffer) LineCount() int { return len(b.lines) }
 
 // Cursor returns the cursor line and the rune column in it (zero-based).
 func (b *Buffer) Cursor() (row, col int) { return b.row, b.col }
+
+// SetCursor puts the cursor on a line and rune column, clamped to the text.
+func (b *Buffer) SetCursor(row, col int) {
+	b.row, b.col = row, col
+	b.clampCursor()
+}
 
 // Mode returns the current mode.
 func (b *Buffer) Mode() Mode { return b.mode }
@@ -199,6 +224,7 @@ func (b *Buffer) save() {
 	b.undo = append(b.undo, b.snapshot())
 	b.redo = nil
 	b.modified = true
+	b.revision++
 }
 
 func (b *Buffer) snapshot() snapshot {
@@ -219,6 +245,7 @@ func (b *Buffer) restore(s snapshot) {
 	b.row, b.col = s.row, s.col
 	b.noLines = false
 	b.modified = true
+	b.revision++
 }
 
 func (b *Buffer) doUndo() {

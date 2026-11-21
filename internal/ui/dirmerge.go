@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/eutima/jelly-diff/internal/source"
+	"github.com/eutima/jelly-dev/internal/source"
 )
 
 const (

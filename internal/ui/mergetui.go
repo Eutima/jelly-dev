@@ -8,9 +8,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/eutima/jelly-diff/internal/ai"
-	"github.com/eutima/jelly-diff/internal/merge"
-	"github.com/eutima/jelly-diff/internal/vimbuf"
+	"github.com/eutima/jelly-dev/internal/ai"
+	"github.com/eutima/jelly-dev/internal/merge"
+	"github.com/eutima/jelly-dev/internal/vimbuf"
 )
 
 const (

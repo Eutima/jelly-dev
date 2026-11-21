@@ -8,6 +8,9 @@ import (
 // setRegister stores yanked or deleted text.
 func (b *Buffer) setRegister(text []string, linewise bool) {
 	b.register, b.registerLine = text, linewise
+	if b.clip != nil {
+		b.clip.put(registerText(text, linewise))
+	}
 }
 
 // linewiseOperator applies d, c or y to the lines r1..r2.
@@ -103,6 +106,19 @@ func (b *Buffer) GotoLine(line int) {
 }
 
 func (b *Buffer) paste(after bool, n int) {
+	if b.clip != nil { // text that was copied somewhere else wins over the register
+		if text, outside := b.clip.get(); outside {
+			b.register, b.registerLine = clipboardRegister(text)
+			b.clip.mu.Lock()
+			b.clip.last = text
+			b.clip.mu.Unlock()
+		}
+	}
+	b.pasteRegister(after, n)
+}
+
+// pasteRegister puts the register contents into the text.
+func (b *Buffer) pasteRegister(after bool, n int) {
 	if len(b.register) == 0 {
 		return
 	}
@@ -216,4 +232,62 @@ func (b *Buffer) toggleCase(n int) {
 		b.col++
 	}
 	b.clampCursor()
+}
+
+// ReplaceLines replaces the whole text as one change (one undo step), keeping the cursor on the same line and column
+// as far as the new text allows.
+func (b *Buffer) ReplaceLines(lines []string) {
+	b.save()
+	owner := 0
+	if len(b.origin) > 0 {
+		owner = b.origin[0]
+	}
+	b.lines = make([][]rune, len(lines))
+	b.origin = make([]int, len(lines))
+	for i, line := range lines {
+		b.lines[i] = []rune(line)
+		b.origin[i] = owner
+	}
+	b.noLines = false
+	if len(b.lines) == 0 {
+		b.lines, b.origin, b.noLines = [][]rune{{}}, []int{owner}, true
+	}
+	b.mode = Normal
+	b.resetPending()
+	b.clampCursor()
+}
+
+// ReplaceInLine replaces the runes [from, to) of a line with text, which may contain line breaks, and puts the cursor
+// behind the new text. It is meant for insert mode (completion): it does not start a new undo step, so it is undone
+// together with the rest of the insert.
+func (b *Buffer) ReplaceInLine(row, from, to int, text string) {
+	if row < 0 || row >= len(b.lines) {
+		return
+	}
+	line := b.lines[row]
+	from = min(max(from, 0), len(line))
+	to = min(max(to, from), len(line))
+	head := append([]rune(nil), line[:from]...)
+	tail := append([]rune(nil), line[to:]...)
+	parts := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	owner := b.origin[row]
+	newLines := make([][]rune, 0, len(parts))
+	owners := make([]int, 0, len(parts))
+	for i, part := range parts {
+		runes := []rune(part)
+		if i == 0 {
+			runes = append(head, runes...)
+		}
+		if i == len(parts)-1 {
+			b.row, b.col = row+i, len(runes)
+			runes = append(runes, tail...)
+		}
+		newLines = append(newLines, runes)
+		owners = append(owners, owner)
+	}
+	b.lines = append(b.lines[:row], append(newLines, b.lines[row+1:]...)...)
+	b.origin = append(b.origin[:row], append(owners, b.origin[row+1:]...)...)
+	b.noLines = false
+	b.modified = true
+	b.revision++
 }
