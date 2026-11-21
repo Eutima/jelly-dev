@@ -96,6 +96,38 @@ func (m ProjectModel) closeTabAsking(i int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// askToClose handles ctrl+c and ctrl+d (outside insert mode and the terminal): it always asks before anything closes. From the
+// editor with several tabs it closes the shown tab, otherwise the window. Unsaved changes ask what to do with them instead.
+func (m ProjectModel) askToClose(fromEditor bool) (tea.Model, tea.Cmd) {
+	if !fromEditor || len(m.files) <= 1 {
+		return m.quitAsking(false)
+	}
+	closeIt := func(next ProjectModel) (tea.Model, tea.Cmd) {
+		next.closeTab(next.tab)
+		return next, nil
+	}
+	if blocked, asked := m.confirmUnsaved(closeIt); asked {
+		return blocked, nil
+	}
+	name := m.tabNames()[m.tab]
+	return m.confirmClose("Close "+sanitize(name)+"?", closeIt), nil
+}
+
+// quitAsking leaves the window after asking: first about every tab with changes, then (unless that was asked already)
+// whether to quit at all.
+func (m ProjectModel) quitAsking(asked bool) (tea.Model, tea.Cmd) {
+	if i := m.firstModified(); i >= 0 {
+		m.selectTab(i)
+		if blocked, ok := m.confirmUnsaved(func(next ProjectModel) (tea.Model, tea.Cmd) { return next.quitAsking(true) }); ok {
+			return blocked, nil
+		}
+	}
+	if !asked {
+		return m.confirmClose("Quit Jelly-Dev?", func(next ProjectModel) (tea.Model, tea.Cmd) { return next.quit() }), nil
+	}
+	return m.quit()
+}
+
 // stepTab shows the next (direction 1) or previous (-1) tab, wrapping around.
 func (m ProjectModel) stepTab(direction int) (tea.Model, tea.Cmd) {
 	if count := len(m.files); count > 1 {

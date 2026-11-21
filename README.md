@@ -147,8 +147,11 @@ Terminal when it runs in **WSL** or Windows, Terminal.app on macOS, and on Linux
 (for example `JD_TERMINAL="kitty"`) to choose another one; jd and the folder are appended to it. The value is split at spaces (no quoting), so a path with spaces needs a wrapper script. Where no terminal can be started (a container, an ssh session) a project
 opens in the current window instead.
 
-Closing: `ctrl+d` (like `ctrl+c`) closes the window from the tree and from the editor's normal mode; with unsaved changes it
-warns first and quits on the second press. In insert mode `ctrl+c` only returns to normal mode.
+Closing: `ctrl+d` (like `ctrl+c`) from the tree and from the editor's normal mode always asks first, even when nothing changed: a box
+asks *Quit Jelly-Dev?* (from the editor with several tabs: *Close <file>?*), `y` or `enter` closes, `n` or `esc` stays, and pressing
+`ctrl+d` again also closes. A file with unsaved changes asks *Save / Discard / Cancel* instead, for every changed tab when quitting.
+After a jump (`gd`, `gr`) `ctrl+c` and `ctrl+d` still go back first; in insert mode `ctrl+c` only returns to normal mode, and in the
+terminal panel both belong to the shell. `:q`, `:wq` and `q` in the tree are explicit and close without the box.
 
 Welcome screen "open folder" (`o`): type a path and press `tab` to complete it (a single match completes the whole folder, several
 matches complete their common part, further presses walk through them; `shift+tab` goes back). The matching folders are listed

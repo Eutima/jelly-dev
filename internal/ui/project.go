@@ -262,6 +262,8 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSearch(msg)
 	case termUpdateMsg:
 		return m.termUpdated(msg)
+	case CloseRequestMsg:
+		return m.askToClose(true)
 	case externalDoneMsg:
 		if msg.err != nil {
 			m.say(fmt.Sprintf("%s: %v", msg.what, msg.err), true)
@@ -480,7 +482,9 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab", "i":
 		m.focus = focusProjectEdit
 		return m.resizeEditor(), nil
-	case "q", "ctrl+c", "ctrl+d":
+	case "ctrl+c", "ctrl+d":
+		return m.askToClose(false)
+	case "q":
 		if i := m.firstModified(); i >= 0 {
 			m.say("E37: unsaved changes in "+m.tabNames()[i]+" (:wa to save all, :qa! to quit without saving)", true)
 			return m, nil

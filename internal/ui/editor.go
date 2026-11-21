@@ -51,6 +51,10 @@ type EditorModel struct {
 	quitArmed bool // ctrl+d warned about unsaved changes; the next one quits
 }
 
+// CloseRequestMsg tells the project window that ctrl+c or ctrl+d was pressed in the editor's normal mode: the window decides
+// what closes and asks first.
+type CloseRequestMsg struct{}
+
 // ExCommandMsg carries an ":" command the editor does not know to the model around it (the project window).
 type ExCommandMsg struct{ Command string }
 
@@ -175,10 +179,14 @@ func (m EditorModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key := msg.String(); (key == "ctrl+d" || key == "ctrl+c") && m.vim.Mode() == vimbuf.Normal && m.vim.Pending() == "" && len(m.jumps) > 0 {
 		return m.jumpBack()
 	}
-	// ctrl+d and ctrl+c close the editor from normal mode, like q does elsewhere: at once when nothing changed,
-	// otherwise the first press warns and the second one quits without saving. In the other modes ctrl+c still
+	// ctrl+d and ctrl+c close the editor from normal mode. In the project window (forwardEx) the key becomes a
+	// CloseRequestMsg and the window asks before it closes anything. Standing alone the editor closes at once when nothing
+	// changed, otherwise the first press warns and the second one quits without saving. In the other modes ctrl+c still
 	// returns to normal mode and ctrl+d keeps its vim meaning.
 	if key := msg.String(); (key == "ctrl+d" || key == "ctrl+c") && m.vim.Mode() == vimbuf.Normal && m.vim.Pending() == "" {
+		if m.forwardEx { // in the project window: it asks before it closes
+			return m, func() tea.Msg { return CloseRequestMsg{} }
+		}
 		if !m.vim.Modified() || m.quitArmed {
 			m.markQuit()
 			return m, tea.Quit

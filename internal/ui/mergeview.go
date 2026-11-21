@@ -322,28 +322,26 @@ func (m MergeModel) marker(rowIndex int, row mergeRow, continuation bool) string
 }
 
 func (m MergeModel) saveBadge() barPart {
-	bg := m.theme.Header.GetBackground()
 	switch {
 	case m.saveFailed:
-		return barPart{"✗ Save failed", m.theme.Warning.Background(bg)}
+		return barPart{"✗ Save failed", m.theme.Header}
 	case m.dirty:
-		return barPart{"● Modified", m.theme.Warning.Background(bg)}
+		return barPart{"● Modified", m.theme.Header}
 	default:
-		return barPart{"✓ Saved", m.theme.StatusAdded.Background(bg)}
+		return barPart{"✓ Saved", m.theme.Header}
 	}
 }
 
 func (m MergeModel) conflictSummary() barPart {
-	bg := m.theme.Header.GetBackground()
 	switch left := m.Unresolved(); {
 	case left == 1:
-		return barPart{"1 conflict remaining", m.theme.ConflictMark.Background(bg)}
+		return barPart{"1 conflict remaining", m.theme.Header}
 	case left > 1:
-		return barPart{fmt.Sprintf("%d conflicts remaining", left), m.theme.ConflictMark.Background(bg)}
+		return barPart{fmt.Sprintf("%d conflicts remaining", left), m.theme.Header}
 	case m.ConflictCount() == 0:
 		return barPart{"no conflicts", m.theme.Header}
 	default:
-		return barPart{"✓ all conflicts resolved", m.theme.StatusAdded.Background(bg)}
+		return barPart{"✓ all conflicts resolved", m.theme.Header}
 	}
 }
 
@@ -352,9 +350,8 @@ func (m MergeModel) header(panes []int, widths [mergePanes]int) string {
 	if m.height < fullChromeHeight {
 		return m.paneLabels(panes, widths)
 	}
-	bg := m.theme.Header.GetBackground()
 	title := []barPart{
-		{" Jelly ", m.theme.StatusModified.Background(bg)}, {"Dev", m.theme.Jelly.Bold(true).Background(bg)},
+		{" Jelly Dev", m.theme.Header},
 		{"  " + sanitize(m.titles.Name), m.theme.Header},
 	}
 	status := []barPart{m.conflictSummary(), {"   ", m.theme.Header}, m.saveBadge(), {" ", m.theme.Header}}
@@ -519,7 +516,7 @@ func (m MergeModel) actionBar() *bar {
 		result.add(barPart{" " + m.editingStatus(), m.theme.Header})
 		return result
 	case m.status != "" && m.warn:
-		result.add(barPart{" ! " + m.status, m.theme.Warning.Background(footer.GetBackground())})
+		result.add(barPart{" ! " + m.status, m.theme.Header.Background(footer.GetBackground())})
 		return result
 	case m.status != "":
 		result.add(barPart{" " + m.status, m.theme.Header})
@@ -555,9 +552,9 @@ func (m MergeModel) actionBar() *bar {
 	case m.Unresolved() > 0:
 		result.add(barPart{" Press [n] to jump to the next conflict, [m] to auto-resolve the simple ones", footer})
 	case m.dirty:
-		result.add(barPart{" ✓ All conflicts resolved · press [s] to save, or [n] to review the changes", m.theme.StatusAdded.Background(footer.GetBackground())})
+		result.add(barPart{" ✓ All conflicts resolved · press [s] to save, or [n] to review the changes", footer.Bold(true)})
 	default:
-		result.add(barPart{" ✓ Result saved · press [q] to quit", m.theme.StatusAdded.Background(footer.GetBackground())})
+		result.add(barPart{" ✓ Result saved · press [q] to quit", footer.Bold(true)})
 	}
 	return result
 }

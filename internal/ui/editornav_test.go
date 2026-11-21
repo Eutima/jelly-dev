@@ -344,12 +344,21 @@ func TestEditor_CtrlCAndCtrlDGoBackAfterAJumpInsteadOfClosing(t *testing.T) {
 		}
 		// nothing left to go back to: now the key closes the tab, and with the last tab the window
 		updated, cmd = model.Update(tea.KeyMsg{Type: key})
-		model = updated.(ProjectModel)
-		if isQuit(cmd) || len(model.openEditors()) != 1 {
-			t.Fatalf("key %v without a jump left must close the tab first", key)
+		model = settleProject(updated.(ProjectModel), cmd)
+		if model.dlg == nil || len(model.openEditors()) != 2 {
+			t.Fatalf("key %v without a jump left must ask before it closes the tab", key)
 		}
-		if _, cmd = model.Update(tea.KeyMsg{Type: key}); !isQuit(cmd) {
-			t.Fatalf("key %v on the last tab must close the window", key)
+		model, _ = projectKeys(model, "y")
+		if len(model.openEditors()) != 1 {
+			t.Fatalf("yes closes the tab: %d tabs", len(model.openEditors()))
+		}
+		updated, cmd = model.Update(tea.KeyMsg{Type: key})
+		model = settleProject(updated.(ProjectModel), cmd)
+		if model.dlg == nil {
+			t.Fatalf("key %v on the last tab must ask before it closes the window", key)
+		}
+		if _, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter}); !isQuit(cmd) {
+			t.Fatalf("yes on the last tab must close the window")
 		}
 	}
 }

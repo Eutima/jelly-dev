@@ -240,3 +240,86 @@ func TestTerminalTabs_OpenSwitchAndClose(t *testing.T) {
 		t.Fatalf("closing the last tab must remove the panel: %d tabs", len(model.terms))
 	}
 }
+
+func TestClose_CtrlCAndCtrlDAlwaysAskFirst(t *testing.T) {
+	for _, key := range []tea.KeyType{tea.KeyCtrlC, tea.KeyCtrlD} {
+		model, _ := newProjectFixture(t, 100, sampleFiles) // the tree has the focus, nothing is modified
+		updated, cmd := model.Update(tea.KeyMsg{Type: key})
+		asked := updated.(ProjectModel)
+		if isQuit(cmd) || asked.dlg == nil || !strings.Contains(stripANSI(asked.View()), "Quit Jelly-Dev?") {
+			t.Fatalf("key %v in the tree must ask, even with no changes:\n%s", key, asked.View())
+		}
+		stays, cmd := projectKeys(asked, "n")
+		if isQuit(cmd) || stays.dlg != nil {
+			t.Fatalf("no keeps the window open")
+		}
+		if _, cmd = projectKeys(asked, "y"); !isQuit(cmd) {
+			t.Fatalf("yes closes the window")
+		}
+		if _, cmd = asked.Update(tea.KeyMsg{Type: key}); !isQuit(cmd) {
+			t.Fatalf("the same key again closes the window")
+		}
+	}
+}
+
+func TestClose_ChangesAskWhatToDoWithThemInsteadOfJustClosing(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, sampleFiles)
+	model, _ = projectKeys(model, "G", "enter", "x") // README.md modified, in the editor
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	model = settleProject(updated.(ProjectModel), cmd)
+	view := stripANSI(model.View())
+	if model.dlg == nil || !strings.Contains(view, "Unsaved changes in README.md") || !strings.Contains(view, "Save") {
+		t.Fatalf("a file with changes asks save, discard or cancel:\n%s", view)
+	}
+	if _, cmd = projectKeys(model, "d"); cmd == nil || !isQuit(cmd) {
+		// discard on the only tab goes on to quit; the dialog about quitting was this one
+		t.Fatalf("discard must go on and close the window")
+	}
+}
+
+func TestClose_TerminalKeepsCtrlCAndCtrlDForTheShell(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, sampleFiles)
+	model.hooks.Terminal = func(string) *exec.Cmd { return exec.Command("/bin/sh", "-c", "sleep 30") }
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlT})
+	model = updated.(ProjectModel)
+	t.Cleanup(model.closeTerminal)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if got := updated.(ProjectModel); got.dlg != nil || isQuit(cmd) {
+		t.Fatal("in the terminal ctrl+c belongs to the shell")
+	}
+}
+
+func TestClose_CtrlDWithSeveralTabsAsksAboutTheTabAndNoKeepsIt(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, sampleFiles)
+	model, _ = projectKeys(model, "G", "enter")                              // README.md
+	model, _ = projectKeys(model, "ctrl+e", "k", "enter", "j", "j", "enter") // and main.go in a second tab
+	if len(model.openEditors()) != 2 {
+		t.Fatalf("%d tabs", len(model.openEditors()))
+	}
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	model = settleProject(updated.(ProjectModel), cmd)
+	if view := stripANSI(model.View()); model.dlg == nil || !strings.Contains(view, "Close main.go?") {
+		t.Fatalf("with several tabs the question is about the shown tab:\n%s", view)
+	}
+	model, _ = projectKeys(model, "n")
+	if model.dlg != nil || len(model.openEditors()) != 2 {
+		t.Fatalf("no keeps the tab: %d tabs", len(model.openEditors()))
+	}
+}
+
+func TestClose_InTheSaveDialogCtrlCAndCtrlDBothCancel(t *testing.T) {
+	for _, key := range []tea.KeyType{tea.KeyCtrlC, tea.KeyCtrlD} {
+		model, _ := newProjectFixture(t, 100, sampleFiles)
+		model, _ = projectKeys(model, "G", "enter", "x")
+		updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+		model = settleProject(updated.(ProjectModel), cmd)
+		if model.dlg == nil {
+			t.Fatal("setup: the save dialog must be open")
+		}
+		after, cmd := model.Update(tea.KeyMsg{Type: key})
+		got := after.(ProjectModel)
+		if got.dlg != nil || isQuit(cmd) || !got.Editor().Modified() {
+			t.Fatalf("key %v in the save dialog must cancel and keep the changes", key)
+		}
+	}
+}

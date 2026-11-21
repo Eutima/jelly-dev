@@ -846,3 +846,45 @@ func TestMergeModel_IgnoresInTwoWayMerge_WhenXPressed(t *testing.T) {
 		t.Fatalf("completion message expected:\n%s", model.View())
 	}
 }
+
+// Coloured text on the blue bars (green, pink, blue) cannot be read when the terminal maps the colours to a small palette:
+// everything the merge view writes on its title bar and its status line is drawn in the white style of the bar.
+func TestMergeView_TextOnTheBarsIsWhite(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	white := model.theme.Header.GetForeground()
+	check := func(name string, part barPart) {
+		if part.style.GetForeground() != white {
+			t.Errorf("%s (%q) must be white on the bar, its colour is %v", name, part.text, part.style.GetForeground())
+		}
+	}
+	check("conflicts remaining", model.conflictSummary())
+	check("save badge (modified)", model.saveBadge())
+	model.saveFailed = true
+	check("save badge (failed)", model.saveBadge())
+	model.saveFailed, model.dirty = false, false
+	check("save badge (saved)", model.saveBadge())
+	for _, line := range []string{"Jelly Dev", "OURS"} {
+		if !strings.Contains(stripANSI(model.View()), line) {
+			t.Fatalf("the view lacks %q", line)
+		}
+	}
+	// the title and the status line of the footer use the bar styles too
+	model = mergePress(model, "n")
+	model.status, model.warn = "something went wrong", true
+	for _, part := range model.actionBar().parts {
+		if strings.Contains(part.text, "something went wrong") && part.style.GetForeground() != white {
+			t.Errorf("a warning on the footer bar must be white, its colour is %v", part.style.GetForeground())
+		}
+	}
+}
+
+func TestDarkTheme_TextOnColouredRowsIsWhite(t *testing.T) {
+	theme := DarkTheme()
+	for name, style := range map[string]lipgloss.Style{
+		"added": theme.Added, "deleted": theme.Deleted, "modified": theme.Modified, "conflict": theme.Conflict, "ours": theme.Ours, "theirs": theme.Theirs,
+	} {
+		if got := style.GetForeground(); got != lipgloss.Color("#ffffff") {
+			t.Errorf("%s rows must have white text, they have %v", name, got)
+		}
+	}
+}

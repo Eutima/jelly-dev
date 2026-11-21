@@ -12,16 +12,24 @@ const (
 	dialogBox  = 52 // width of the dialog box
 )
 
-// The buttons of the dialog about unsaved changes, in the order they are shown.
-var dialogButtons = []struct{ action, label, key string }{
-	{"save", "Save", "s"}, {"discard", "Discard", "d"}, {"cancel", "Cancel", "c"},
-}
+// dialogButton is one choice of a dialog: what it does, what it shows and the key that picks it.
+type dialogButton struct{ action, label, key string }
 
-// unsavedDialog asks what to do with the changes of the open file before something replaces it.
+var (
+	// unsavedButtons are the choices when a file with changes is about to be replaced or closed.
+	unsavedButtons = []dialogButton{{"save", "Save", "s"}, {"discard", "Discard", "d"}, {"cancel", "Cancel", "c"}}
+	// closeButtons are the choices when something is about to be closed that has no changes.
+	closeButtons = []dialogButton{{"yes", "Yes", "y"}, {"no", "No", "n"}}
+)
+
+// unsavedDialog asks something before the window goes on: what to do with the changes of the open file before it is
+// replaced or closed (unsavedButtons), or whether to close at all (closeButtons).
 type unsavedDialog struct {
-	file   string
-	choice int
-	then   func(ProjectModel) (tea.Model, tea.Cmd) // the blocked action, run once the file is saved or discarded
+	title   string
+	hint    string
+	buttons []dialogButton
+	choice  int
+	then    func(ProjectModel) (tea.Model, tea.Cmd) // the blocked action, run once the question is answered with yes, save or discard
 }
 
 // confirmUnsaved opens the dialog when the file has unsaved changes and returns true; otherwise it does nothing.
@@ -33,27 +41,38 @@ func (m ProjectModel) confirmUnsaved(then func(ProjectModel) (tea.Model, tea.Cmd
 	if path := m.editor.Path(); path != "" {
 		name = m.relative(path)
 	}
-	m.dlg = &unsavedDialog{file: name, then: then}
+	m.dlg = &unsavedDialog{title: "Unsaved changes in " + name, hint: " ←/→ choose, enter confirms, esc cancels", buttons: unsavedButtons, then: then}
 	return m, true
+}
+
+// confirmClose asks whether to close, even though nothing is unsaved; yes runs then. A second ctrl+c or ctrl+d answers yes.
+func (m ProjectModel) confirmClose(title string, then func(ProjectModel) (tea.Model, tea.Cmd)) ProjectModel {
+	m.dlg = &unsavedDialog{title: title, hint: " y or enter closes, n or esc stays, ctrl+d again closes", buttons: closeButtons, then: then}
+	return m
 }
 
 func (m ProjectModel) dialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	d := *m.dlg
 	switch key := msg.String(); key {
 	case "left", "h", "shift+tab":
-		d.choice = (d.choice + len(dialogButtons) - 1) % len(dialogButtons)
+		d.choice = (d.choice + len(d.buttons) - 1) % len(d.buttons)
 		m.dlg = &d
 		return m, nil
 	case "right", "l", "tab":
-		d.choice = (d.choice + 1) % len(dialogButtons)
+		d.choice = (d.choice + 1) % len(d.buttons)
 		m.dlg = &d
 		return m, nil
 	case "enter":
-		return m.dialogAction(dialogButtons[d.choice].action)
-	case "esc", "ctrl+c", "q":
+		return m.dialogAction(d.buttons[d.choice].action)
+	case "ctrl+c", "ctrl+d":
+		if d.buttons[0].action == "yes" { // the key that asked also confirms
+			return m.dialogAction("yes")
+		}
+		return m.dialogAction("cancel") // in the save dialog ctrl+c and ctrl+d both mean: do not go on
+	case "esc", "q":
 		return m.dialogAction("cancel")
 	default:
-		for _, b := range dialogButtons {
+		for _, b := range d.buttons {
 			if key == b.key || key == strings.ToUpper(b.key) {
 				return m.dialogAction(b.action)
 			}
@@ -62,7 +81,8 @@ func (m ProjectModel) dialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// dialogAction closes the dialog and carries out the choice.
+// dialogAction closes the dialog and carries out the choice: yes, save and discard go on with the blocked action, anything else
+// (no, cancel) leaves everything as it is.
 func (m ProjectModel) dialogAction(action string) (tea.Model, tea.Cmd) {
 	then := m.dlg.then
 	m.dlg = nil
@@ -74,6 +94,7 @@ func (m ProjectModel) dialogAction(action string) (tea.Model, tea.Cmd) {
 		}
 	case "discard":
 		m.editor.vim.MarkWritten() // the changes are given up
+	case "yes":
 	default:
 		return m, nil
 	}
@@ -84,7 +105,7 @@ func (m ProjectModel) dialogBar() *bar {
 	d := m.dlg
 	result := &bar{}
 	result.add(barPart{" ", m.theme.Footer})
-	for i, b := range dialogButtons {
+	for i, b := range d.buttons {
 		style := m.theme.Header
 		if i == d.choice {
 			style = m.theme.Selected.Bold(true)
@@ -120,9 +141,9 @@ func (m ProjectModel) overlayDialog(screen string) string {
 	x, y := m.dialogOrigin()
 	width := min(dialogBox, m.width)
 	rows := []string{
-		m.theme.Header.Render(padRight(" Unsaved changes in "+sanitize(m.dlg.file), width)),
+		m.theme.Header.Render(padRight(" "+sanitize(m.dlg.title), width)),
 		m.dialogBar().render(width, m.theme.Footer),
-		m.theme.Footer.Render(padRight(" ←/→ choose, enter confirms, esc cancels", width)),
+		m.theme.Footer.Render(padRight(m.dlg.hint, width)),
 	}
 	for i, row := range rows {
 		if y+i < len(lines) {

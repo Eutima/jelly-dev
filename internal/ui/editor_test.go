@@ -240,6 +240,11 @@ func TestProject_QuitsWithCtrlDFromEditorAndStoresSession(t *testing.T) {
 	model, fx := newProjectFixture(t, 100, sampleFiles)
 	model, _ = projectKeys(model, "G", "enter")
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	model = settleProject(updated.(ProjectModel), cmd)
+	if model.dlg == nil || len(fx.sessions) != 0 {
+		t.Fatal("ctrl+d must ask before it closes the window")
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyCtrlD}) // the same key again answers yes
 	if !isQuit(cmd) || len(fx.sessions) != 1 || updated.(ProjectModel).focus != focusProjectEdit {
 		t.Fatalf("ctrl+d in the editor must close the window and store the session: sessions %d", len(fx.sessions))
 	}
