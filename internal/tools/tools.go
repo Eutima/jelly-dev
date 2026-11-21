@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -42,10 +43,16 @@ type Tool struct {
 	Hint     string   // how to install a System tool by hand
 }
 
-// ManualInstallError is returned for a tool that jd cannot install without root rights.
-type ManualInstallError struct{ Tool, Hint string }
+// ManualInstallError is returned for a tool that jd cannot install (or update) without root rights.
+type ManualInstallError struct {
+	Tool, Hint string
+	Update     bool // the tool is installed, it is its update that has to be done by hand
+}
 
 func (e *ManualInstallError) Error() string {
+	if e.Update {
+		return fmt.Sprintf("%s has to be updated with your package manager: %s", e.Tool, e.Hint)
+	}
 	return fmt.Sprintf("%s has to be installed with your package manager: %s", e.Tool, e.Hint)
 }
 
@@ -285,4 +292,56 @@ func (e Env) installRustup(ctx context.Context, t Tool) error {
 		return e.Run(ctx, nil, "rustup", add...)
 	}
 	return nil
+}
+
+// Update brings an installed tool to its newest version, with the tool that installed it: npm and go install fetch the latest
+// one again, pipx and pip upgrade, rustup updates the toolchain, the downloads are fetched again. A tool of the package manager
+// of the machine (clangd) cannot be updated without root rights: the error says how.
+func (e Env) Update(ctx context.Context, t Tool) error {
+	switch t.Kind {
+	case NPM:
+		return e.installNPM(ctx, t) // npm install -g takes the newest version of a package that is installed already
+	case Go:
+		return e.installGo(ctx, t) // @latest
+	case Python:
+		return e.updatePython(ctx, t)
+	case Download:
+		return e.installDownload(ctx, t)
+	case Rustup:
+		return e.updateRustup(ctx, t)
+	case System:
+		return &ManualInstallError{Tool: t.Name, Hint: t.Hint, Update: true}
+	}
+	return fmt.Errorf("unknown kind of tool %q", t.Name)
+}
+
+func (e Env) updatePython(ctx context.Context, t Tool) error {
+	if _, err := e.LookPath("pipx"); err == nil {
+		err := e.Run(ctx, nil, "pipx", "upgrade", t.Packages[0])
+		if err != nil && strings.Contains(err.Error(), "not installed") {
+			// installed another way (pip): pipx installs it, the newest version (any other failure, the network, is reported as it is)
+			return e.Run(ctx, nil, "pipx", "install", "--force", t.Packages[0])
+		}
+		return err
+	}
+	python, err := e.need(t, "Python (pipx or pip)", "python3", "python", "py")
+	if err != nil {
+		return err
+	}
+	args := []string{"-m", "pip", "install", "--user", "--upgrade", t.Packages[0]}
+	if err := e.Run(ctx, nil, python, args...); err != nil {
+		// a system Python that is managed by the distribution refuses pip; --user keeps the change in the home folder
+		if retryErr := e.Run(ctx, nil, python, append(args, "--break-system-packages")...); retryErr != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// updateRustup updates the toolchain, with its components (rust-analyzer, rustfmt).
+func (e Env) updateRustup(ctx context.Context, t Tool) error {
+	if _, err := e.need(t, "rustup (the Rust toolchain)", "rustup"); err != nil {
+		return err
+	}
+	return e.Run(ctx, nil, "rustup", "update")
 }

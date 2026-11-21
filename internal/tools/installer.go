@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -154,6 +155,8 @@ func (i *Installer) Status() []string {
 			continue
 		}
 		switch f, failed := failures[t.Name]; {
+		case i.env.Installed(t) && failed && strings.HasPrefix(f.Error, "update: "):
+			lines = append(lines, fmt.Sprintf("ok       %s (%s), its %s", t.Name, t.Purpose, f.Error))
 		case i.env.Installed(t):
 			lines = append(lines, fmt.Sprintf("ok       %s (%s)", t.Name, t.Purpose))
 		case failed:

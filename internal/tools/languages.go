@@ -152,8 +152,9 @@ var ErrNoLanguages = errors.New("no language chosen")
 // InstallResult is what came of installing one tool.
 type InstallResult struct {
 	Tool    string
-	Already bool  // it was installed before
-	Err     error // nil when it is installed now
+	Already bool  // it was installed before (and nothing was done to it)
+	Updated bool  // it was installed and has been updated now
+	Err     error // nil when it is installed (and up to date) now
 }
 
 // InstallLanguages installs the tools of the languages that are missing; progress is told about every tool before and after

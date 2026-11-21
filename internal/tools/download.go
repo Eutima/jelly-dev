@@ -38,6 +38,10 @@ func (e Env) installJdtls(ctx context.Context, t Tool) error {
 	if err := e.Fetch(ctx, jdtlsURL, archive); err != nil {
 		return fmt.Errorf("download jdtls: %w", err)
 	}
+	// an update: the old files go (the launcher looks for its jar by a pattern, a stale one next to the new one could be taken)
+	if err := os.RemoveAll(target); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		return err
 	}

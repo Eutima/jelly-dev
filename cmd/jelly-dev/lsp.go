@@ -15,20 +15,24 @@ import (
 // languageTools installs the language servers and formatters of languages and tells what is installed.
 type languageTools interface {
 	InstallLanguages(ctx context.Context, languages []string, progress func(tool string, done bool, err error)) ([]tools.InstallResult, error)
+	UpdateLanguages(ctx context.Context, languages []string, progress func(tool string, done bool, err error)) ([]tools.InstallResult, error)
 	IsInstalled(tool string) bool
 }
 
-// runInstallLSP handles `jd install-lsp [--all] [--list] [<language>...]`: it installs the language server and the formatter of
+// runInstallLSP handles `jd install-lsp [--all] [--list] [--update] [<language>...]`: it installs the language server and the formatter of
 // each language (the languages chosen so far when none is named) with the language's own package manager, without root
 // rights; a missing runtime (Node.js, Python, Go, a JDK) is reported, `jd setup` installs those. Languages named here
-// are added to the chosen ones, which the IDE keeps installed.
+// are added to the chosen ones, which the IDE keeps installed. With --update the tools that are installed are brought to their
+// newest versions (and the missing ones are installed).
 func runInstallLSP(args []string, stdout, stderr io.Writer, env environment) int {
 	var named []string
-	all, list := false, false
+	all, list, update := false, false, false
 	for _, arg := range args {
 		switch {
 		case arg == "--all":
 			all = true
+		case arg == "--update":
+			update = true
 		case arg == "--list":
 			list = true
 		case strings.HasPrefix(arg, "-"):
@@ -75,18 +79,22 @@ func runInstallLSP(args []string, stdout, stderr io.Writer, env environment) int
 		languages = requested
 	}
 	if len(languages) == 0 {
-		fmt.Fprintln(stderr, "jd: no language chosen: name some, for example: jd install-lsp python html css json yaml docker compose (or --all, --list)")
+		fmt.Fprintln(stderr, "jd: no language chosen: name some, for example: jd install-lsp python html css json yaml docker compose (or --all, --list, --update)")
 		return exitUsage
 	}
-	fmt.Fprintf(stdout, "Installing the language servers and formatters for: %s\n", strings.Join(languages, ", "))
-	results, err := installer.InstallLanguages(context.Background(), languages, func(tool string, done bool, err error) {
+	verb, past, run := "Installing", "installed", installer.InstallLanguages
+	if update {
+		verb, past, run = "Updating", "done", installer.UpdateLanguages
+	}
+	fmt.Fprintf(stdout, "%s the language servers and formatters for: %s\n", verb, strings.Join(languages, ", "))
+	results, err := run(context.Background(), languages, func(tool string, done bool, err error) {
 		switch {
 		case !done:
-			fmt.Fprintf(stdout, "  %-30s installing ...\n", tool)
+			fmt.Fprintf(stdout, "  %-30s %s ...\n", tool, strings.ToLower(verb))
 		case err != nil:
 			fmt.Fprintf(stdout, "  %-30s FAILED: %v\n", tool, err)
 		default:
-			fmt.Fprintf(stdout, "  %-30s installed\n", tool)
+			fmt.Fprintf(stdout, "  %-30s %s\n", tool, past)
 		}
 	})
 	if err != nil {
@@ -98,20 +106,26 @@ func runInstallLSP(args []string, stdout, stderr io.Writer, env environment) int
 
 // summarizeInstall prints what came of the installation and returns the exit code.
 func summarizeInstall(results []tools.InstallResult, stdout, stderr io.Writer) int {
-	installed, already, failed, runtimeMissing := 0, 0, 0, false
+	installed, updated, already, failed, runtimeMissing := 0, 0, 0, 0, false
 	for _, r := range results {
 		var missing *tools.MissingRuntimeError
 		switch {
 		case r.Err != nil:
 			failed++
 			runtimeMissing = runtimeMissing || errors.As(r.Err, &missing)
+		case r.Updated:
+			updated++
 		case r.Already:
 			already++
 		default:
 			installed++
 		}
 	}
-	fmt.Fprintf(stdout, "%d installed, %d were there already, %d failed\n", installed, already, failed)
+	if updated > 0 {
+		fmt.Fprintf(stdout, "%d updated, %d installed, %d failed\n", updated, installed, failed)
+	} else {
+		fmt.Fprintf(stdout, "%d installed, %d were there already, %d failed\n", installed, already, failed)
+	}
 	if runtimeMissing {
 		fmt.Fprintln(stderr, "jd: a runtime is missing (Node.js, Python, Go or a JDK): `jd setup` installs the runtimes with your package manager")
 	}

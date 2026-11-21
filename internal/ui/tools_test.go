@@ -18,6 +18,7 @@ type fakeTools struct {
 	installed []string
 	forced    []bool
 	added     []string            // the languages AddLanguage was asked for
+	updated   []string            // the languages UpdateLanguage was asked for
 	addTools  map[string][]string // the tools AddLanguage installs, by language
 }
 
@@ -47,6 +48,18 @@ func (f *fakeTools) AddLanguage(_ context.Context, id string) ([]tools.InstallRe
 	var results []tools.InstallResult
 	for _, name := range f.addTools[id] {
 		results = append(results, tools.InstallResult{Tool: name, Err: f.results[name]})
+	}
+	return results, nil
+}
+
+func (f *fakeTools) UpdateLanguage(_ context.Context, id string) ([]tools.InstallResult, error) {
+	f.updated = append(f.updated, id)
+	if err := f.results["update:"+id]; err != nil {
+		return nil, err
+	}
+	var results []tools.InstallResult
+	for _, name := range f.addTools[id] {
+		results = append(results, tools.InstallResult{Tool: name, Updated: f.results[name] == nil, Err: f.results[name]})
 	}
 	return results, nil
 }
@@ -200,7 +213,7 @@ func TestAddLanguage_ListsAllLanguagesAndInstallsTheServerAndFormatterOfTheChose
 	installer := &fakeTools{results: map[string]error{}, addTools: map[string][]string{"python": {"pyright", "black"}}}
 	model, _ := typeCommand(addLangProject(t, installer), "addlang")
 	view := stripANSI(model.View())
-	for _, want := range []string{"Add a language", "Python", "pyright, black", "Go", "gopls", "(installed)", "(missing: prettier)"} {
+	for _, want := range []string{"Add a language", "Python", "pyright, black", "Go", "gopls", "(installed - enter updates it)", "(missing: prettier)"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("the list lacks %q:\n%s", want, view)
 		}
@@ -223,13 +236,16 @@ func TestAddLanguage_ListsAllLanguagesAndInstallsTheServerAndFormatterOfTheChose
 
 func TestAddLanguage_AlreadyInstalledFailuresMissingRuntimeAndCancel(t *testing.T) {
 	// everything there already
-	installer := &fakeTools{results: map[string]error{}, addTools: map[string][]string{}}
+	installer := &fakeTools{results: map[string]error{}, addTools: map[string][]string{"go": {"gopls"}}}
 	model, _ := typeCommand(addLangProject(t, installer), "language")
 	model = typeIntoPicker(model, "go")
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !strings.Contains(updated.(ProjectModel).toolStatus, "Updating gopls for Go") {
+		t.Fatalf("an installed language is updated, the status says so: %q", updated.(ProjectModel).toolStatus)
+	}
 	model = settleProject(updated.(ProjectModel), cmd)
-	if view := stripANSI(model.View()); !strings.Contains(view, "Go added: its language server and formatter are installed already") {
-		t.Fatalf("an installed language is added without installing:\n%s", view)
+	if view := stripANSI(model.View()); !strings.Contains(view, "Go updated: gopls") || len(installer.updated) != 1 || installer.updated[0] != "go" || len(installer.added) != 0 {
+		t.Fatalf("an installed language is updated, not added again: updated %v added %v\n%s", installer.updated, installer.added, view)
 	}
 	// a failure, and a missing runtime that points to jd setup
 	failing := &fakeTools{
@@ -261,5 +277,24 @@ func TestAddLanguage_AlreadyInstalledFailuresMissingRuntimeAndCancel(t *testing.
 	busy, _ = typeCommand(busy, "addlang")
 	if busy.langs != nil || !strings.Contains(stripANSI(busy.View()), "already") {
 		t.Fatalf("while tools are installed the list does not open:\n%s", busy.View())
+	}
+}
+
+func TestAddLanguage_TheListSaysThatAnInstalledLanguageIsUpdatedAndAFailedUpdateIsReported(t *testing.T) {
+	model, _ := typeCommand(addLangProject(t, &fakeTools{results: map[string]error{}}), "addlang")
+	if view := stripANSI(model.View()); !strings.Contains(view, "Go  gopls  (installed - enter updates it)") {
+		t.Fatalf("the installed language says that enter updates it:\n%s", view)
+	}
+	failing := &fakeTools{
+		results:  map[string]error{"gopls": &tools.ManualInstallError{Tool: "gopls", Hint: "brew upgrade gopls", Update: true}},
+		addTools: map[string][]string{"go": {"gopls"}},
+	}
+	model, _ = typeCommand(addLangProject(t, failing), "addlang")
+	model = typeIntoPicker(model, "go")
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = settleProject(updated.(ProjectModel), cmd)
+	view := stripANSI(model.View())
+	if !strings.Contains(view, "could not update") || !strings.Contains(view, "gopls") || !model.Editor().warn {
+		t.Fatalf("a failed update is a warning that says update:\n%s", view)
 	}
 }

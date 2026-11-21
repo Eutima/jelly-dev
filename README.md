@@ -101,10 +101,14 @@ jd install-lsp --list                 # the languages, the chosen ones marked, a
 jd install-lsp go java                # install the server and the formatter of Go and Java and add them to the chosen ones
 jd install-lsp                        # install what is missing for the chosen languages
 jd install-lsp --all                  # every language
+jd install-lsp --update               # bring the installed tools of the chosen languages to their newest versions
+jd install-lsp --update go python     # the same for the named languages (missing tools are installed)
 ```
 
 In the IDE `:addlang` (also `:language`) opens a searchable list of all languages: pick one and its language server **and** its
-formatter are installed (and the language is added to the chosen ones). Rust uses `rustup` (`rustup component add rust-analyzer
+formatter are installed (and the language is added to the chosen ones); a language that is installed already shows "enter updates
+it": choosing it brings its language server and formatter to their newest versions (npm and `go install` fetch the latest, pipx or pip
+upgrade, `rustup update` for Rust; `clangd` comes from your package manager and is updated there). Rust uses `rustup` (`rustup component add rust-analyzer
 rustfmt`), C and C++ use `clangd` from your package manager and `clang-format` (pipx). A missing runtime (Node.js, Python, Go, a JDK,
 rustup) is reported; `jd setup` installs those. The installer script takes the same
 choice as `JD_LANGS=python,html,css,json,yaml,docker,compose` (also `all` or `none`).

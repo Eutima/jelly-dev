@@ -26,6 +26,8 @@ type ToolInstaller interface {
 	// the language server and the formatter that are missing.
 	LanguageStates() []tools.LanguageState
 	AddLanguage(ctx context.Context, id string) ([]tools.InstallResult, error)
+	// UpdateLanguage brings the language server and the formatter of a language to their newest versions.
+	UpdateLanguage(ctx context.Context, id string) ([]tools.InstallResult, error)
 }
 
 // toolsPendingMsg is the answer of the check for missing tools.

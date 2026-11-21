@@ -12,12 +12,25 @@ import (
 
 // toolsFake records what jd install-lsp installs.
 type toolsFake struct {
-	installed map[string]bool
-	fail      map[string]error
-	asked     [][]string
+	installed        map[string]bool
+	fail             map[string]error
+	asked            [][]string
+	updatedLanguages [][]string
 }
 
 func (f *toolsFake) IsInstalled(tool string) bool { return f.installed[tool] }
+
+func (f *toolsFake) UpdateLanguages(_ context.Context, languages []string, progress func(string, bool, error)) ([]tools.InstallResult, error) {
+	f.updatedLanguages = append(f.updatedLanguages, languages)
+	var results []tools.InstallResult
+	for _, name := range tools.ToolsFor(languages) {
+		progress(name, false, nil)
+		err := f.fail[name]
+		progress(name, true, err)
+		results = append(results, tools.InstallResult{Tool: name, Updated: f.installed[name] && err == nil, Err: err})
+	}
+	return results, nil
+}
 
 func (f *toolsFake) InstallLanguages(_ context.Context, languages []string, progress func(string, bool, error)) ([]tools.InstallResult, error) {
 	f.asked = append(f.asked, languages)
@@ -128,5 +141,36 @@ func TestInstallLSP_ListShowsWhatIsChosenAndInstalledAndBadInputIsRefused(t *tes
 	}
 	if code := run([]string{"install-lsp"}, &stdout, &stderr, lspEnv(none, fake)); code != exitUsage {
 		t.Fatalf("with no language chosen and none named there is nothing to do: %d", code)
+	}
+}
+
+func TestInstallLSP_UpdateBringsTheInstalledToolsToTheirNewestVersions(t *testing.T) {
+	dir, fake := t.TempDir(), &toolsFake{installed: map[string]bool{"pyright": true, "black": true}}
+	var stdout, stderr bytes.Buffer
+	if err := tools.SaveLanguages(dir, []string{"python"}); err != nil {
+		t.Fatal(err)
+	}
+	if code := run([]string{"install-lsp", "--update"}, &stdout, &stderr, lspEnv(dir, fake)); code != exitOK {
+		t.Fatalf("code %d: %s", code, stderr.String())
+	}
+	if len(fake.updatedLanguages) != 1 || strings.Join(fake.updatedLanguages[0], ",") != "python" || len(fake.asked) != 0 {
+		t.Fatalf("--update updates the chosen languages and installs nothing new: %v %v", fake.updatedLanguages, fake.asked)
+	}
+	for _, want := range []string{"Updating the language servers and formatters for: python", "pyright", "updating ...", "2 updated, 0 installed, 0 failed"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("the output lacks %q:\n%s", want, stdout.String())
+		}
+	}
+	// named languages are updated and added to the chosen ones; a failing update gives a non-zero exit
+	failing := &toolsFake{installed: map[string]bool{"gopls": true}, fail: map[string]error{"gopls": &tools.ManualInstallError{Tool: "gopls", Hint: "brew upgrade gopls", Update: true}}}
+	stdout.Reset()
+	if code := run([]string{"install-lsp", "--update", "go"}, &stdout, &stderr, lspEnv(dir, failing)); code != exitFailure {
+		t.Fatalf("a failed update fails the command: %d", code)
+	}
+	if !strings.Contains(stdout.String(), "FAILED") || !strings.Contains(stdout.String(), "has to be updated with your package manager") || !strings.Contains(stdout.String(), "1 failed") {
+		t.Fatalf("the failure is shown:\n%s", stdout.String())
+	}
+	if saved, _ := tools.LoadLanguages(dir); !strings.Contains(strings.Join(saved, ","), "go") {
+		t.Fatalf("an updated language is added to the chosen ones: %v", saved)
 	}
 }
