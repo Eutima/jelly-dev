@@ -5,6 +5,8 @@ import (
 	"slices"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/eutima/jelly-diff/internal/merge"
 )
 
 // moveCursor moves the line cursor by delta rows and scrolls it into view.
@@ -47,6 +49,41 @@ func (m *MergeModel) setChoice(chunk int, choice Choice, custom []string) {
 	m.choices[chunk] = choice
 	m.setCustom(chunk, custom, custom != nil)
 	m.markDirty()
+}
+
+// autoResolve settles every unresolved conflict that is none in fact (whitespace-only or different words
+// of the same lines, see merge.ResolveSimple) and leaves the real conflicts alone. One undo reverts it all.
+func (m *MergeModel) autoResolve() {
+	type step struct {
+		chunk int
+		lines []string
+	}
+	var steps []step
+	for _, chunk := range m.changed {
+		if m.chunks[chunk].Kind != merge.Conflict || m.choices[chunk] != ChoiceAuto {
+			continue
+		}
+		if lines, ok := merge.ResolveSimple(m.chunks[chunk]); ok {
+			steps = append(steps, step{chunk, slices.Clone(lines)})
+		}
+	}
+	total := m.Unresolved()
+	if len(steps) == 0 {
+		m.status = fmt.Sprintf("Nothing to resolve automatically: %d conflict(s) need a decision", total)
+		return
+	}
+	for i, s := range steps {
+		m.setChoice(s.chunk, ChoiceCustom, s.lines)
+		m.history[len(m.history)-1].joined = i > 0
+	}
+	m.rebuild()
+	left := m.Unresolved()
+	m.status = fmt.Sprintf("Resolved %d of %d conflict(s), %d left", len(steps), total, left)
+	if next := m.nextUnresolved(); next >= 0 {
+		m.gotoChange(next)
+	} else {
+		m.keepVisible()
+	}
 }
 
 // setCustom stores (or removes) the hand-edited lines of a chunk in a fresh map, so older copies of the

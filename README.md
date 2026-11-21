@@ -33,6 +33,8 @@ merged automatically; conflicts start with the base lines. The result pane has a
 
 - `j`/`k`/arrows move the cursor (the change under it is selected), `n`/`p` jump to the next/previous change.
 - `o` takes ours, `t` theirs, `b` both, `r` reverts the change to the base.
+- `m` (magic) resolves every conflict that is none in fact: a change of whitespace only, or both sides editing
+  different words of the same lines. Real conflicts stay open; one `u` undoes the whole step.
 - `e` or `enter` edits the line under the cursor in place (`enter` applies, `esc` cancels, arrows/home/end move,
   `ctrl+u`/`ctrl+k` delete to the start/end of the line), `d` deletes the line, `i` inserts a new line below it and
   opens it for editing (`esc` removes it again). A block edited by hand counts as resolved.

@@ -14,9 +14,10 @@ What the three files contain compared with `base.txt`:
 | Setup | unchanged | adds "Clone the repository." | merged automatically |
 | Daily work | adds "and assign it to yourself" | unchanged | merged automatically |
 | Release day | "Thursday" | "Monday" | **conflict** |
+| Support line | "email" | "service desk" | **conflict**, but `m` resolves it (different words) |
 | Footer | unchanged | "March" | merged automatically |
 
-Things to try: `n`/`p` to jump between changes, `o`/`t`/`b`/`r` to resolve, `e` to edit a line by hand, `d` to delete
+Things to try: `n`/`p` to jump between changes, `o`/`t`/`b`/`r` to resolve, `m` to resolve all simple conflicts at once (one `u` undoes it), `e` to edit a line by hand, `d` to delete
 a line, `i` to insert one, `u` to undo, `s` to save (only possible when no conflict is left), `q` to quit.
 
 `addadd_local.txt` and `addadd_remote.txt` simulate a file that both sides added independently; pass a base path that

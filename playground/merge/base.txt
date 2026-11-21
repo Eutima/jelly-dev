@@ -15,4 +15,6 @@ Section 3 - Release
 Tag the release on Friday.
 Announce it in the team channel.
 
+Support: ask the helpdesk by mail or phone.
+
 Footer: last reviewed in January.

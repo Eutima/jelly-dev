@@ -57,6 +57,7 @@ type historyEntry struct {
 	prev       Choice
 	prevCustom []string // the hand-edited lines before the step; only meaningful when hadCustom
 	hadCustom  bool
+	joined     bool // undone together with the entry before it (one magic step covers several chunks)
 }
 
 // MergeModel is the three-pane merge viewer: ours | result | theirs.
@@ -294,6 +295,8 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.resolve(ChoiceBoth)
 	case "r":
 		m.resolve(ChoiceBase)
+	case "m":
+		m.autoResolve()
 	case "e", "enter":
 		m.startEdit()
 	case "d":
@@ -371,11 +374,17 @@ func (m *MergeModel) undo() {
 		m.status = "Nothing to undo"
 		return
 	}
-	last := m.history[len(m.history)-1]
-	m.history = m.history[: len(m.history)-1 : len(m.history)-1]
+	var last historyEntry
 	m.choices = slices.Clone(m.choices)
-	m.choices[last.chunk] = last.prev
-	m.setCustom(last.chunk, last.prevCustom, last.hadCustom)
+	for {
+		last = m.history[len(m.history)-1]
+		m.history = m.history[: len(m.history)-1 : len(m.history)-1]
+		m.choices[last.chunk] = last.prev
+		m.setCustom(last.chunk, last.prevCustom, last.hadCustom)
+		if !last.joined {
+			break
+		}
+	}
 	m.markDirty()
 	m.status = ""
 	m.rebuild()
@@ -487,7 +496,7 @@ func (m MergeModel) footer() string {
 		if left := m.Unresolved(); left > 0 {
 			state = fmt.Sprintf("%d conflict(s) left", left)
 		}
-		text = state + "   n/p change   o ours   t theirs   b both   r base   e edit   d del   i ins   u undo   s save   q quit"
+		text = state + "   n/p change   o ours   t theirs   b both   r base   m magic   e edit   d del   i ins   u undo   s save   q quit"
 	}
 	return m.theme.Footer.Render(padRight(fmt.Sprintf(statusFormat, text), m.width))
 }

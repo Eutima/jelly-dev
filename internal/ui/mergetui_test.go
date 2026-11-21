@@ -321,3 +321,69 @@ func TestMergeView_FitsWidthWithSyntax_WhenSizesVary(t *testing.T) {
 		}
 	}
 }
+
+func TestMergeModel_ResolvesSimpleConflictsOnly_WhenMPressed(t *testing.T) {
+	base := "intro\nthe quick brown fox\nmiddle\nchoose A\noutro\n"
+	ours := "intro\nthe slow brown fox\nmiddle\nchoose OURS\noutro\n"
+	theirs := "intro\nthe quick brown dog\nmiddle\nchoose THEIRS\noutro\n"
+	model, _ := newMergeTestModel(base, ours, theirs, &saver{})
+	if model.Unresolved() != 2 {
+		t.Fatalf("setup: Unresolved() = %d, want 2", model.Unresolved())
+	}
+
+	model = mergePress(model, "m")
+
+	if model.Unresolved() != 1 {
+		t.Errorf("Unresolved() = %d, want 1 (the real conflict stays)", model.Unresolved())
+	}
+	want := []string{"intro", "the slow brown dog", "middle", "choose A", "outro"}
+	if got := model.Result(); !reflect.DeepEqual(got, want) {
+		t.Errorf("Result() = %q, want %q", got, want)
+	}
+	if !strings.Contains(model.status, "Resolved 1 of 2") {
+		t.Errorf("status = %q, want it to report 1 of 2", model.status)
+	}
+}
+
+func TestMergeModel_RevertsAllWithOneUndo_WhenMagicResolvedSeveral(t *testing.T) {
+	// Untouched lines between the conflicts keep them separate.
+	base := "one two\nx\ny\nthree four\n"
+	ours := "ONE two\nx\ny\nTHREE four\n"
+	theirs := "one TWO\nx\ny\nthree FOUR\n"
+	model, _ := newMergeTestModel(base, ours, theirs, &saver{})
+	before := model.Unresolved()
+	if before != 2 {
+		t.Fatalf("setup: Unresolved() = %d, want 2", before)
+	}
+
+	model = mergePress(model, "m")
+	if model.Unresolved() != 0 {
+		t.Fatalf("after m: Unresolved() = %d, want 0", model.Unresolved())
+	}
+	model = mergePress(model, "u")
+
+	if model.Unresolved() != before {
+		t.Errorf("after one undo: Unresolved() = %d, want %d", model.Unresolved(), before)
+	}
+}
+
+func TestMergeModel_ReportsNothingToDo_WhenOnlyRealConflictsLeft(t *testing.T) {
+	model, _ := newMergeTestModel(baseText, oursText, theirsText, &saver{})
+
+	model = mergePress(model, "m")
+
+	if !strings.Contains(model.status, "Nothing to resolve automatically") || model.Unresolved() != 1 {
+		t.Errorf("status = %q, Unresolved() = %d", model.status, model.Unresolved())
+	}
+}
+
+func TestMergeModel_SavesAfterMagic_WhenAllConflictsWereSimple(t *testing.T) {
+	s := &saver{}
+	model, outcome := newMergeTestModel("the quick fox\n", "the slow fox\n", "the quick dog\n", s)
+
+	mergePress(model, "m", "s")
+
+	if len(s.saved) != 1 || !reflect.DeepEqual(s.saved[0], []string{"the slow dog"}) || !outcome.Saved {
+		t.Errorf("saved = %q, outcome = %+v", s.saved, outcome)
+	}
+}
