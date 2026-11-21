@@ -218,7 +218,7 @@ func TestMergeView_FitsTerminal_WhenVariousSizes(t *testing.T) {
 			t.Fatalf("size %v: %d lines", size, len(lines))
 		}
 		for i, line := range lines {
-			if got := lipgloss.Width(line); got > size[0] && size[0] >= 2*gutterWidth {
+			if got := lipgloss.Width(line); got > size[0] && size[0] >= 2*mergeGutterWidth {
 				t.Fatalf("size %v line %d is %d wide", size, i, got)
 			}
 		}
@@ -507,9 +507,9 @@ func TestMergeView_ShowsUnavailableActionsAsFaint_WhenNothingSelected(t *testing
 func clickArrow(t *testing.T, model MergeModel, index, side int) MergeModel {
 	t.Helper()
 	_, widths := model.layout()
-	x := markerWidth + widths[paneOurs] + 1
+	x := markerWidth + widths[paneOurs] + 3 // the » of the left gutter
 	if side == paneTheirs {
-		x = markerWidth + widths[paneOurs] + gutterWidth + widths[paneResult] + 1
+		x = markerWidth + widths[paneOurs] + mergeGutterWidth + widths[paneResult] + 1 // the « of the right gutter
 	}
 	y := model.headerLines() + model.starts[index] - model.offset
 	updated, _ := model.Update(tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
@@ -518,6 +518,7 @@ func clickArrow(t *testing.T, model MergeModel, index, side int) MergeModel {
 
 func TestMergeModel_AppliesOursOrTheirs_WhenArrowClicked(t *testing.T) {
 	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = resize(model, 120, 20)
 	model = clickArrow(t, model, 0, paneOurs)
 	if got := model.Result()[1]; got != "X" || model.Unresolved() != 1 {
 		t.Fatalf("» must apply ours: result %v unresolved %d", model.Result(), model.Unresolved())
@@ -539,8 +540,75 @@ func TestMergeModel_IgnoresClick_WhenNotOnAnArrow(t *testing.T) {
 	press(markerWidth+2, model.headerLines()+1) // text of the ours pane
 	press(markerWidth+1, model.headerLines()+4) // unchanged row, wrong x
 	_, widths := model.layout()
-	press(markerWidth+widths[paneOurs]+1, model.headerLines()) // arrow column of an unchanged row
+	press(markerWidth+widths[paneOurs]+3, model.headerLines()) // arrow column of an unchanged row
 	if !reflect.DeepEqual(model.Result(), before) || len(model.history) != 0 {
 		t.Fatalf("nothing may change: %v", model.Result())
+	}
+}
+
+// clickCross clicks the discard cross next to the arrow of change number index on the given side.
+func clickCross(t *testing.T, model MergeModel, index, side int) MergeModel {
+	t.Helper()
+	_, widths := model.layout()
+	x := markerWidth + widths[paneOurs] + 1 // the × of the left gutter
+	if side == paneTheirs {
+		x = markerWidth + widths[paneOurs] + mergeGutterWidth + widths[paneResult] + 3 // the × of the right gutter
+	}
+	y := model.headerLines() + model.starts[index] - model.offset
+	updated, _ := model.Update(tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	return updated.(MergeModel)
+}
+
+func TestMergeModel_KeepsTheOtherSide_WhenCrossClicked(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = resize(model, 120, 20)
+	model = clickCross(t, model, 0, paneOurs)
+	if got := model.Result()[1]; got != "Y" || model.Unresolved() != 1 {
+		t.Fatalf("× on ours must keep theirs: %v", model.Result())
+	}
+	model = clickCross(t, model, 1, paneTheirs)
+	if got := model.Result()[7]; got != "X2" || model.Unresolved() != 0 {
+		t.Fatalf("× on theirs must keep ours: %v", model.Result())
+	}
+}
+
+func TestMergeModel_CombinesBothSides_WhenBothArrowsClickedOnTheSameChange(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = resize(model, 120, 20)
+	model = clickArrow(t, model, 0, paneOurs)
+	model = clickArrow(t, model, 0, paneTheirs)
+	if model.choices[model.changed[0]] != ChoiceBoth || !reflect.DeepEqual(model.Result()[1:3], []string{"X", "Y"}) {
+		t.Fatalf("both expected: %v", model.Result())
+	}
+	model = clickCross(t, model, 0, paneOurs) // discard ours again: only theirs is left
+	if model.choices[model.changed[0]] != ChoiceTheirs {
+		t.Fatalf("choice %v", model.choices[model.changed[0]])
+	}
+	model = clickCross(t, model, 0, paneTheirs) // discard the last wanted side: back to the base
+	if model.choices[model.changed[0]] != ChoiceBase || model.Result()[1] != "b" {
+		t.Fatalf("base expected: %v", model.Result())
+	}
+}
+
+func TestMergeModel_StaysOnChange_WhenClickingArrows(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = resize(model, 120, 20)
+	model = clickArrow(t, model, 0, paneOurs)
+	if model.current != 0 || model.cursor != model.starts[0] {
+		t.Fatalf("a click must not jump to the next conflict: current %d cursor %d", model.current, model.cursor)
+	}
+}
+
+func TestMergeModel_IgnoresClick_WhenEditingOrNarrow(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = resize(model, 120, 20)
+	editing := mergePress(model, "j", "e")
+	if got := clickArrow(t, editing, 0, paneOurs); got.Unresolved() != 2 || !got.editing {
+		t.Fatalf("click while editing must do nothing: unresolved %d", got.Unresolved())
+	}
+	narrow := resize(model, 60, 20)
+	updated, _ := narrow.Update(tea.MouseMsg{X: 20, Y: narrow.headerLines() + 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if updated.(MergeModel).Unresolved() != 2 {
+		t.Fatal("click in the single pane layout must do nothing")
 	}
 }

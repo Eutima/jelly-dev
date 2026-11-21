@@ -11,9 +11,11 @@ import (
 )
 
 const (
+	mergeGutterWidth   = 5  // between two panes: room for an apply arrow and a discard cross
 	markerWidth        = 2  // edge column: current-change bar and state symbol
 	fullChromeHeight   = 10 // from this terminal height on the header has three lines and the footer two
 	fullHeaderLines    = 3
+	discardCells       = 2   // cells of a gutter that belong to the discard cross
 	fullChromeLines    = 5   // header (title, pane labels, progress) + footer (actions, shortcuts)
 	compactChromeLines = 2   // pane labels + one status line
 	threePaneWidth     = 72  // narrower terminals show one pane at a time
@@ -114,7 +116,7 @@ func (m MergeModel) layout() (panes []int, widths [mergePanes]int) {
 		widths[pane] = max(m.width-markerWidth, 0)
 		return []int{pane}, widths
 	}
-	avail := max(m.width-markerWidth-2*gutterWidth, 0)
+	avail := max(m.width-markerWidth-2*mergeGutterWidth, 0)
 	result := avail * resultPercent / percentFull
 	side := (avail - result) / 2
 	widths = [mergePanes]int{side, result, avail - result - side}
@@ -298,7 +300,7 @@ func (m MergeModel) paneLabels(panes []int, widths [mergePanes]int) string {
 	out := m.theme.Header.Render(strings.Repeat(" ", min(markerWidth, m.width)))
 	for index, pane := range panes {
 		if index > 0 {
-			out += m.theme.Header.Render(strings.Repeat(" ", gutterWidth))
+			out += m.theme.Header.Render(strings.Repeat(" ", mergeGutterWidth))
 		}
 		label := " " + names[pane]
 		if file := sanitize(files[pane]); file != "" {
@@ -497,23 +499,46 @@ func (m *MergeModel) click(x, y int) {
 	}
 	_, widths := m.layout()
 	left := markerWidth + widths[paneOurs]
-	right := left + gutterWidth + widths[paneResult]
-	side := -1
+	right := left + mergeGutterWidth + widths[paneResult]
+	side, apply := -1, false
 	switch {
-	case x >= left && x < left+gutterWidth:
-		side = paneOurs
-	case x >= right && x < right+gutterWidth:
-		side = paneTheirs
+	case x >= left && x < left+mergeGutterWidth:
+		side, apply = paneOurs, x-left >= discardCells // left gutter: cross first, arrow towards the result
+	case x >= right && x < right+mergeGutterWidth:
+		side, apply = paneTheirs, x-right < mergeGutterWidth-discardCells
 	}
 	if side < 0 || !m.arrowShown(m.rows[index], side) {
 		return
 	}
 	m.setCursor(index)
-	m.notice("", false)
-	if side == paneOurs {
-		m.resolve(ChoiceOurs)
-	} else {
-		m.resolve(ChoiceTheirs)
+	chunk := m.rows[index].chunk
+	if choice := m.sideChoice(chunk, side, apply); choice != m.choices[chunk] {
+		m.applyChoice(choice, false) // the user points at a change: stay on it instead of jumping on
 	}
 	m.clamp()
+}
+
+// sideChoice returns the choice of a chunk after applying (») or discarding (×) the change of one side. Applying
+// the second side after the first one gives both; discarding a side keeps the other one, or the base when no
+// other side is wanted.
+func (m MergeModel) sideChoice(chunk, side int, apply bool) Choice {
+	current, c := m.choices[chunk], m.chunks[chunk]
+	ours := current == ChoiceOurs || current == ChoiceBoth
+	theirs := current == ChoiceTheirs || current == ChoiceBoth
+	mine, other, myChoice, otherChoice, otherLines := ours, theirs, ChoiceOurs, ChoiceTheirs, c.Theirs
+	if side == paneTheirs {
+		mine, other, myChoice, otherChoice, otherLines = theirs, ours, ChoiceTheirs, ChoiceOurs, c.Ours
+	}
+	switch {
+	case apply && other:
+		return ChoiceBoth
+	case apply:
+		return myChoice
+	case other:
+		return otherChoice
+	case mine, equalLines(otherLines, c.Base):
+		return ChoiceBase
+	default:
+		return otherChoice
+	}
 }

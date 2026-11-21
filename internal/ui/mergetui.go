@@ -347,11 +347,16 @@ func (m *MergeModel) resolve(choice Choice) {
 		m.notice("Select a change first (n/p)", true)
 		return
 	}
+	m.applyChoice(choice, true)
+}
+
+// applyChoice sets the choice of the selected change; advance moves on to the next unresolved conflict.
+func (m *MergeModel) applyChoice(choice Choice, advance bool) {
 	chunk := m.changed[m.current]
 	m.setChoice(chunk, choice, nil)
 	m.rebuild()
 	m.notice(m.resolvedNotice(chunk, choice), false)
-	if next := m.nextUnresolved(); next >= 0 {
+	if next := m.nextUnresolved(); advance && next >= 0 {
 		m.gotoChange(next)
 	} else {
 		m.keepVisible()
@@ -482,22 +487,20 @@ func (m MergeModel) editorCell(number, numWidth, width int) string {
 // gutter draws the strip between two panes: an arrow on the first row of a change that the
 // neighbouring side contributes to, a bar on the other rows of a change.
 func (m MergeModel) gutter(row mergeRow, side int) string {
-	chunk := m.chunks[row.chunk]
-	if chunk.Kind == merge.Unchanged {
-		return m.theme.Gutter.Render(" │ ")
+	if m.chunks[row.chunk].Kind == merge.Unchanged {
+		return m.theme.Gutter.Render("  │  ")
 	}
 	style := m.theme.Gutter
 	if m.current >= 0 && m.changed[m.current] == row.chunk {
 		style = m.theme.GutterCur
 	}
-	arrow := " » "
+	if !m.arrowShown(row, side) {
+		return style.Render("  ┃  ")
+	}
 	if side == paneTheirs {
-		arrow = " « "
+		return style.Render(" « × ")
 	}
-	if m.arrowShown(row, side) {
-		return style.Render(arrow)
-	}
-	return style.Render(" ┃ ")
+	return style.Render(" × » ")
 }
 
 // WithHighlight returns the model with syntax highlighting; the lexer is chosen by the first file name

@@ -368,7 +368,7 @@ func TestMergeView_FitsWidthWhileEditing_WhenSizesVary(t *testing.T) {
 		model = mergePress(updated.(MergeModel), "j", "e")
 		model = typeModel(model, key(strings.Repeat("long ", 30)))
 		for i, line := range strings.Split(model.View(), "\n") {
-			if got := lipgloss.Width(line); got > width && width >= 2*gutterWidth {
+			if got := lipgloss.Width(line); got > width && width >= 2*mergeGutterWidth {
 				t.Fatalf("width %d line %d is %d wide", width, i, got)
 			}
 		}
