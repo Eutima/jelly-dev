@@ -26,6 +26,7 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
+      - LICENSE
 
 checksum:
   name_template: checksums.txt
@@ -33,7 +34,7 @@ checksum:
 changelog:
   disable: true
 
-# Publishing is switched off until a release target (for example a GitHub repository) is chosen.
-# To publish on a tag, remove this block and add a workflow that runs `goreleaser release`.
 release:
-  disable: true
+  github:
+    owner: Eutima
+    name: jelly-diff

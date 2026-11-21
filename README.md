@@ -11,12 +11,13 @@ act as a three-pane `git mergetool`.
 - Type: tool
 - Tier: 1
 - Owner: Roy
+- License: MIT
 - Stack: Go + Bubble Tea (deliberate deviation from the Python tool default)
 
 ## Status
 
 Done: file diff, word-level highlights, unified view, clipboard compare, git changes, directory diff, three-pane
-merge, git tool setup, themes (dark, light, mono), syntax highlighting. Open: release packaging.
+merge, git tool setup, themes (dark, light, mono), syntax highlighting. Releases are published automatically.
 
 Usage: `jelly-diff <file-a> <file-b>`. Flags must come before file names.
 Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage error.
@@ -77,6 +78,18 @@ the current repository only), then use `git difftool` and `git mergetool`.
 `playground/` has sample files, two directory trees, merge inputs and a script that creates git repositories with local
 changes and with a merge stopped on conflicts: see `playground/README.md`.
 
+## Install
+
+Latest release, checked against the SHA-256 checksum published with it (an integrity check, not a signature):
+
+```
+curl -fsSL https://raw.githubusercontent.com/Eutima/jelly-diff/master/scripts/install.sh | sh   # Linux, macOS
+irm https://raw.githubusercontent.com/Eutima/jelly-diff/master/scripts/install.ps1 | iex        # Windows (PowerShell)
+```
+
+Set `JELLY_DIFF_VERSION` (for example `v0.2.0`) to pick a release and `INSTALL_DIR` to change the target
+(default `~/.local/bin`, on Windows `%LOCALAPPDATA%\Programs\jelly-diff`).
+
 ## Run
 
 ```
@@ -116,8 +129,12 @@ goreleaser release --snapshot --clean      # archives for Linux, macOS and Windo
 
 CI (`.github/workflows/ci.yml`) cross-compiles all six targets and runs `goreleaser check`. The actions are pinned
 to commit SHAs and GoReleaser to an exact version; Dependabot (`.github/dependabot.yml`) proposes updates weekly
-with Conventional Commit titles. Publishing is switched off
-in `.goreleaser.yaml` until a release target is chosen.
+with Conventional Commit titles.
+
+Every push to `master` runs the tests (`.github/workflows/release.yml`) and then creates a release:
+`scripts/next-version.sh` derives the next `vX.Y.Z` tag from the Conventional Commits since the last tag
+(`feat` = minor, `fix`/`perf` = patch, `!` or `BREAKING CHANGE` = major) and GoReleaser publishes the archives and
+`checksums.txt` to GitHub. Pushes with only `chore`, `docs`, `test`, `ci` or `refactor` commits create no release.
 
 ## Config
 
