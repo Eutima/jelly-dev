@@ -91,7 +91,7 @@ HTTPS and are not checksum-verified.
 
 **Languages**: the language servers and formatters are installed per language: `python`, `html`, `css`, `json`, `yaml`, `docker` (Dockerfile), `compose` (Docker Compose), `javascript`
 (JavaScript and TypeScript), `angular`, `go`, `rust`, `c`, `cpp` (C++), `java`, `groovy`. The first time jd starts in a terminal it asks which ones you work
-with (python, html, css, json, yaml, docker and compose are checked; `space` toggles, `a` all, `n` none, `enter` installs, `esc` chooses no language, `ctrl+c` means "not now" and it asks again
+with (nothing is checked beforehand; `space` toggles, `a` all, `n` none, `enter` installs, `esc` chooses no language, `ctrl+c` means "not now" and it asks again
 at the next start) and remembers the answer in `languages.json` in the config folder. Only the tools of those languages (and the runtimes they need) are installed, by the
 installer script, and later by the IDE when it starts (`:tools` installs what is missing). Change it any time from the command line,
 which needs no root rights:
@@ -108,6 +108,14 @@ formatter are installed (and the language is added to the chosen ones). Rust use
 rustfmt`), C and C++ use `clangd` from your package manager and `clang-format` (pipx). A missing runtime (Node.js, Python, Go, a JDK,
 rustup) is reported; `jd setup` installs those. The installer script takes the same
 choice as `JD_LANGS=python,html,css,json,yaml,docker,compose` (also `all` or `none`).
+
+**Python environments**: the Python language server (pyright) is told which interpreter belongs to the project, so imports of the
+project's packages resolve in a plain venv, with uv and with the normal system Python. In this order: `JD_PYTHON` (the interpreter
+itself), an environment that is active when jd starts (`VIRTUAL_ENV`: venv, virtualenv, `uv run`/activated uv environments, poetry
+shell), the uv environment `UV_PROJECT_ENVIRONMENT`, `.venv`, `venv` or `env` in the project (`uv sync`, `uv venv`,
+`python -m venv .venv`, poetry or pdm in the project; for a project with several Python folders also the one at the top), an active
+conda environment, and for a uv project (`uv.lock`, or `[tool.uv]` in `pyproject.toml`) what `uv python find` says. Without any of
+them the Python on the PATH is used. A `pyrightconfig.json` or `[tool.pyright]` with its own `venv` takes precedence in pyright.
 
 Options (environment variables): `JELLY_DEV_VERSION` (for example `v0.2.0`) picks a release, `INSTALL_DIR` changes
 the target, `JD_SKIP_GIT_CONFIG=1` leaves the git configuration alone.

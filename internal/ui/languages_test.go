@@ -123,3 +123,15 @@ func rowsDown(id string) []string {
 	}
 	panic("unknown language " + id)
 }
+
+func TestLanguages_TheHintSaysWhatEnterDoesWhenNothingIsChecked(t *testing.T) {
+	empty, _ := NewLanguagesModel(tools.Languages(), nil)
+	updated, _ := empty.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	if view := stripANSI(updated.View()); !strings.Contains(view, "[enter] continue without tools") || strings.Contains(view, "[x]") {
+		t.Fatalf("nothing is checked and enter installs nothing:\n%s", view)
+	}
+	updated, _ = updated.Update(tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}})
+	if view := stripANSI(updated.View()); !strings.Contains(view, "[enter] install") || !strings.Contains(view, "[x] Python") {
+		t.Fatalf("with a check enter installs:\n%s", view)
+	}
+}

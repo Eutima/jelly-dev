@@ -238,19 +238,19 @@ var (
 func TestSetup_AsksWhichLanguagesOnceAndPassesThemToTheInstaller(t *testing.T) {
 	dir, fake, asked := t.TempDir(), &installerFake{}, 0
 	env := fake.env(true, "")
-	env.runUI = answerLanguages(&asked, keyEnter) // the defaults
+	env.runUI = answerLanguages(&asked, keySpace, tea.KeyMsg{Type: tea.KeyDown}, keySpace, keyEnter) // nothing is checked: Python and HTML
 	setupOnFirstStart(dir, io.Discard, io.Discard, env)
-	if asked != 1 || len(fake.envs) != 1 || fake.envs[0][0] != "JD_LANGS=python,html,css,json,yaml,docker,compose" {
+	if asked != 1 || len(fake.envs) != 1 || fake.envs[0][0] != "JD_LANGS=python,html" {
 		t.Fatalf("the question is asked and the answer goes to the installer: asked %d, env %v", asked, fake.envs)
 	}
-	if saved, ok := tools.LoadLanguages(dir); !ok || strings.Join(saved, ",") != "python,html,css,json,yaml,docker,compose" {
+	if saved, ok := tools.LoadLanguages(dir); !ok || strings.Join(saved, ",") != "python,html" {
 		t.Fatalf("the answer is saved: %v %v", saved, ok)
 	}
 	// jd setup later: nobody is asked again, the saved languages are used
 	if code := run([]string{"setup"}, io.Discard, io.Discard, withConfigDir(env, dir)); code != exitOK {
 		t.Fatalf("code %d", code)
 	}
-	if asked != 1 || len(fake.envs) != 2 || fake.envs[1][0] != "JD_LANGS=python,html,css,json,yaml,docker,compose" {
+	if asked != 1 || len(fake.envs) != 2 || fake.envs[1][0] != "JD_LANGS=python,html" {
 		t.Fatalf("the question is asked only initially: asked %d, env %v", asked, fake.envs)
 	}
 }
@@ -285,10 +285,10 @@ func TestSetup_OtherLanguagesAreChosenWithTheKeys(t *testing.T) {
 	dir, fake, asked := t.TempDir(), &installerFake{}, 0
 	env := fake.env(true, "")
 	down := tea.KeyMsg{Type: tea.KeyDown}
-	env.runUI = answerLanguages(&asked, keySpace, down, down, down, down, down, down, down, down, down, keySpace, keyEnter) // Python off, Go on
+	env.runUI = answerLanguages(&asked, down, down, down, down, down, down, down, down, down, keySpace, keyEnter) // down to Go, check it
 	setupOnFirstStart(dir, io.Discard, io.Discard, env)
-	if fake.envs[0][0] != "JD_LANGS=html,css,json,yaml,docker,compose,go" {
-		t.Fatalf("python off, go on: %v", fake.envs)
+	if fake.envs[0][0] != "JD_LANGS=go" {
+		t.Fatalf("nothing was checked before: only Go: %v", fake.envs)
 	}
 }
 
@@ -390,5 +390,19 @@ func TestSetup_JdLangsNoneIsRecognisedInAnyCase(t *testing.T) {
 		if asked != 0 || fake.envs[0][0] != "JD_LANGS=none" {
 			t.Fatalf("%s: no question, no language: asked %d, %v", value, asked, fake.envs)
 		}
+	}
+}
+
+// Nothing is checked when the question comes: enter on its own chooses no language (it is no "install the defaults").
+func TestSetup_TheQuestionStartsWithNothingChecked(t *testing.T) {
+	dir, fake, asked := t.TempDir(), &installerFake{}, 0
+	env := fake.env(true, "")
+	env.runUI = answerLanguages(&asked, keyEnter)
+	setupOnFirstStart(dir, io.Discard, io.Discard, env)
+	if asked != 1 || len(fake.envs) != 1 || fake.envs[0][0] != "JD_LANGS=none" {
+		t.Fatalf("enter without a check chooses no language: asked %d, %v", asked, fake.envs)
+	}
+	if saved, ok := tools.LoadLanguages(dir); !ok || len(saved) != 0 {
+		t.Fatalf("and that is remembered: %v %v", saved, ok)
 	}
 }

@@ -35,7 +35,27 @@ func TestHelperServer(t *testing.T) {
 		}
 		_ = json.Unmarshal(body, &msg)
 		reply := func(result any) { send(map[string]any{"jsonrpc": "2.0", "id": msg.ID, "result": result}) }
+		logLine := func(line string) { // what the client told the server, for the tests that look at it
+			if file := os.Getenv("GO_FAKE_LOG"); file != "" {
+				if f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+					_, _ = f.WriteString(line + "\n")
+					f.Close()
+				}
+			}
+		}
 		switch msg.Method {
+		case "":
+			if msg.ID != nil {
+				var response struct{ Result json.RawMessage }
+				_ = json.Unmarshal(body, &response)
+				logLine("response " + string(*msg.ID) + " " + string(response.Result))
+			}
+		case "workspace/didChangeConfiguration":
+			logLine("didChangeConfiguration " + string(msg.Params))
+			// like pyright: after a change the server asks for the sections it uses
+			send(map[string]any{"jsonrpc": "2.0", "id": 903, "method": "workspace/configuration", "params": map[string]any{
+				"items": []any{map[string]any{"section": "python"}, map[string]any{"section": "python.analysis"}, map[string]any{"section": "python.pythonPath"}, 7},
+			}})
 		case "initialize":
 			// servers ask the client things while starting up; the client must answer them
 			send(map[string]any{"jsonrpc": "2.0", "id": 900, "method": "workspace/configuration", "params": map[string]any{"items": []any{1, 2}}})

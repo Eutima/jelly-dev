@@ -123,7 +123,7 @@ func (m LanguagesModel) View() string {
 	}
 	lines := []string{
 		m.theme.Header.Render(padRight(" Jelly Dev: which languages do you work with?", m.width)),
-		m.theme.Equal.Render(padRight(" jd installs the language server and the formatter of the languages you check.", m.width)),
+		m.theme.Equal.Render(padRight(" Check the languages: jd installs the language server and the formatter of each.", m.width)),
 		strings.Repeat(" ", m.width),
 	}
 	for i, l := range m.languages {
@@ -148,7 +148,11 @@ func (m LanguagesModel) View() string {
 func (m LanguagesModel) hintBar() *bar {
 	result := &bar{}
 	result.add(barPart{" ", m.theme.Footer})
-	for _, h := range [][2]string{{"enter", "install"}, {"space", "toggle"}, {"a", "all"}, {"n", "none"}, {"esc", "no languages"}, {"ctrl+c", "not now"}} {
+	enter := "install"
+	if len(m.checkedIDs()) == 0 {
+		enter = "continue without tools" // nothing is checked
+	}
+	for _, h := range [][2]string{{"enter", enter}, {"space", "toggle"}, {"a", "all"}, {"n", "none"}, {"esc", "no languages"}, {"ctrl+c", "not now"}} {
 		result.command(h[0], h[1], true, m.theme)
 	}
 	return result

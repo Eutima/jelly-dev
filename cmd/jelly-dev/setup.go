@@ -173,7 +173,7 @@ func languagesValue(languages []string) string {
 
 // languagesForSetup decides which languages the installer script installs tools for: what the user said in JD_LANGS, else
 // what was chosen before (languages.json), else the answer to the question that is asked now, once, when jd is used in a
-// terminal. Without an answer the defaults count. The answer is saved, so nobody is asked twice (jd install-lsp changes it).
+// terminal (nothing is checked beforehand). Without a terminal to ask the defaults count. The answer is saved, so nobody is asked twice (jd install-lsp changes it).
 func languagesForSetup(configDir string, stderr io.Writer, env environment) (languages []string, ok bool) {
 	if said := env.getenv(envLangs); said != "" {
 		languages, err := tools.ParseLanguages(said)
@@ -189,7 +189,7 @@ func languagesForSetup(configDir string, stderr io.Writer, env environment) (lan
 	if env.interactive == nil || !env.interactive() || env.runUI == nil {
 		return chosen, true // nobody to ask (a script, CI): the defaults, and the question is still to come
 	}
-	model, outcome := ui.NewLanguagesModel(tools.Languages(), chosen)
+	model, outcome := ui.NewLanguagesModel(tools.Languages(), nil) // nothing is checked: the user chooses
 	if err := env.runUI(model); err != nil {
 		fmt.Fprintf(stderr, "jd: could not ask which languages: %v (using %s)\n", err, strings.Join(chosen, ", "))
 		return chosen, true
