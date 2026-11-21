@@ -16,11 +16,12 @@ import (
 )
 
 const (
-	mergeArgCount = 4 // BASE LOCAL REMOTE MERGED, the order of git mergetool's variables
-	pairArgCount  = 2 // A B: merge B into A without git
-	defaultMode   = 0o644
-	lf            = "\n"
-	crlf          = "\r\n"
+	mergeArgCount  = 4 // BASE LOCAL REMOTE MERGED, the order of git mergetool's variables
+	pairArgCount   = 2 // A B: merge B into A without git
+	defaultMode    = 0o644
+	defaultDirMode = 0o755
+	lf             = "\n"
+	crlf           = "\r\n"
 )
 
 // runMerge handles `jelly-diff merge BASE LOCAL REMOTE MERGED` (the git mergetool entry point) and
@@ -48,7 +49,7 @@ func mergePair(aPath, bPath string, stdout io.Writer, env environment) error {
 	aIsDir, bIsDir := isDirectory(aPath), isDirectory(bPath)
 	switch {
 	case aIsDir && bIsDir:
-		return errors.New("merging directories is not supported yet")
+		return mergeDirectories(aPath, bPath, stdout, env)
 	case aIsDir != bIsDir:
 		return fmt.Errorf("cannot merge a directory with a file: %s, %s", aPath, bPath)
 	}
@@ -119,6 +120,72 @@ func mergeFiles(basePath, localPath, remotePath, mergedPath string, stdout io.Wr
 		return save(model.Result())
 	}
 	return showMerge(model.WithHighlight(mergedPath, localPath, remotePath), outcome, env)
+}
+
+// mergeDirectories lists the files that differ between two directories; each opens in the merge viewer and is
+// saved into directory a. A file that exists on one side only is merged against an empty counterpart.
+func mergeDirectories(aDir, bDir string, stdout io.Writer, env environment) error {
+	changes, err := source.OpenDirs(aDir, bDir)
+	if err != nil {
+		return err
+	}
+	var files []source.ChangedFile
+	err = env.busy("comparing directories ...", func() (listErr error) {
+		files, listErr = changes.List()
+		return listErr
+	})
+	if err != nil {
+		return err
+	}
+	if len(files) == 0 {
+		fmt.Fprintln(stdout, "no differences")
+		return nil
+	}
+	open := func(file source.ChangedFile) (ui.MergeModel, *ui.MergeOutcome, error) {
+		aPath, bPath := changes.Paths(file.Path)
+		// Read what exists now, not what the list said: a file created in a since (for example by an earlier save)
+		// must never be treated as empty.
+		a, err := readIfExists(aPath)
+		if err != nil {
+			return ui.MergeModel{}, nil, err
+		}
+		b, err := readIfExists(bPath)
+		if err != nil {
+			return ui.MergeModel{}, nil, err
+		}
+		chunks := merge.TwoWay(diff.SplitLines(a), diff.SplitLines(b))
+		lineEnding := lineEndingOf(a) // a's own line ending; b's when the file is new
+		if a == "" {
+			lineEnding = lineEndingOf(b)
+		}
+		save := func(lines []string) error {
+			if err := os.MkdirAll(filepath.Dir(aPath), defaultDirMode); err != nil {
+				return fmt.Errorf("write %s: %w", aPath, err)
+			}
+			return writeResult(aPath, lines, lineEnding)
+		}
+		titles := ui.MergeTitles{
+			Name: file.Path, Ours: filepath.Join(aDir, file.Path), Result: file.Path, Theirs: filepath.Join(bDir, file.Path),
+		}
+		model, outcome := ui.NewMergeModel(titles, chunks, save)
+		if model.ChangeCount() == 0 {
+			return ui.MergeModel{}, nil, errors.New("no line differences (the files are equal, empty, or differ only in line endings)")
+		}
+		return model.WithHighlight(aPath, bPath), outcome, nil
+	}
+	if err := env.runUI(ui.NewDirMergeModel(aDir, bDir, files, open)); err != nil {
+		return fmt.Errorf("run ui: %w", err)
+	}
+	return nil
+}
+
+// readIfExists reads a text file; a file that does not exist counts as empty.
+func readIfExists(path string) (string, error) {
+	text, err := source.ReadTextFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	return text, err
 }
 
 // readBase reads the common ancestor; a missing file (add/add conflict) counts as empty.

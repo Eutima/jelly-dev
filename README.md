@@ -62,6 +62,11 @@ Without git: `jelly-diff merge <file-a> <file-b>` merges file b into file a and 
 with a's line endings). There is no common ancestor, so every difference is a conflict you decide (`»`/`«`/`×`, `o`/`t`/`b`,
 `ctrl+o` keeps all of a, `ctrl+t` takes all of b); identical files print "no differences" and write nothing.
 
+Directories: `jelly-diff merge <dir-a> <dir-b>` lists the files that differ (`M`, `(only in a)`, `(only in b)`);
+`enter` opens one in the merge view and `s` saves it into directory a (a file only in b is created there; for a file only
+in a you decide per hunk, `ctrl+o` keeps it). `q` returns to the list, where `✓` marks merged files. Directory b is
+never changed and nothing is deleted.
+
 The result is written atomically with the line endings of the local file and a final newline; the exit code is 0 only
 after saving.
 Use as git tool: `jelly-diff install-git` prints the `git config` commands, `--apply` writes them (`--local` for

@@ -317,3 +317,167 @@ func TestRun_RefusesToMergeDirectoryWithFile(t *testing.T) {
 		t.Fatalf("code %d err %q", code, stderr.String())
 	}
 }
+
+func dirFixture(t *testing.T) (aDir, bDir string) {
+	t.Helper()
+	root := t.TempDir()
+	aDir, bDir = filepath.Join(root, "a"), filepath.Join(root, "b")
+	files := map[string]string{
+		"a/both.txt": "1\nold\n3\n", "b/both.txt": "1\nnew\n3\n",
+		"a/same.txt": "same\n", "b/same.txt": "same\n",
+		"a/only_a.txt":     "keep me\n",
+		"b/sub/only_b.txt": "from b\n",
+	}
+	for name, content := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return aDir, bDir
+}
+
+// dirKeys feeds keys to the directory merge model: "enter" is the enter key, other strings are typed runes.
+func dirKeys(keys ...string) uiRunner {
+	return func(model tea.Model) error {
+		model, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+		for _, key := range keys {
+			switch key {
+			case "enter":
+				model, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			default:
+				model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+			}
+		}
+		return nil
+	}
+}
+
+func TestRun_MergesFileIntoDirectoryA_WhenOpenedTakenAndSaved(t *testing.T) {
+	aDir, bDir := dirFixture(t)
+	// the list is sorted: both.txt, only_a.txt, sub/only_b.txt
+	code := run([]string{"merge", aDir, bDir}, &bytes.Buffer{}, &bytes.Buffer{},
+		testEnv(dirKeys("enter", "n", "t", "s", "q")))
+	if code != exitOK || readFile(t, filepath.Join(aDir, "both.txt")) != "1\nnew\n3\n" {
+		t.Fatalf("code %d both.txt %q", code, readFile(t, filepath.Join(aDir, "both.txt")))
+	}
+	if readFile(t, filepath.Join(bDir, "both.txt")) != "1\nnew\n3\n" {
+		t.Fatal("directory b must never change")
+	}
+}
+
+func TestRun_CreatesFileInDirectoryA_WhenFileExistsOnlyInB(t *testing.T) {
+	aDir, bDir := dirFixture(t)
+	code := run([]string{"merge", aDir, bDir}, &bytes.Buffer{}, &bytes.Buffer{},
+		testEnv(dirKeys("G", "enter", "n", "t", "s", "q")))
+	if got := readFile(t, filepath.Join(aDir, "sub", "only_b.txt")); code != exitOK || got != "from b\n" {
+		t.Fatalf("code %d created file %q", code, got)
+	}
+}
+
+func TestRun_KeepsFileOnlyInA_WhenOursTakenForIt(t *testing.T) {
+	aDir, bDir := dirFixture(t)
+	code := run([]string{"merge", aDir, bDir}, &bytes.Buffer{}, &bytes.Buffer{},
+		testEnv(dirKeys("j", "enter", "n", "o", "s", "q")))
+	if got := readFile(t, filepath.Join(aDir, "only_a.txt")); code != exitOK || got != "keep me\n" {
+		t.Fatalf("code %d only_a.txt %q", code, got)
+	}
+}
+
+func TestRun_LeavesDirectoryAUntouched_WhenNothingSaved(t *testing.T) {
+	aDir, bDir := dirFixture(t)
+	code := run([]string{"merge", aDir, bDir}, &bytes.Buffer{}, &bytes.Buffer{},
+		testEnv(dirKeys("enter", "n", "t", "q", "q", "q")))
+	if got := readFile(t, filepath.Join(aDir, "both.txt")); code != exitOK || got != "1\nold\n3\n" {
+		t.Fatalf("code %d both.txt %q", code, got)
+	}
+}
+
+func TestRun_ReportsNoDifferences_WhenDirectoriesMatch(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	for _, dir := range []string{a, b} {
+		if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("x\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var stdout bytes.Buffer
+	code := run([]string{"merge", a, b}, &stdout, &bytes.Buffer{}, testEnv(func(tea.Model) error { t.Fatal("no UI expected"); return nil }))
+	if code != exitOK || !strings.Contains(stdout.String(), "no differences") {
+		t.Fatalf("code %d out %q", code, stdout.String())
+	}
+}
+
+// scriptedRun feeds keys to the UI; after the key at index step it calls between (to change files while the tool runs).
+func scriptedRun(keys []string, step int, between func(), view *string) uiRunner {
+	return func(model tea.Model) error {
+		model, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+		for i, key := range keys {
+			if key == "enter" {
+				model, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			} else {
+				model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+			}
+			if i == step && between != nil {
+				between()
+			}
+		}
+		*view = model.View()
+		return nil
+	}
+}
+
+func TestRun_DoesNotOverwriteFileInA_WhenFileOnlyInBWasSavedAndIsOpenedAgain(t *testing.T) {
+	root := t.TempDir()
+	aDir, bDir := filepath.Join(root, "a"), filepath.Join(root, "b")
+	for _, dir := range []string{aDir, bDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	aFile := filepath.Join(aDir, "only_b.txt")
+	if err := os.WriteFile(filepath.Join(bDir, "only_b.txt"), []byte("from b\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var view string
+	keys := []string{"enter", "n", "t", "s", "q", "enter", "n", "o", "s", "q"}
+	changeA := func() { // after the first save the file exists in a; someone edits it while the list still says "only in b"
+		if err := os.WriteFile(aFile, []byte("changed in a\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code := run([]string{"merge", aDir, bDir}, &bytes.Buffer{}, &bytes.Buffer{}, testEnv(scriptedRun(keys, 4, changeA, &view)))
+	if got := readFile(t, aFile); code != exitOK || got != "changed in a\n" {
+		t.Fatalf("code %d a %q: the existing file in a must be merged, not treated as empty", code, got)
+	}
+}
+
+func TestRun_ListsErrorAndContinues_WhenFileIsBinaryOrOnlyLineEndingsDiffer(t *testing.T) {
+	root := t.TempDir()
+	aDir, bDir := filepath.Join(root, "a"), filepath.Join(root, "b")
+	files := map[string]string{
+		"a/bin.dat": "x\n", "b/bin.dat": "x\x00\x01\n",
+		"a/eol.txt": "same\r\n", "b/eol.txt": "same\n",
+	}
+	for name, content := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var view string
+	// sorted: bin.dat, eol.txt
+	if code := run([]string{"merge", aDir, bDir}, &bytes.Buffer{}, &bytes.Buffer{},
+		testEnv(scriptedRun([]string{"enter"}, -1, nil, &view))); code != exitOK || !strings.Contains(view, "Cannot open bin.dat") {
+		t.Fatalf("code %d view:\n%s", code, view)
+	}
+	if run([]string{"merge", aDir, bDir}, &bytes.Buffer{}, &bytes.Buffer{},
+		testEnv(scriptedRun([]string{"j", "enter"}, -1, nil, &view))); !strings.Contains(view, "no line differences") {
+		t.Fatalf("view:\n%s", view)
+	}
+}

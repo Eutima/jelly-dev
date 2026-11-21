@@ -97,6 +97,8 @@ type MergeModel struct {
 	saveFailed    bool // the last save attempt failed and nothing changed since
 	dirty         bool // result differs from what was last saved
 	quitArmed     bool
+	embedded      bool // shown inside another model: quitting sets done instead of ending the program
+	done          bool // an embedded viewer was left
 }
 
 // NewMergeModel builds the viewer. save is called with the result lines when the user saves; the
@@ -328,6 +330,10 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // quit leaves the viewer; unsaved work needs a second press.
 func (m MergeModel) quit() (tea.Model, tea.Cmd) {
 	if !m.dirty || m.quitArmed {
+		if m.embedded {
+			m.done = true
+			return m, nil
+		}
 		return m, tea.Quit
 	}
 	m.quitArmed = true
@@ -550,3 +556,13 @@ func (m MergeModel) arrowShown(row mergeRow, side int) bool {
 func (m MergeModel) buttonShown(row mergeRow, side int, apply bool) bool {
 	return m.arrowShown(row, side) && m.sideChoice(row.chunk, side, apply) != m.choices[row.chunk]
 }
+
+// WithEmbedded returns the viewer for use inside another model: leaving it (after the unsaved-work check) does
+// not end the program but makes Done report true.
+func (m MergeModel) WithEmbedded() MergeModel {
+	m.embedded = true
+	return m
+}
+
+// Done reports whether an embedded viewer was left.
+func (m MergeModel) Done() bool { return m.done }

@@ -106,6 +106,11 @@ func (d *DirChanges) Load(ctx context.Context, file ChangedFile) (oldText, newTe
 	return oldText, newText, nil
 }
 
+// Paths returns the full paths of a listed file in the left and in the right directory (either may not exist).
+func (d *DirChanges) Paths(path string) (left, right string) {
+	return d.fullPath(d.left, path), d.fullPath(d.right, path)
+}
+
 func (d *DirChanges) fullPath(root, path string) string {
 	return filepath.Join(root, filepath.FromSlash(path))
 }

@@ -32,7 +32,7 @@ const (
                                      browse changes of the git repository in the current directory
   jelly-diff merge <base> <local> <remote> <merged>
                                      three-way merge; writes <merged> (git mergetool order)
-  jelly-diff merge <file-a> <file-b> merge file-b into file-a without git; the result is written to file-a
+  jelly-diff merge <a> <b>           merge b into a without git (two files, or two directories); the result is written to a
   jelly-diff --version               print the version
   jelly-diff install-git [--apply] [--local]
                                      print (or with --apply write, overwriting existing values) the git diff/merge tool settings`

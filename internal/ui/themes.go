@@ -169,6 +169,12 @@ func (m MergeModel) WithTheme(theme Theme) MergeModel {
 	return m
 }
 
+// WithTheme returns the model drawn with the given theme; merge viewers opened later use it too.
+func (m DirMergeModel) WithTheme(theme Theme) DirMergeModel {
+	m.theme = theme
+	return m
+}
+
 // Themed applies theme to any of the jelly-diff models and returns other models unchanged.
 func Themed(model tea.Model, theme Theme) tea.Model {
 	switch typed := model.(type) {
@@ -177,6 +183,8 @@ func Themed(model tea.Model, theme Theme) tea.Model {
 	case GitModel:
 		return typed.WithTheme(theme)
 	case MergeModel:
+		return typed.WithTheme(theme)
+	case DirMergeModel:
 		return typed.WithTheme(theme)
 	}
 	return model
