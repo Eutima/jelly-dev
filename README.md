@@ -1,6 +1,6 @@
 # Jelly Dev
 
-<p align="center"><img src="docs/jelly-dev-logo.png" alt="Jelly Dev logo" width="384"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/jelly-dev-logo.png" alt="Jelly Dev logo" width="384"></p>
 
 A terminal diff and merge tool with a JetBrains-style UI: side-by-side panes, colored change blocks and
 word-level highlights. It diffs files, directories and the clipboard, shows `git diff` and acts as a three-pane
@@ -11,6 +11,34 @@ word-level highlights. It diffs files, directories and the clipboard, shows `git
 - Owner: Roy
 - License: MIT
 - Stack: Go + Bubble Tea (deliberate deviation from the Python tool default)
+
+## Screenshots
+
+Taken from the [playground](playground/README.md) examples (`python3 playground/screenshots.py` makes them again).
+
+![Compare two files](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/diff.png)
+*Compare two files: side by side, with syntax colours and word-level highlights (`t` switches to the unified view, `↓`/`↑` jump between the changes).*
+
+![`jd git`](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/git.png)
+*`jd git`: the changes of a git repository, a file list next to the diff of the selected file.*
+
+![Compare two directories (`jd <dir-a> <dir-b>`)](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/directories.png)
+*Compare two directories (`jd <dir-a> <dir-b>`): every added, removed and changed file.*
+
+![Three-way merge (`jd merge`, also git's merge tool)](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/merge.png)
+*Three-way merge (`jd merge`, also git's merge tool): ours, result and theirs, per conflict `→` ours, `←` theirs, `b` both, `e` edit.*
+
+![The project window](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide.png)
+*The project window: file tree, file tabs and a vim-style editor with syntax colours; `ctrl+p` projects, `ctrl+t` terminal, `ctrl+f` and `ctrl+g` search.*
+
+![A shell in a panel under the editor (several tabs), like in VS Code.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide-terminal.png)
+*A shell in a panel under the editor (several tabs), like in VS Code.*
+
+![Search in the files of the project (`ctrl+g`), file names with `ctrl+f`.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide-search.png)
+*Search in the files of the project (`ctrl+g`), file names with `ctrl+f`.*
+
+![The first start asks which languages to install language servers and formatters for.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/languages.png)
+*The first start asks which languages to install language servers and formatters for.*
 
 ## Install
 
