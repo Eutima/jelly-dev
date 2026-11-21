@@ -14,8 +14,10 @@ import (
 )
 
 const (
-	editorChrome    = 3 // tab line, message line, status line
-	editorScrollOff = 3
+	editorTabLines   = 1 // the tab line
+	editorFooterRows = 2 // the status line wraps to at most this many lines
+	editorMessageMax = 3 // a long message wraps to at most this many lines
+	editorScrollOff  = 3
 )
 
 // EditorModel is the editor: one file edited with vim keys.
@@ -130,7 +132,14 @@ func (m *EditorModel) notice(text string, warn bool) { m.status, m.warn = text, 
 // Init implements tea.Model.
 func (m EditorModel) Init() tea.Cmd { return nil }
 
-func (m EditorModel) bodyHeight() int { return max(m.height-editorChrome, 1) }
+// bodyHeight is the height of the text: the window without the tab line, the message and the status line, which grow with their
+// text when the window is narrow.
+func (m EditorModel) bodyHeight() int {
+	return max(m.height-editorTabLines-len(m.messageRows())-len(m.footerRows()), 1)
+}
+
+// footerRows is the status line as wrapped bars: it takes more than one line when its commands do not fit in the width.
+func (m EditorModel) footerRows() []*bar { return m.footerBar().wrap(m.width, editorFooterRows) }
 
 // Update implements tea.Model.
 func (m EditorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -431,10 +440,12 @@ func (m EditorModel) footerBar() *bar {
 }
 
 func (m EditorModel) footerKeys(x, y int) []string {
-	if y != m.height-1 {
+	rows := m.footerRows()
+	first := m.height - len(rows)
+	if y < first || y >= m.height || x < 0 || x >= m.width {
 		return nil
 	}
-	return m.footerBar().visibleKeysAt(x, m.width)
+	return rows[y-first].keysAt(x)
 }
 
 // View implements tea.Model.
@@ -516,9 +527,11 @@ func (m EditorModel) View() string {
 			out.WriteByte('\n')
 		}
 	}
-	out.WriteString(m.messageLine())
-	out.WriteByte('\n')
-	out.WriteString(m.footerBar().render(m.width, m.theme.Footer))
+	for _, row := range m.messageRows() {
+		out.WriteString(row)
+		out.WriteByte('\n')
+	}
+	out.WriteString(strings.Join(m.footerBar().renderLines(m.width, editorFooterRows, m.theme.Footer), "\n"))
 	return out.String()
 }
 
@@ -543,21 +556,31 @@ func (m EditorModel) popupPlacement() (lines []string, firstRow, x, width int) {
 	return lines, firstRow, x, width
 }
 
-// messageLine is the line above the status line: the command being typed, or the last message.
-func (m EditorModel) messageLine() string {
+// messageRows are the lines above the status line: the command being typed, or the last message, wrapped at the spaces when it is
+// longer than the window is wide (instead of cut off).
+func (m EditorModel) messageRows() []string {
+	width := max(m.width, 1)
+	wrapped := func(text string, style lipgloss.Style) []string {
+		lines := wrapWords(text, width-1, editorMessageMax) // one column for the space that starts a line
+		rows := make([]string, len(lines))
+		for i, line := range lines {
+			rows[i] = style.Render(padRight(" "+line, width))
+		}
+		return rows
+	}
 	switch {
 	case m.vim.Mode() == vimbuf.Command:
-		return renderText(m.vim.CommandPrefix()+m.vim.CommandLine(), nil, m.width, m.theme.Equal, m.theme.Equal)
+		return []string{renderText(m.vim.CommandPrefix()+m.vim.CommandLine(), nil, width, m.theme.Equal, m.theme.Equal)}
 	case m.ambient != "" && m.status == "" && m.completion == nil:
-		return m.theme.Equal.Faint(true).Render(padRight(" "+sanitize(m.ambient), m.width))
+		return wrapped(sanitize(m.ambient), m.theme.Equal.Faint(true))
 	case m.completion != nil && m.status == "":
-		return m.theme.Equal.Faint(true).Render(padRight(m.completionHint(), m.width))
+		return []string{m.theme.Equal.Faint(true).Render(padRight(m.completionHint(), width))}
 	case m.status != "" && m.warn:
-		return m.theme.Warning.Render(padRight(" "+m.status, m.width))
+		return wrapped(sanitize(m.status), m.theme.Warning)
 	case m.status != "":
-		return renderText(" "+m.status, nil, m.width, m.theme.Equal, m.theme.Equal)
+		return wrapped(sanitize(m.status), m.theme.Equal)
 	case m.vim.Pending() != "":
-		return m.theme.Equal.Render(padRight(" "+m.vim.Pending(), m.width))
+		return []string{m.theme.Equal.Render(padRight(" "+m.vim.Pending(), width))}
 	}
-	return lipgloss.NewStyle().Render(strings.Repeat(" ", m.width))
+	return []string{lipgloss.NewStyle().Render(strings.Repeat(" ", width))}
 }

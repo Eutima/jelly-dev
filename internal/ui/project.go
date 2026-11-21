@@ -22,7 +22,9 @@ const (
 	maxTreeWidth     = 40
 	treePercent      = 25
 	minProjectWidth  = 50 // narrower terminals show only the focused pane
-	treeChrome       = 2  // header and hint line
+	treeHeaderLines  = 1  // the folder name above the tree
+	treeFooterBars   = 2  // the hint line wraps to at most this many lines
+	treeMessageMax   = 3  // a long message wraps to at most this many lines
 	topBarHeight     = 1  // the bar with the project, terminal and diff buttons
 	focusTree        = 0
 	focusProjectEdit = 1
@@ -228,7 +230,42 @@ func (m ProjectModel) resizeEditor() ProjectModel {
 // bodyHeight is the height of the panes: the window without the top bar.
 func (m ProjectModel) bodyHeight() int { return max(m.height-topBarHeight, 1) }
 
-func (m ProjectModel) treeBody() int { return max(m.bodyHeight()-treeChrome, 1) }
+// treeBody is the number of rows of the tree: the pane without its header and its footer, which takes more lines when the pane is
+// narrow and the hints or a message do not fit in one.
+func (m ProjectModel) treeBody() int {
+	return max(m.bodyHeight()-treeHeaderLines-len(m.treeFooterRows(m.treeFooterWidth())), 1)
+}
+
+func (m ProjectModel) treeFooterWidth() int {
+	if width := m.treeWidth(); width > 0 {
+		return width
+	}
+	return max(m.width, 1)
+}
+
+// treeFooterRows are the lines under the tree: a message or the progress of the tool installation (wrapped at the spaces, not cut
+// off), else the hints, wrapped onto a second line when they do not fit.
+func (m ProjectModel) treeFooterRows(width int) []string {
+	wrapped := func(text string, style lipgloss.Style) []string {
+		lines := wrapWords(sanitize(text), max(width-1, 1), treeMessageMax)
+		rows := make([]string, len(lines))
+		for i, line := range lines {
+			rows[i] = style.Render(padRight(" "+line, width))
+		}
+		return rows
+	}
+	switch {
+	case m.status != "":
+		style := m.theme.Footer
+		if m.warn {
+			style = m.theme.Warning
+		}
+		return wrapped(m.status, style)
+	case m.toolStatus != "":
+		return wrapped(m.toolStatus, m.theme.Footer)
+	}
+	return m.treeFooterBar().renderLines(width, treeFooterBars, m.theme.Footer)
+}
 
 func (m *ProjectModel) keepSelectionVisible() {
 	body := m.treeBody()
@@ -737,8 +774,10 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case msg.Button == tea.MouseButtonWheelDown:
 		m.top = min(m.top+wheelLines, max(len(m.tree.Visible())-m.treeBody(), 0))
 	case leftPress(msg):
-		if keys := m.treeFooterBar().visibleKeysAt(msg.X, tree); msg.Y == m.bodyHeight()-1 && keys != nil {
-			return replay(m, keys)
+		if m.status == "" && m.toolStatus == "" { // the hints are clickable, a message is not
+			if keys := m.treeFooterBar().keysAtLine(msg.X, msg.Y-treeHeaderLines-m.treeBody(), tree, treeFooterBars); keys != nil {
+				return replay(m, keys)
+			}
 		}
 		row := m.top + msg.Y - 1
 		rows := m.tree.Visible()
@@ -822,18 +861,7 @@ func (m ProjectModel) treeView(width int) string {
 		}
 		lines = append(lines, m.treeRow(rows[i], i == m.sel, width))
 	}
-	footer := m.treeFooterBar().render(width, m.theme.Footer)
-	switch {
-	case m.status != "":
-		style := m.theme.Footer
-		if m.warn {
-			style = m.theme.Warning
-		}
-		footer = style.Render(padRight(" "+sanitize(m.status), width))
-	case m.toolStatus != "":
-		footer = m.theme.Footer.Render(padRight(" "+sanitize(m.toolStatus), width))
-	}
-	return strings.Join(append(lines, footer), "\n")
+	return strings.Join(append(lines, m.treeFooterRows(width)...), "\n")
 }
 
 func (m ProjectModel) treeRow(node *filetree.Node, selected bool, width int) string {

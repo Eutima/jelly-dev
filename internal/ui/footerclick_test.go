@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -224,7 +225,11 @@ func TestProject_BarsFitSmallTerminals(t *testing.T) {
 	for _, width := range []int{20, 30, 45, 60, 80} {
 		model, _ := newProjectFixture(t, width, sampleFiles)
 		model, _ = projectKeys(model, "G", "enter")
-		for i, line := range strings.Split(stripANSI(model.View()), "\n") {
+		lines := strings.Split(stripANSI(model.View()), "\n")
+		if len(lines) != model.height {
+			t.Fatalf("width %d: %d lines for a window of %d: the footers must not push the window out", width, len(lines), model.height)
+		}
+		for i, line := range lines {
 			if w := lipgloss.Width(line); w > width {
 				t.Fatalf("width %d line %d is %d wide: %q", width, i, w, line)
 			}
@@ -236,7 +241,164 @@ func TestProject_BarsFitSmallTerminals(t *testing.T) {
 	if !strings.Contains(lines[0], "Project") {
 		t.Fatalf("the top bar keeps its first button: %q", lines[0])
 	}
-	if last := lines[len(lines)-1]; !strings.Contains(last, "[:w]") {
-		t.Fatalf("the footer keeps the first command: %q", last)
+}
+
+// A narrow editor does not cut the commands off at the edge of the window: they wrap onto a second line, with their labels while
+// that fits, and every command is still there (and clickable).
+func TestEditor_FooterWrapsInsteadOfCuttingTheCommands(t *testing.T) {
+	model, _ := newEditorForTest(t, "alpha\nbeta\n")
+	model = model.WithForwardedCommands()
+	for _, width := range []int{60, 50, 40} {
+		updated, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: 12})
+		narrow := updated.(EditorModel)
+		lines := strings.Split(stripANSI(narrow.View()), "\n")
+		if len(lines) != 12 {
+			t.Fatalf("width %d: %d lines", width, len(lines))
+		}
+		footer := strings.Join(lines[len(lines)-2:], "\n")
+		for _, command := range []string{"[:w]", "[:q]", "[ctrl+f]", "[ctrl+g]"} {
+			if !strings.Contains(footer, command) {
+				t.Errorf("width %d: %s was cut off:\n%s", width, command, footer)
+			}
+		}
+		for _, line := range lines {
+			if w := lipgloss.Width(line); w != width {
+				t.Fatalf("width %d: a line is %d wide: %q", width, w, line)
+			}
+		}
+	}
+	// at 60 columns the labels fit on two lines: nothing was shortened
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	view := stripANSI(updated.(EditorModel).View())
+	for _, label := range []string{"[:w] save", "[:q] quit", "[ctrl+f] files", "[ctrl+g] text"} {
+		if !strings.Contains(view, label) {
+			t.Errorf("at 60 columns %q still fits and must not be shortened:\n%s", label, view)
+		}
+	}
+}
+
+// A click on a command of the second footer line runs it.
+func TestEditor_ClickOnTheSecondFooterLineRunsTheCommand(t *testing.T) {
+	model, _ := newEditorForTest(t, "alpha\n")
+	model = model.WithForwardedCommands().WithNavigator(&fakeNav{}, t.TempDir()) // gd, gr and :fmt are enabled: they can be clicked
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
+	model = updated.(EditorModel)
+	rows := model.footerRows()
+	if len(rows) != 2 {
+		t.Fatalf("at 40 columns the footer has two lines: %d", len(rows))
+	}
+	if len(rows[1].regions) == 0 {
+		t.Fatal("the second line has a command")
+	}
+	x, keys := rows[1].regions[0].from+1, rows[1].regions[0].keys
+	if got := model.footerKeys(x, model.height-1); !reflect.DeepEqual(got, keys) {
+		t.Fatalf("a click on the second line gives its command: %v, want %v", got, keys)
+	}
+	if got := model.footerKeys(x, model.height-2); reflect.DeepEqual(got, keys) {
+		t.Fatalf("the first line has other commands there: %v", got)
+	}
+}
+
+func TestWrapWords_BreaksAtSpacesAndCutsLongWordsAndEndsWithEllipsis(t *testing.T) {
+	tests := []struct {
+		text       string
+		width, max int
+		want       []string
+	}{
+		{"hello world", 20, 3, []string{"hello world"}},
+		{"hello big world", 9, 3, []string{"hello big", "world"}},
+		{"abcdefghij", 4, 5, []string{"abcd", "efgh", "ij"}},
+		{"one two three four five six", 8, 2, []string{"one two", "three…"}},
+		{"", 10, 3, []string{""}},
+		{"日本語の テスト", 6, 3, []string{"日本語", "の", "テスト"}},
+		{"日本", 1, 3, []string{"日", "本"}}, // a rune wider than the line is taken whole: the cut makes progress
+		{"日本語", 1, 2, []string{"日", "…"}},
+		{"a b c d e f g", 1, 3, []string{"a", "b", "…"}},
+		{"abc", 1, 1, []string{"…"}},
+	}
+	for _, tt := range tests {
+		if got := wrapWords(tt.text, tt.width, tt.max); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("wrapWords(%q, %d, %d) = %q, want %q", tt.text, tt.width, tt.max, got, tt.want)
+		}
+	}
+}
+
+// Nothing in wrapWords may take long or loop: not with a window of one column, not with a text that is a megabyte long.
+func TestWrapWords_AlwaysFinishesQuickly(t *testing.T) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for width := 1; width <= 3; width++ {
+			for _, text := range []string{"日本", "😀😀😀", "a日b本c", strings.Repeat("日本語 ", 50), strings.Repeat("x", 10000)} {
+				if lines := wrapWords(text, width, 3); len(lines) < 1 || len(lines) > 3 {
+					t.Errorf("wrapWords(%q, %d, 3) gave %d lines", text, width, len(lines))
+				}
+			}
+		}
+		start := time.Now()
+		wrapWords(strings.Repeat("word ", 400000), 20, 3) // two megabytes of words
+		if took := time.Since(start); took > time.Second {
+			t.Errorf("a long text took %v: the work must not grow with the text", took)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("wrapWords does not finish")
+	}
+}
+
+// A bar that cannot fit in two lines loses its last commands, it is never cut in the middle of a command.
+func TestBar_WrapDropsTheLastCommandsWhenTwoLinesAreNotEnough(t *testing.T) {
+	theme := DarkTheme()
+	b := &bar{}
+	b.add(barPart{" -- NORMAL --  some-long-file-name.go  120:45   ", theme.Header})
+	for _, key := range []string{":w", ":q", "ctrl+f", "ctrl+g", "gd", "gr", ":fmt"} {
+		b.command(key, "label", true, theme)
+	}
+	lines := b.renderLines(24, 2, theme.Footer)
+	if len(lines) != 2 {
+		t.Fatalf("at most two lines: %d", len(lines))
+	}
+	text := stripANSI(strings.Join(lines, "\n"))
+	if strings.Contains(text, "[:fmt]") || !strings.Contains(text, "[:w]") {
+		t.Fatalf("the first commands stay, the last ones go:\n%s", text)
+	}
+	for _, line := range lines {
+		if lipgloss.Width(line) != 24 {
+			t.Fatalf("every line has the width of the window: %q", line)
+		}
+	}
+	if got := b.keysAtLine(1, 5, 24, 2); got != nil { // a line that does not exist
+		t.Fatalf("no keys below the last line: %v", got)
+	}
+}
+
+// The hints under the tree wrap onto a second line in a narrow pane, and a click on that line runs its command.
+func TestProject_TreeHintsWrapAndTheSecondLineIsClickable(t *testing.T) {
+	model, _ := newProjectFixture(t, 72, sampleFiles) // the tree pane is 18 columns wide
+	rows := model.treeFooterRows(model.treeFooterWidth())
+	if len(rows) != 2 {
+		t.Fatalf("the hints take two lines in a narrow pane: %d", len(rows))
+	}
+	bar := model.treeFooterBar()
+	lines := bar.wrap(model.treeFooterWidth(), treeFooterBars)
+	if len(lines[1].regions) == 0 {
+		t.Fatal("the second line has a command")
+	}
+	region := lines[1].regions[0]
+	y := topBarHeight + treeHeaderLines + model.treeBody() + 1 // the second footer line, on the screen
+	updated, cmd := model.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: region.from + 1, Y: y})
+	got := settleProject(updated.(ProjectModel), cmd)
+	switch region.keys[0] {
+	case "ctrl+f":
+		if got.search == nil {
+			t.Fatal("a click on [ctrl+f] on the second line opens the search")
+		}
+	default:
+		t.Logf("the second line starts with %v", region.keys)
+		if got.search == nil && got.picker == nil && got.focus == model.focus && !got.termShown {
+			t.Fatalf("a click on %v on the second line did nothing", region.keys)
+		}
 	}
 }

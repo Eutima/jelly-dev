@@ -172,12 +172,16 @@ func TestEditor_ClickMovesCursorAndFooterCommandsWork(t *testing.T) {
 	model, _ = typeEditor(model, "x")
 	view := stripANSI(model.View())
 	lines := strings.Split(view, "\n")
-	footer := lines[len(lines)-1]
-	x := strings.Index(footer, "[:w]") // at 80 columns the labels are already cut
-	if x < 0 {
-		t.Fatalf("footer %q", footer)
+	y, x := -1, -1
+	for i := len(lines) - 2; i < len(lines); i++ { // the footer may wrap onto two lines
+		if at := strings.Index(lines[i], "[:w]"); at >= 0 {
+			y, x = i, len([]rune(lines[i][:at]))
+		}
 	}
-	updated, _ = model.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: len([]rune(footer[:x])), Y: len(lines) - 1})
+	if y < 0 {
+		t.Fatalf("no [:w] in the footer: %q", lines[len(lines)-2:])
+	}
+	updated, _ = model.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: x, Y: y})
 	if after := updated.(EditorModel); after.vim.Modified() {
 		t.Fatal("[:w] must save")
 	}

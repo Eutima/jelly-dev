@@ -148,6 +148,93 @@ func (b *bar) keysAt(x int) []string {
 	return nil
 }
 
+// wrap lays the bar out on up to maxLines lines of width columns: a command that does not fit on the line goes on the next one, so
+// nothing is cut as long as it fits. When even that needs too many lines, the last commands lose their labels and then drop out,
+// the last one first. A bar that was not built from commands is a single line.
+func (b *bar) wrap(width, maxLines int) []*bar {
+	if width <= 0 || len(b.ops) == 0 || maxLines < 1 {
+		return []*bar{b}
+	}
+	state := make([]int, len(b.ops)) // 0 full, 1 short, 2 dropped
+	for {
+		lines := b.layout(state, width)
+		if len(lines) <= maxLines {
+			return lines
+		}
+		if !b.degrade(state) {
+			return lines[:maxLines]
+		}
+	}
+}
+
+// degrade takes one step towards fewer lines: the last command that still has its label loses it, when there is none the last
+// one that is still shown is dropped. It returns false when nothing is left to give up.
+func (b *bar) degrade(state []int) bool {
+	for i := len(b.ops) - 1; i >= 0; i-- {
+		if b.ops[i].collapsible && state[i] == 0 {
+			state[i] = 1
+			if b.ops[i].short == nil {
+				state[i] = 2
+			}
+			return true
+		}
+	}
+	for i := len(b.ops) - 1; i >= 0; i-- {
+		if b.ops[i].collapsible && state[i] == 1 {
+			state[i] = 2
+			return true
+		}
+	}
+	return false
+}
+
+// layout puts the operations on lines of width columns, a collapsible one on a new line when it does not fit on the current one.
+func (b *bar) layout(state []int, width int) []*bar {
+	cur := &bar{}
+	lines := []*bar{cur}
+	for i, op := range b.ops {
+		parts := op.parts
+		switch state[i] {
+		case 2:
+			continue
+		case 1:
+			parts = op.short
+		}
+		// the spaces after a command are not needed at the end of a line
+		if op.collapsible && cur.width > 0 && cur.width+segmentsWidth(parts) > width {
+			cur = &bar{}
+			lines = append(lines, cur)
+			cur.append(barPart{" ", parts[0].style})
+		}
+		if len(op.keys) > 0 {
+			cur.place(op.keys, parts...)
+		} else {
+			cur.append(parts...)
+		}
+		cur.append(op.tail...)
+	}
+	return lines
+}
+
+// renderLines draws the wrapped bar in exactly width columns per line.
+func (b *bar) renderLines(width, maxLines int, fill lipgloss.Style) []string {
+	lines := b.wrap(width, maxLines)
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		out[i] = renderSegments(line.parts, width, fill)
+	}
+	return out
+}
+
+// keysAtLine returns the keys of the clickable region under column x of line y of the wrapped bar, nil when there is none.
+func (b *bar) keysAtLine(x, y, width, maxLines int) []string {
+	lines := b.wrap(width, maxLines)
+	if y < 0 || y >= len(lines) || x < 0 || x >= width {
+		return nil
+	}
+	return lines[y].keysAt(x)
+}
+
 // render draws the bar in exactly width columns.
 func (b *bar) render(width int, fill lipgloss.Style) string {
 	return renderSegments(b.fitted(width).parts, width, fill)

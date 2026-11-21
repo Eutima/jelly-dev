@@ -194,6 +194,11 @@ last one leaves; `:wa` writes all files, `:qa` leaves when nothing is unsaved an
 The footers and bars adapt to the width: on a narrow terminal the last commands lose their label (the `[key]` stays clickable) and then
 drop out, the first ones stay.
 
+**Narrow terminals**: in the project window the status line of the editor and the hints under the tree wrap onto a second line when
+the commands do not fit (labels shrink to the `[key]` and then the last commands drop out only when two lines are not enough), and
+long messages (a file path, an error) wrap at the spaces over up to three lines instead of ending in "…". The other views (diff, git,
+merge) shorten and drop the last commands.
+
 **Unsaved changes**: closing a tab or switching project asks *Save / Discard / Cancel* (`s`, `d`, `c`,
 `←/→` and `enter`, or a click).
 
