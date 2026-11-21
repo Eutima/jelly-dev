@@ -15,6 +15,7 @@ jobs:
       - run: go test ./...
       - run: sh scripts/next-version_test.sh
       - run: sh scripts/install_test.sh
+      - run: python3 -m unittest discover -s packaging/pypi
   build:
     runs-on: ubuntu-latest
     strategy:

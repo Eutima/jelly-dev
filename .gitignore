@@ -7,3 +7,5 @@
 
 # Generated playground data (created by playground/setup.sh)
 /playground/sandbox/
+__pycache__/
+*.pyc

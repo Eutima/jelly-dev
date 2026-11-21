@@ -21,6 +21,16 @@ curl -fsSL https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/ins
 irm https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/install.ps1 | iex        # Windows (PowerShell)
 ```
 
+Or with pip (any platform with a wheel: Linux glibc/musl including Alpine, macOS 11 or newer, Windows; x86-64 and arm64):
+
+```
+pip install jelly-dev      # puts the jd command on the PATH; pipx install jelly-dev works too
+```
+
+The wheel carries the same static binary as the release (no download at install time). It does not set up git or install
+language servers and runtimes; `jd install-git --apply` sets jd as git's diff and merge tool, and the IDE installs the language
+servers it needs when it starts (`:tools`). Releases are published by the workflow `pypi` (`.github/workflows/pypi.yml`).
+
 The installer:
 
 - puts `jd` in `~/.local/bin` (Windows: `%LOCALAPPDATA%\Programs\jelly-dev`) and removes an old `jelly-dev` binary there;
