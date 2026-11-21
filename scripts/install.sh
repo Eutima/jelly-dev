@@ -179,7 +179,7 @@ deps_terminal() {
 # means every one; without it every language is wanted.
 lang_enabled() {
     [ -n "${JD_LANGS:-}" ] || return 0
-    case ",$(printf '%s' "$JD_LANGS" | tr ' ;' ',,' | tr 'A-Z' 'a-z')," in *",$1,"* | *",all,"*) return 0 ;; esac
+    case ",$(printf '%s' "$JD_LANGS" | tr ' ;' ',,' | tr '[:upper:]' '[:lower:]')," in *",$1,"* | *",all,"*) return 0 ;; esac
     return 1
 }
 

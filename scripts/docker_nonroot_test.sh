@@ -41,6 +41,7 @@ check_fails() {
 }
 
 for image in $images; do
+    # shellcheck disable=SC2016 # the inner shell expands $(id -u), not this one
     check "$image" "runs as a normal user" sh -c 'test "$(id -u)" != 0'
     check "$image" "jd --version without HOME" sh -c 'unset HOME; jd --version'
     check "$image" "jd --version with a HOME that cannot be written" sh -c 'HOME=/nonexistent jd --version'
