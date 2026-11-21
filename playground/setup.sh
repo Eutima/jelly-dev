@@ -1,4 +1,5 @@
-#!/usr/bin/env bash
+#!/usr/bin/env -S -u BASH_ENV bash
+# -S -u BASH_ENV (GNU env >= 8.30) keeps WSL's BASH_ENV hook from printing an nsenter error; `bash setup.sh` still reads it.
 # Creates (or recreates) playground/sandbox/ with everything needed to try jelly-diff:
 #   sandbox/files/        generated extra inputs (binary, CRLF, escape sequences, optional big files)
 #   sandbox/dirs/         two directory trees to compare

@@ -57,6 +57,10 @@ func DarkThemeFor(r *lipgloss.Renderer) Theme {
 		StatusDeleted:  base.Foreground(hex("#c75450")).Bold(true),
 		StatusModified: base.Foreground(hex("#56a8f5")).Bold(true),
 		Jelly:          base.Foreground(hex("#e0679b")),
+		Ours:           text.Background(hex("#2d3f5c")),
+		Theirs:         text.Background(hex("#23423f")),
+		Warning:        base.Foreground(hex("#e5a550")).Bold(true),
+		ConflictMark:   base.Foreground(hex("#e0679b")).Bold(true),
 		painter:        newPainter(darkSyntaxStyle),
 	}
 }
@@ -90,6 +94,10 @@ func LightThemeFor(r *lipgloss.Renderer) Theme {
 		StatusDeleted:  base.Foreground(hex("#c62828")).Bold(true),
 		StatusModified: base.Foreground(hex("#1565c0")).Bold(true),
 		Jelly:          base.Foreground(hex("#d63384")),
+		Ours:           text.Background(hex("#cfdcf7")),
+		Theirs:         text.Background(hex("#c2e8e2")),
+		Warning:        base.Foreground(hex("#9a5b00")).Bold(true),
+		ConflictMark:   base.Foreground(hex("#c2185b")).Bold(true),
 		painter:        newPainter(lightSyntaxStyle),
 	}
 }
@@ -123,6 +131,10 @@ func MonoThemeFor(r *lipgloss.Renderer) Theme {
 		StatusDeleted:  base.Strikethrough(true),
 		StatusModified: base.Bold(true),
 		Jelly:          base.Bold(true),
+		Ours:           base,
+		Theirs:         base,
+		Warning:        base.Bold(true),
+		ConflictMark:   base.Bold(true).Underline(true),
 	}
 }
 

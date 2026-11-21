@@ -1,4 +1,5 @@
-#!/usr/bin/env bash
+#!/usr/bin/env -S -u BASH_ENV bash
+# -S -u BASH_ENV (GNU env >= 8.30) keeps WSL's BASH_ENV hook from printing an nsenter error; `bash smoke.sh` still reads it.
 # Smoke test for the playground: runs setup.sh and checks the promised states of the generated repositories.
 # Usage: playground/smoke.sh
 set -euo pipefail

@@ -21,6 +21,10 @@ const (
 	CellCursor
 	// CellFiller is an empty placeholder that keeps both panes aligned.
 	CellFiller
+	// CellOurs is a line that the local side changed (merge view).
+	CellOurs
+	// CellTheirs is a line that the remote side changed (merge view).
+	CellTheirs
 )
 
 // Cell is one side of a Row.

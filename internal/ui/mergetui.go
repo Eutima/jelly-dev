@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"slices"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -11,11 +10,10 @@ import (
 )
 
 const (
-	mergePanes   = 3
-	paneOurs     = 0
-	paneResult   = 1
-	paneTheirs   = 2
-	statusFormat = " %s"
+	mergePanes = 3
+	paneOurs   = 0
+	paneResult = 1
+	paneTheirs = 2
 )
 
 // Choice is how a changed chunk is resolved in the result pane.
@@ -41,8 +39,10 @@ type MergeOutcome struct {
 	Saved bool
 }
 
-// MergeTitles are the headers of the three panes.
+// MergeTitles are the labels of the merge view: Name identifies the document, the other three are the file
+// names shown in the pane headers.
 type MergeTitles struct {
+	Name                 string
 	Ours, Result, Theirs string
 }
 
@@ -92,6 +92,9 @@ type MergeModel struct {
 	width, height int
 	offset        int
 	status        string
+	warn          bool // the status line is a warning or an error
+	viewPane      int  // pane shown when the terminal is too narrow for all three
+	saveFailed    bool // the last save attempt failed and nothing changed since
 	dirty         bool // result differs from what was last saved
 	quitArmed     bool
 }
@@ -102,7 +105,7 @@ func NewMergeModel(titles MergeTitles, chunks []merge.Chunk, save func([]string)
 	outcome := &MergeOutcome{}
 	model := MergeModel{
 		titles: titles, chunks: chunks, choices: make([]Choice, len(chunks)), theme: DarkTheme(),
-		save: save, outcome: outcome, current: -1, dirty: true,
+		save: save, outcome: outcome, current: -1, dirty: true, viewPane: paneResult,
 	}
 	for i, chunk := range chunks {
 		if chunk.Kind != merge.Unchanged {
@@ -214,14 +217,16 @@ func (m MergeModel) paneKinds(i int, result []string) [mergePanes]CellKind {
 	if chunk.Kind == merge.Unchanged && m.choices[i] != ChoiceCustom {
 		return [mergePanes]CellKind{CellEqual, CellEqual, CellEqual}
 	}
-	side := func(lines []string) CellKind {
+	// An unresolved conflict is colored as one on every side; afterwards each side shows who changed it.
+	unresolved := chunk.Kind == merge.Conflict && m.choices[i] == ChoiceAuto
+	side := func(lines []string, changed CellKind) CellKind {
 		switch {
 		case equalLines(lines, chunk.Base):
 			return CellEqual
-		case chunk.Kind == merge.Conflict:
+		case unresolved:
 			return CellConflict
 		default:
-			return CellModified
+			return changed
 		}
 	}
 	resultKind := CellModified
@@ -231,7 +236,7 @@ func (m MergeModel) paneKinds(i int, result []string) [mergePanes]CellKind {
 	case equalLines(result, chunk.Base):
 		resultKind = CellEqual
 	}
-	return [mergePanes]CellKind{side(chunk.Ours), resultKind, side(chunk.Theirs)}
+	return [mergePanes]CellKind{side(chunk.Ours, CellOurs), resultKind, side(chunk.Theirs, CellTheirs)}
 }
 
 // Init implements tea.Model.
@@ -262,14 +267,13 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleEditKey(msg)
 	}
 	key := msg.String()
-	if key != "q" && key != "esc" {
+	m.notice("", false) // a message lives until the next key press
+	if key != "q" && key != "esc" && key != "ctrl+c" {
 		m.quitArmed = false
 	}
 	page := max(m.bodyHeight()-1, 1)
 	switch key {
-	case "ctrl+c":
-		return m, tea.Quit
-	case "q", "esc":
+	case "q", "esc", "ctrl+c":
 		return m.quit()
 	case "j", "down":
 		m.moveCursor(1)
@@ -305,6 +309,8 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.insertLine()
 	case "u":
 		m.undo()
+	case "v":
+		m.cycleView()
 	case "s":
 		m.saveResult()
 	}
@@ -318,7 +324,7 @@ func (m MergeModel) quit() (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	m.quitArmed = true
-	m.status = "Unsaved result - press q again to discard it, or s to save"
+	m.notice("Unsaved result - press q again (or ctrl+c) to discard it, or s to save", true)
 	return m, nil
 }
 
@@ -335,17 +341,31 @@ func (m *MergeModel) gotoChange(index int) {
 // resolve applies a choice to the selected change and moves on to the next unresolved conflict.
 func (m *MergeModel) resolve(choice Choice) {
 	if m.current < 0 {
-		m.status = "Select a change first (n/p)"
+		m.notice("Select a change first (n/p)", true)
 		return
 	}
-	m.setChoice(m.changed[m.current], choice, nil)
-	m.status = ""
+	chunk := m.changed[m.current]
+	m.setChoice(chunk, choice, nil)
 	m.rebuild()
+	m.notice(m.resolvedNotice(chunk, choice), false)
 	if next := m.nextUnresolved(); next >= 0 {
 		m.gotoChange(next)
 	} else {
 		m.keepVisible()
 	}
+}
+
+// resolvedNotice reports what a resolution did, including what is left to do.
+func (m MergeModel) resolvedNotice(chunk int, choice Choice) string {
+	what := "Change"
+	if number := m.conflictNumber(chunk); number > 0 {
+		what = fmt.Sprintf("Conflict %d", number)
+	}
+	text := fmt.Sprintf("✓ %s: used %s", what, choiceName(choice))
+	if left := m.Unresolved(); left > 0 {
+		return fmt.Sprintf("%s · %d conflict(s) left", text, left)
+	}
+	return text + " · all conflicts resolved, press s to save"
 }
 
 // nextUnresolved returns the index (into changed) of the next unresolved conflict after the current change.
@@ -371,7 +391,7 @@ func (m *MergeModel) keepVisible() {
 
 func (m *MergeModel) undo() {
 	if len(m.history) == 0 {
-		m.status = "Nothing to undo"
+		m.notice("Nothing to undo", true)
 		return
 	}
 	var last historyEntry
@@ -386,65 +406,47 @@ func (m *MergeModel) undo() {
 		}
 	}
 	m.markDirty()
-	m.status = ""
 	m.rebuild()
 	m.setCursor(m.chunkRow[last.chunk])
 	m.keepVisible()
+	m.notice(m.undoneNotice(last.chunk), false)
+}
+
+// undoneNotice reports the state of the chunk an undo step touched.
+func (m MergeModel) undoneNotice(chunk int) string {
+	if number := m.conflictNumber(chunk); number > 0 && m.stateOf(chunk) == stateUnresolved {
+		return fmt.Sprintf("Undone · conflict %d is unresolved again", number)
+	}
+	return "Undone · " + fmt.Sprintf("%d conflict(s) left", m.Unresolved())
 }
 
 // markDirty records that the result changed after the last save; the outcome then counts as not saved.
 func (m *MergeModel) markDirty() {
 	m.dirty = true
+	m.saveFailed = false
 	m.outcome.Saved = false
 }
 
 func (m *MergeModel) saveResult() {
 	if left := m.Unresolved(); left > 0 {
-		m.status = fmt.Sprintf("Cannot save: %d conflict(s) unresolved", left)
+		m.notice(fmt.Sprintf("Cannot save: %d conflict(s) unresolved (n jumps to the next one)", left), true)
 		return
 	}
 	if err := m.save(m.Result()); err != nil {
-		m.status = "Save failed: " + err.Error()
+		m.saveFailed = true
+		m.notice("Save failed: "+err.Error()+" - fix the problem and press s to retry", true)
 		return
 	}
 	m.outcome.Saved = true
 	m.dirty = false
-	m.status = "Saved"
+	m.saveFailed = false
+	m.notice("✓ Saved - the result was written", false)
 }
 
-func (m MergeModel) bodyHeight() int { return max(m.height-chromeLines, 1) }
+func (m MergeModel) bodyHeight() int { return max(m.height-m.chrome(), 1) }
 
 func (m *MergeModel) clamp() {
 	m.offset = min(max(m.offset, 0), max(len(m.rows)-m.bodyHeight(), 0))
-}
-
-// View implements tea.Model.
-func (m MergeModel) View() string {
-	if m.width == 0 {
-		return ""
-	}
-	paneWidth := max((m.width-2*gutterWidth)/mergePanes, 0)
-	widths := [mergePanes]int{paneWidth, paneWidth, max(m.width-2*gutterWidth-2*paneWidth, 0)}
-	numWidth := len(fmt.Sprint(max(len(m.rows), 1))) + 1
-
-	var out strings.Builder
-	out.WriteString(m.header(widths))
-	out.WriteByte('\n')
-	end := min(m.offset+m.bodyHeight(), len(m.rows))
-	for i := m.offset; i < end; i++ {
-		row := m.rows[i]
-		out.WriteString(m.theme.renderCell(row.cells[paneOurs], numWidth, widths[paneOurs]))
-		out.WriteString(m.gutter(row, paneOurs))
-		out.WriteString(m.resultCell(i, row, numWidth, widths[paneResult]))
-		out.WriteString(m.gutter(row, paneTheirs))
-		out.WriteString(m.theme.renderCell(row.cells[paneTheirs], numWidth, widths[paneTheirs]))
-		out.WriteByte('\n')
-	}
-	for i := end - m.offset; i < m.bodyHeight(); i++ {
-		out.WriteByte('\n')
-	}
-	out.WriteString(m.footer())
-	return out.String()
 }
 
 // resultCell draws the result pane cell of row i: the line editor, the cursor line, or a normal cell.
@@ -472,33 +474,6 @@ func (m MergeModel) editorCell(number, numWidth, width int) string {
 	base := m.theme.Selected.Underline(true)
 	cursor := m.theme.Selected.Reverse(!m.theme.Selected.GetReverse())
 	return m.theme.LineNumber.Background(base.GetBackground()).Render(label) + m.editor.view(width-num, base, cursor)
-}
-
-func (m MergeModel) header(widths [mergePanes]int) string {
-	titles := [mergePanes]string{m.titles.Ours, m.titles.Result, m.titles.Theirs}
-	var out strings.Builder
-	for pane, title := range titles {
-		if pane > 0 {
-			out.WriteString(strings.Repeat(" ", gutterWidth))
-		}
-		out.WriteString(padRight(" "+sanitize(title), widths[pane]))
-	}
-	return m.theme.Header.Render(out.String())
-}
-
-func (m MergeModel) footer() string {
-	text := m.status
-	if m.editing {
-		text = m.editingStatus()
-	}
-	if text == "" {
-		state := "all conflicts resolved"
-		if left := m.Unresolved(); left > 0 {
-			state = fmt.Sprintf("%d conflict(s) left", left)
-		}
-		text = state + "   n/p change   o ours   t theirs   b both   r base   m magic   e edit   d del   i ins   u undo   s save   q quit"
-	}
-	return m.theme.Footer.Render(padRight(fmt.Sprintf(statusFormat, text), m.width))
 }
 
 // gutter draws the strip between two panes: an arrow on the first row of a change that the

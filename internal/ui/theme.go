@@ -30,6 +30,10 @@ type Theme struct {
 	StatusDeleted  lipgloss.Style
 	StatusModified lipgloss.Style
 	Jelly          lipgloss.Style // the waiting animation
+	Ours           lipgloss.Style // lines changed by the local side (merge view)
+	Theirs         lipgloss.Style // lines changed by the remote side (merge view)
+	Warning        lipgloss.Style // unsaved state, refused actions, failures (merge view)
+	ConflictMark   lipgloss.Style // marker and counter of unresolved conflicts (merge view)
 	painter        *syntaxPainter // syntax colors, nil for themes without them
 }
 
@@ -63,6 +67,10 @@ func (t Theme) styleFor(kind CellKind) lipgloss.Style {
 		return t.Modified
 	case CellConflict:
 		return t.Conflict
+	case CellOurs:
+		return t.Ours
+	case CellTheirs:
+		return t.Theirs
 	case CellCursor:
 		return t.Selected
 	case CellFiller:

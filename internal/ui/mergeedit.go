@@ -69,7 +69,7 @@ func (m *MergeModel) autoResolve() {
 	}
 	total := m.Unresolved()
 	if len(steps) == 0 {
-		m.status = fmt.Sprintf("Nothing to resolve automatically: %d conflict(s) need a decision", total)
+		m.notice(fmt.Sprintf("Nothing to resolve automatically: %d conflict(s) need a decision", total), true)
 		return
 	}
 	for i, s := range steps {
@@ -78,7 +78,7 @@ func (m *MergeModel) autoResolve() {
 	}
 	m.rebuild()
 	left := m.Unresolved()
-	m.status = fmt.Sprintf("Resolved %d of %d conflict(s), %d left", len(steps), total, left)
+	m.notice(fmt.Sprintf("✓ Auto-resolved %d of %d conflict(s), %d left (u undoes)", len(steps), total, left), false)
 	if next := m.nextUnresolved(); next >= 0 {
 		m.gotoChange(next)
 	} else {
@@ -115,25 +115,25 @@ func (m MergeModel) resultLineAt(row int) (chunk, index int, ok bool) {
 func (m *MergeModel) startEdit() {
 	chunk, index, ok := m.resultLineAt(m.cursor)
 	if !ok {
-		m.status = "No result line here to edit (use i to insert one)"
+		m.notice("No result line here to edit (use i to insert one)", true)
 		return
 	}
 	m.editing, m.editNew = true, false
 	m.editRow, m.editChunk, m.editLine = m.cursor, chunk, index
 	m.editor = newLineEditor(m.rows[m.cursor].cells[paneResult].Text)
-	m.status = ""
+	m.notice("", false)
 }
 
 // deleteLine removes the result line under the cursor.
 func (m *MergeModel) deleteLine() {
 	chunk, index, ok := m.resultLineAt(m.cursor)
 	if !ok {
-		m.status = "No result line here to delete"
+		m.notice("No result line here to delete", true)
 		return
 	}
 	lines := slices.Delete(slices.Clone(m.chunkResult(chunk)), index, index+1)
 	m.setChoice(chunk, ChoiceCustom, nonNil(lines))
-	m.status = ""
+	m.notice("", false)
 	m.rebuild()
 	m.setCursor(m.cursor)
 }
@@ -141,7 +141,7 @@ func (m *MergeModel) deleteLine() {
 // insertLine adds an empty result line below the cursor and opens the editor on it.
 func (m *MergeModel) insertLine() {
 	if len(m.rows) == 0 {
-		m.status = "Nothing to insert into"
+		m.notice("Nothing to insert into", true)
 		return
 	}
 	chunk := m.rows[m.cursor].chunk
@@ -157,7 +157,7 @@ func (m *MergeModel) insertLine() {
 	m.editing, m.editNew = true, true
 	m.editRow, m.editChunk, m.editLine = m.cursor, chunk, index
 	m.editor = newLineEditor("")
-	m.status = ""
+	m.notice("", false)
 }
 
 // handleEditKey routes a key press to the line editor and applies or discards the edit.
@@ -190,7 +190,7 @@ func (m *MergeModel) commitEdit() {
 		m.setChoice(m.editChunk, ChoiceCustom, lines)
 	}
 	m.editing, m.editNew = false, false
-	m.status = ""
+	m.notice("", false)
 	m.rebuild()
 	m.setCursor(m.cursor)
 }
@@ -201,6 +201,7 @@ func (m *MergeModel) cancelEdit() {
 	m.editing, m.editNew = false, false
 	if wasNew {
 		m.undo()
+		m.notice("", false)
 		m.setCursor(m.editBeforeRow) // undo moves the cursor to the chunk start: go back to where the insert began
 	}
 }
@@ -214,7 +215,7 @@ func nonNil(lines []string) []string {
 
 // editingStatus is the footer text while a line is being edited.
 func (m MergeModel) editingStatus() string {
-	return fmt.Sprintf("Editing line %d: enter apply   esc cancel   ←/→ home end move   ctrl+u/ctrl+k delete to start/end",
+	return fmt.Sprintf("Editing line %d · enter apply   esc cancel   ←/→ home end move   ctrl+u/ctrl+k delete to start/end",
 		m.rows[m.editRow].cells[paneResult].No)
 }
 

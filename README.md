@@ -1,5 +1,9 @@
 # jelly-diff
 
+<p align="center"><img src="docs/jelly-merge-logo.png" alt="Jelly-Merge logo" width="384"></p>
+
+The merge view is branded **Jelly-Merge**.
+
 A terminal diff and merge tool with a JetBrains-style UI: side-by-side panes, colored change
 blocks and word-level highlights. It will diff files, diff the clipboard, show `git diff` and
 act as a three-pane `git mergetool`.
@@ -33,13 +37,20 @@ merged automatically; conflicts start with the base lines. The result pane has a
 
 - `j`/`k`/arrows move the cursor (the change under it is selected), `n`/`p` jump to the next/previous change.
 - `o` takes ours, `t` theirs, `b` both, `r` reverts the change to the base.
-- `m` (magic) resolves every conflict that is none in fact: a change of whitespace only, or both sides editing
+- `m` (auto-resolve) resolves every conflict that is none in fact: a change of whitespace only, or both sides editing
   different words of the same lines. Real conflicts stay open; one `u` undoes the whole step.
 - `e` or `enter` edits the line under the cursor in place (`enter` applies, `esc` cancels, arrows/home/end move,
   `ctrl+u`/`ctrl+k` delete to the start/end of the line), `d` deletes the line, `i` inserts a new line below it and
   opens it for editing (`esc` removes it again). A block edited by hand counts as resolved.
 - `u` undoes the last step (also edits, deletions and insertions), `s` saves (only when every conflict is resolved),
-  `q` quits (asks before discarding).
+  `q` or `ctrl+c` quits (asks before discarding an unsaved result), `v` switches the shown pane on narrow terminals.
+
+Layout: a header shows the document, the number of conflicts remaining, the save state (`Modified`, `Saved`,
+`Save failed`), the position (`Conflict 2 of 5`) and a progress bar; the result pane (40%) sits between ours and
+theirs. The edge column marks each change: `▌` the selected change, `!` unresolved conflict, `✓` resolved, `~` merged
+automatically. Below 72 columns one pane is shown at a time (`v` switches pane); below 10 rows header and footer shrink
+to one line each. The footer shows the actions for the selected change and the shortcuts in groups; unavailable ones
+are dimmed.
 
 The result is written atomically with the line endings of the local file and a final newline; the exit code is 0 only
 after saving.

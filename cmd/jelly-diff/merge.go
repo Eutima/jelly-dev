@@ -55,7 +55,9 @@ func mergeFiles(basePath, localPath, remotePath, mergedPath string, stdout io.Wr
 	save := func(lines []string) error { return writeResult(mergedPath, lines, lineEnding) }
 
 	chunks := merge.Merge(diff.SplitLines(base), diff.SplitLines(local), diff.SplitLines(remote))
-	titles := ui.MergeTitles{Ours: "ours: " + localPath, Result: "result: " + mergedPath, Theirs: "theirs: " + remotePath}
+	titles := ui.MergeTitles{
+		Name: filepath.Base(mergedPath), Ours: filepath.Base(localPath), Result: filepath.Base(mergedPath), Theirs: filepath.Base(remotePath),
+	}
 	model, outcome := ui.NewMergeModel(titles, chunks, save)
 	if model.ChangeCount() == 0 {
 		fmt.Fprintln(stdout, "nothing to merge")

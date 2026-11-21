@@ -146,6 +146,19 @@ func TestMergeModel_AsksForConfirmation_WhenQuittingWithUnsavedResult(t *testing
 	}
 }
 
+func TestMergeModel_AsksForConfirmation_WhenCtrlCPressedWithUnsavedResult(t *testing.T) {
+	model, _ := newMergeTestModel(baseText, oursText, theirsText, &saver{})
+	ctrlC := tea.KeyMsg{Type: tea.KeyCtrlC}
+	updated, cmd := model.Update(ctrlC)
+	if cmd != nil || !strings.Contains(updated.(MergeModel).View(), "ctrl+c") {
+		t.Fatal("first ctrl+c must only warn")
+	}
+	_, cmd = updated.Update(ctrlC)
+	if cmd == nil {
+		t.Fatal("second ctrl+c must quit")
+	}
+}
+
 func TestMergeModel_QuitsImmediately_WhenResultSaved(t *testing.T) {
 	model, _ := newMergeTestModel(baseText, "1\nTWO\n3\n4\n5\n6\n7\n", baseText, &saver{})
 	model = mergePress(model, "s")
@@ -185,7 +198,7 @@ func TestMergeModel_JumpsToNextUnresolvedConflict_WhenResolving(t *testing.T) {
 func TestMergeView_ShowsThreePanesWithTitles_WhenSized(t *testing.T) {
 	model, _ := newMergeTestModel(baseText, oursText, theirsText, &saver{})
 	view := model.View()
-	for _, want := range []string{"ours", "result", "theirs", "OURS7", "THEIRS7", "1 conflict(s) left"} {
+	for _, want := range []string{"ours", "result", "theirs", "OURS7", "THEIRS7", "1 conflict remaining"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view lacks %q:\n%s", want, view)
 		}
@@ -340,7 +353,7 @@ func TestMergeModel_ResolvesSimpleConflictsOnly_WhenMPressed(t *testing.T) {
 	if got := model.Result(); !reflect.DeepEqual(got, want) {
 		t.Errorf("Result() = %q, want %q", got, want)
 	}
-	if !strings.Contains(model.status, "Resolved 1 of 2") {
+	if !strings.Contains(model.status, "Auto-resolved 1 of 2") {
 		t.Errorf("status = %q, want it to report 1 of 2", model.status)
 	}
 }
@@ -385,5 +398,107 @@ func TestMergeModel_SavesAfterMagic_WhenAllConflictsWereSimple(t *testing.T) {
 
 	if len(s.saved) != 1 || !reflect.DeepEqual(s.saved[0], []string{"the slow dog"}) || !outcome.Saved {
 		t.Errorf("saved = %q, outcome = %+v", s.saved, outcome)
+	}
+}
+
+const twoConflictsBase, twoConflictsOurs, twoConflictsTheirs = "a\nb\nc\nd\ne\nf\ng\nh\ni\n",
+	"a\nX\nc\nd\ne\nf\ng\nX2\ni\n", "a\nY\nc\nd\ne\nf\ng\nY2\ni\n"
+
+func resize(model MergeModel, width, height int) MergeModel {
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	return updated.(MergeModel)
+}
+
+func TestMergeView_ShowsPositionAndProgress_WhenConflictSelected(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = mergePress(model, "n")
+	view := model.View()
+	for _, want := range []string{"Jelly-Merge", "OURS", "RESULT", "THEIRS", "2 conflicts remaining", "Conflict 1 of 2 · unresolved",
+		"0/2 resolved", "Resolve conflict 1/2", "[o] Use ours", "● Modified"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view lacks %q:\n%s", want, view)
+		}
+	}
+	model = mergePress(model, "o")
+	view = model.View()
+	for _, want := range []string{"1 conflict remaining", "Conflict 2 of 2 · unresolved", "1/2 resolved", "✓ Conflict 1: used ours"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view lacks %q after resolving:\n%s", want, view)
+		}
+	}
+}
+
+func TestMergeView_MarksResolvedAndUnresolvedConflicts_WithSymbols(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = mergePress(model, "n", "o")
+	view := model.View()
+	if !strings.Contains(view, symbolResolved) || !strings.Contains(view, symbolUnresolved) || !strings.Contains(view, symbolCurrent) {
+		t.Fatalf("resolved, unresolved and current markers expected:\n%s", view)
+	}
+	if model.stateOf(model.changed[0]) != stateResolved || model.stateOf(model.changed[1]) != stateUnresolved {
+		t.Fatalf("states %v %v", model.stateOf(model.changed[0]), model.stateOf(model.changed[1]))
+	}
+}
+
+func TestMergeView_ShowsSaveState_WhenSavedOrFailed(t *testing.T) {
+	s := &saver{}
+	model, _ := newMergeTestModel(baseText, oursText, theirsText, s)
+	model = mergePress(model, "n", "n", "o")
+	if view := model.View(); !strings.Contains(view, "● Modified") || !strings.Contains(view, "all conflicts resolved") {
+		t.Fatalf("modified expected:\n%s", view)
+	}
+	s.err = errors.New("disk full")
+	model = mergePress(model, "s")
+	if view := model.View(); !strings.Contains(view, "✗ Save failed") || !strings.Contains(view, "disk full") {
+		t.Fatalf("failed save expected:\n%s", view)
+	}
+	s.err = nil
+	model = mergePress(model, "s")
+	if view := model.View(); !strings.Contains(view, "✓ Saved") || strings.Contains(view, "Modified") {
+		t.Fatalf("saved expected:\n%s", view)
+	}
+	model = mergePress(model, "u")
+	if view := model.View(); !strings.Contains(view, "● Modified") {
+		t.Fatalf("undo must mark the result modified:\n%s", view)
+	}
+}
+
+func TestMergeView_ShowsOnePaneAtATime_WhenTerminalIsNarrow(t *testing.T) {
+	model, _ := newMergeTestModel(baseText, oursText, theirsText, &saver{})
+	model = resize(model, 60, 12)
+	view := model.View()
+	if !strings.Contains(view, "RESULT") || strings.Contains(view, "THEIRS7") || strings.Contains(view, "OURS7") {
+		t.Fatalf("only the result pane expected:\n%s", view)
+	}
+	model = mergePress(model, "v")
+	if view = model.View(); !strings.Contains(view, "THEIRS") || !strings.Contains(view, "THEIRS7") {
+		t.Fatalf("v must show the theirs pane:\n%s", view)
+	}
+	model = mergePress(model, "v", "v")
+	if model.viewPane != paneResult {
+		t.Fatalf("view pane %d", model.viewPane)
+	}
+	wide := resize(model, 120, 12)
+	if view = wide.View(); !strings.Contains(view, "OURS7") || !strings.Contains(view, "THEIRS7") {
+		t.Fatalf("wide terminal shows all panes:\n%s", view)
+	}
+}
+
+func TestMergeView_GivesResultPaneMostWidth_WhenWide(t *testing.T) {
+	model, _ := newMergeTestModel(baseText, oursText, theirsText, &saver{})
+	_, widths := resize(model, 140, 20).layout()
+	if widths[paneResult] <= widths[paneOurs] || widths[paneResult] <= widths[paneTheirs] {
+		t.Fatalf("widths %v", widths)
+	}
+}
+
+func TestMergeView_ShowsUnavailableActionsAsFaint_WhenNothingSelected(t *testing.T) {
+	model, _ := newMergeTestModel(baseText, oursText, theirsText, &saver{})
+	if view := model.View(); !strings.Contains(view, "save (1 left)") || !strings.Contains(view, "Press n to jump") {
+		t.Fatalf("contextual hints expected:\n%s", view)
+	}
+	model = mergePress(model, "n", "n", "t")
+	if view := model.View(); !strings.Contains(view, "all conflicts resolved, press s to save") {
+		t.Fatalf("completion message expected:\n%s", view)
 	}
 }
