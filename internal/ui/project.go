@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/eutima/jelly-dev/internal/config"
 	"github.com/eutima/jelly-dev/internal/editor"
 	"github.com/eutima/jelly-dev/internal/filetree"
 	"github.com/eutima/jelly-dev/internal/lsp"
@@ -53,6 +54,8 @@ type ProjectHooks struct {
 	// ReadClipboard and WriteClipboard connect the editor to the system clipboard; either may be nil.
 	ReadClipboard  func() (string, error)
 	WriteClipboard func(text string) error
+	// Theme resolves a theme name for the command :theme; nil disables the command.
+	Theme func(name string) (Theme, bool)
 	// Terminal returns the command that opens a shell in dir; nil starts $SHELL.
 	Terminal func(dir string) *exec.Cmd
 	// Diff returns the command that shows the changes of the project in dir; nil starts `jd git`.
@@ -653,6 +656,8 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 		return m.quit()
 	case "qa!", "qall!":
 		return m.quit()
+	case "theme", "colors", "colorscheme":
+		return m.themeCommand(argument)
 	case "addlang", "addlanguage", "language", "lang", "languages":
 		return m.openLanguagePicker()
 	case "tools":
@@ -890,4 +895,26 @@ func (m ProjectModel) treeRow(node *filetree.Node, selected bool, width int) str
 		}
 	}
 	return style.Render(padRight(" "+label, width))
+}
+
+// themeCommand is :theme [name]: it switches the colours of the window at once. Without a name it lists the themes. A terminal with
+// few colours gets the "ansi" theme by itself (auto); this is the way to choose another one when that is not right.
+func (m ProjectModel) themeCommand(argument string) (tea.Model, tea.Cmd) {
+	if m.hooks.Theme == nil {
+		m.say("E1: Switching the theme is not available here", true)
+		return m, nil
+	}
+	name := strings.ToLower(strings.TrimSpace(argument))
+	if name == "" {
+		m.say("Themes: "+strings.Join(config.ThemeNames(), ", ")+" (:theme <name>; JELLY_DEV_THEME=<name> keeps it)", false)
+		return m, nil
+	}
+	theme, ok := m.hooks.Theme(name)
+	if !ok {
+		m.say(fmt.Sprintf("E474: Unknown theme %q: %s", name, strings.Join(config.ThemeNames(), ", ")), true)
+		return m, nil
+	}
+	m = m.WithTheme(theme)
+	m.say(fmt.Sprintf("Theme %s (set JELLY_DEV_THEME=%s to keep it)", name, name), false)
+	return m, nil
 }

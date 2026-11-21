@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/muesli/termenv"
 
 	"github.com/eutima/jelly-dev/internal/tools"
 )
@@ -296,5 +297,35 @@ func TestAddLanguage_TheListSaysThatAnInstalledLanguageIsUpdatedAndAFailedUpdate
 	view := stripANSI(model.View())
 	if !strings.Contains(view, "could not update") || !strings.Contains(view, "gopls") || !model.Editor().warn {
 		t.Fatalf("a failed update is a warning that says update:\n%s", view)
+	}
+}
+
+func TestThemeCommand_ListsSwitchesAndRefusesUnknownThemes(t *testing.T) {
+	model, _ := newProjectFixture(t, 120, sampleFiles)
+	model = inEditor(model)
+	model.hooks.Theme = func(name string) (Theme, bool) { return NamedThemeFor(rendererFor(termenv.TrueColor), name) }
+	listed, _ := typeCommand(model, "theme")
+	if view := stripANSI(listed.View()); !strings.Contains(view, "Themes: auto, dark, light, ansi, contrast, mono") {
+		t.Fatalf(":theme lists the themes:\n%s", view)
+	}
+	switched, _ := typeCommand(model, "theme ansi")
+	if !switched.theme.Header.GetReverse() || !switched.editor.theme.Header.GetReverse() {
+		t.Fatal("the theme changes in the whole window at once, also in the editor")
+	}
+	if view := stripANSI(switched.View()); !strings.Contains(view, "Theme ansi") || !strings.Contains(view, "JELLY_DEV_THEME=ansi") {
+		t.Fatalf("the message says how to keep the theme:\n%s", view)
+	}
+	back, _ := typeCommand(switched, "theme dark")
+	if back.theme.Header.GetReverse() {
+		t.Fatal("and back")
+	}
+	unknown, _ := typeCommand(model, "theme neon")
+	if view := stripANSI(unknown.View()); !strings.Contains(view, `Unknown theme "neon"`) || unknown.theme.Header.GetReverse() {
+		t.Fatalf("an unknown theme is refused:\n%s", view)
+	}
+	plain, _ := newProjectFixture(t, 100, sampleFiles)
+	plain, _ = typeCommand(inEditor(plain), "theme dark")
+	if !strings.Contains(stripANSI(plain.View()), "not available") {
+		t.Fatalf("without the hook the command says so:\n%s", plain.View())
 	}
 }

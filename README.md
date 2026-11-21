@@ -37,6 +37,9 @@ Taken from the [playground](playground/README.md) examples (`python3 playground/
 ![Search in the files of the project (`ctrl+g`), file names with `ctrl+f`.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide-search.png)
 *Search in the files of the project (`ctrl+g`), file names with `ctrl+f`.*
 
+![A 16 colour terminal: the ansi theme](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ansi-theme.png)
+*A terminal with 16 colours: jd chooses the `ansi` theme by itself, drawn in reverse video so that it is readable in any palette.*
+
 ![`:addlang` adds a language](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/addlang.png)
 *`:addlang` lists all languages: pick one and its language server and formatter are installed.*
 
@@ -412,7 +415,11 @@ Every push to `master` runs the tests (`.github/workflows/release.yml`) and then
 
 Environment variables (see `.env.example`):
 
-- `JELLY_DEV_THEME`: `dark` (default), `light` or `mono` (no colors: bold = added, strikethrough = deleted, reverse video = changed words).
+- `JELLY_DEV_THEME`: `auto` (default), `dark`, `light`, `ansi`, `contrast` or `mono`. `auto` looks at the terminal: no colours gives `mono`
+  (bold = added, strikethrough = deleted, reverse video = changed words), 16 colours gives `ansi`, 256 or more colours gives `dark` or
+  `light` by the background of the terminal. `ansi` sets no fixed background (a terminal with 16 colours maps colours to its own palette, which
+  can turn text into grey on grey): bars and selections are drawn in reverse video, changes in foreground colours of the palette.
+  `contrast` is the same without any dim text, bold where it matters. `:theme <name>` in the IDE switches at once (`:theme` lists them).
 - `NO_COLOR`: any non-empty value selects `mono` unless `JELLY_DEV_THEME` is set.
 
 ### Known limitations

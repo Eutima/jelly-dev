@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/eutima/jelly-dev/internal/config"
 	"github.com/eutima/jelly-dev/internal/launch"
 	"github.com/eutima/jelly-dev/internal/lsp"
 	"github.com/eutima/jelly-dev/internal/project"
@@ -125,6 +126,13 @@ func runIDE(args []string, stdout, stderr io.Writer, env environment) int {
 	navigator := newWindowNavigator(open.root, servers, filepath.Join(dir, "formatters.json"))
 	defer navigator.Close()
 	hooks := ui.ProjectHooks{
+		Theme: func(name string) (ui.Theme, bool) { // :theme in the window: the attribute themes need their attributes kept as well
+			theme, ok := env.namedTheme(name)
+			if ok && (needsAttributes(name) || name == config.ThemeAuto) && env.enableAttributes != nil {
+				env.enableAttributes()
+			}
+			return theme, ok
+		},
 		Navigator:   navigator,
 		Tools:       tools.NewInstaller(dir),
 		AutoInstall: env.getenv(envNoAutoInstall) == "", // language servers and formatters are installed when a window opens

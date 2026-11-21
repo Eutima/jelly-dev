@@ -76,6 +76,8 @@ SHOTS = [
      ["down", "down", "down", "down", "enter", "ctrl+t", "~ls docs", "enter", "~git status -s | head -4", "enter"], (118, 32), {}),
     Shot("ide-search", "jd repo-changes   (ctrl+g: search in files)", "repo-changes", ["."], ["ctrl+g", "~func"], (118, 30), {}),
     Shot("addlang", "jd repo-changes   (:addlang: add a language)", "repo-changes", ["."], ["tab", "~:addlang", "enter"], (118, 30), {}),
+    # a terminal with 16 colours: jd chooses the ansi theme by itself (no fixed backgrounds, reverse video for what is highlighted)
+    Shot("ansi-theme", "jd repo-changes   (a 16 colour terminal: the ansi theme)", "repo-changes", ["."], ["down", "down", "down", "down", "enter"], (118, 30), {"TERM": "xterm-color", "COLORTERM": ""}),
     Shot("languages", "jd   (first start: which languages?)", ".", ["setup"], [], (118, 20), {"JD_DRY_RUN": "1", "JD_SKIP_GIT_CONFIG": "1"}, first_start=True),
 ]
 
