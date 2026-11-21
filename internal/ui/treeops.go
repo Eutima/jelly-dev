@@ -16,6 +16,7 @@ import (
 type namePrompt struct {
 	dir   string // where the new file goes
 	input []rune
+	home  string // the folder of the selection, which tab goes back to
 }
 
 // errOutsideProject is returned for a name that would leave the project folder.
@@ -91,7 +92,7 @@ func (m ProjectModel) startCreate(node *filetree.Node) ProjectModel {
 	if node != nil {
 		dir = m.dirOf(node)
 	}
-	m.name = &namePrompt{dir: dir}
+	m.name = &namePrompt{dir: dir, home: dir}
 	return m
 }
 
@@ -102,6 +103,12 @@ func (m ProjectModel) nameKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEsc, tea.KeyCtrlC, tea.KeyCtrlD:
 		m.name = nil
 		return m, nil
+	case tea.KeyTab: // the folder of the selection or the project folder: a tree of folders only has no other way to the root
+		if prompt.dir == m.root {
+			prompt.dir = prompt.home
+		} else {
+			prompt.dir = m.root
+		}
 	case tea.KeyBackspace:
 		if len(prompt.input) > 0 {
 			prompt.input = prompt.input[:len(prompt.input)-1]
@@ -225,7 +232,15 @@ func (m ProjectModel) nameView(screen string) string {
 	rows := []string{
 		m.theme.Header.Render(padRight(" "+sanitize(title), min(dialogBox, m.width))),
 		m.theme.Equal.Render(padRight(" "+sanitize(string(m.name.input))+"█", min(dialogBox, m.width))),
-		m.theme.Footer.Render(padRight(" enter creates, esc cancels, end with / for a folder", min(dialogBox, m.width))),
+		m.theme.Footer.Render(padRight(m.nameHint(), min(dialogBox, m.width))),
 	}
 	return m.overlayRows(screen, rows)
+}
+
+// nameHint is the key line of the name prompt; it must fit in the dialog box. Tab is only offered when it has somewhere to go.
+func (m ProjectModel) nameHint() string {
+	if m.name.home == m.root {
+		return " enter ok, esc cancel, name/ = folder"
+	}
+	return " enter ok, tab folder, esc cancel, name/ = folder"
 }

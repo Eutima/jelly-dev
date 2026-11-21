@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestTreeFooter_ShowsOnlyNewDeleteEdit(t *testing.T) {
@@ -254,4 +255,54 @@ func indexOfPath(model ProjectModel, path string) int {
 		}
 	}
 	return -1
+}
+
+func TestTree_NTabSwitchesBetweenTheSelectedFolderAndTheProjectFolder(t *testing.T) {
+	// a project with folders only: every selection is a folder, tab is the way to the root
+	model, fx := newProjectFixture(t, 100, map[string]string{"a/x.txt": "1", "b/y.txt": "2"})
+	model, _ = projectKeys(model, "n")
+	if model.name.dir != filepath.Join(fx.root, "a") || !strings.Contains(stripANSI(model.View()), "New file in a") {
+		t.Fatalf("the prompt starts in the selected folder: %q", model.name.dir)
+	}
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = updated.(ProjectModel)
+	if model.name.dir != fx.root || !strings.Contains(stripANSI(model.View()), "New file in the project folder") {
+		t.Fatalf("tab moves to the project folder: %q", model.name.dir)
+	}
+	model, _ = projectKeys(model, "top.txt", "enter")
+	if _, err := os.Stat(filepath.Join(fx.root, "top.txt")); err != nil {
+		t.Fatalf("the file is in the root: %v", err)
+	}
+	// tab twice goes back to the selected folder
+	again, _ := newProjectFixture(t, 100, map[string]string{"a/x.txt": "1", "b/y.txt": "2"})
+	again, _ = projectKeys(again, "n")
+	for i := 0; i < 2; i++ {
+		u, _ := again.Update(tea.KeyMsg{Type: tea.KeyTab})
+		again = u.(ProjectModel)
+	}
+	if again.name.dir != again.name.home {
+		t.Fatalf("a second tab returns to the selected folder: %q", again.name.dir)
+	}
+}
+
+func TestTree_NPromptHintFitsTheDialogAndOffersTabOnlyWhenUseful(t *testing.T) {
+	model, fx := newProjectFixture(t, 100, map[string]string{"a/x.txt": "1"})
+	inFolder, _ := projectKeys(model, "n") // a/ is selected
+	hint := inFolder.nameHint()
+	if got := lipgloss.Width(hint); got > dialogBox {
+		t.Fatalf("the hint is %d columns wide, the box %d: %q", got, dialogBox, hint)
+	}
+	for _, want := range []string{"tab", "name/"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("the hint lacks %q: %q", want, hint)
+		}
+	}
+	if !strings.Contains(stripANSI(inFolder.View()), "name/ = folder") {
+		t.Fatal("the folder hint is on the screen, not cut off")
+	}
+	atRoot := inFolder
+	atRoot.name = &namePrompt{dir: fx.root, home: fx.root}
+	if strings.Contains(atRoot.nameHint(), "tab") {
+		t.Fatalf("tab has nowhere to go when the root is the target: %q", atRoot.nameHint())
+	}
 }
