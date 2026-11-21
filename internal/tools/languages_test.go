@@ -155,3 +155,24 @@ func TestInstaller_NoLanguageChosenInstallsNothing(t *testing.T) {
 		t.Fatal("AllLanguages names every language in order")
 	}
 }
+
+func TestLoadLanguages_IgnoresARetiredLanguage(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, languagesFile), []byte(`{"languages":["python","groovy"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := LoadLanguages(dir)
+	if !ok || len(got) != 1 || got[0] != "python" {
+		t.Fatalf("a retired language must not discard the choice: %v %v", got, ok)
+	}
+}
+
+func TestLoadLanguages_AsksAgainWhenOnlyARetiredLanguageWasChosen(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, languagesFile), []byte(`{"languages":["groovy"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := LoadLanguages(dir); ok {
+		t.Fatalf("nothing usable was chosen, the question must come again: %v", got)
+	}
+}

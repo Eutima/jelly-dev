@@ -85,17 +85,16 @@ preview with `JD_DRY_RUN=1`):
 | `basics` | git; on Linux a clipboard tool (wl-clipboard or xclip) | git (winget) |
 | `terminal` | a terminal emulator for new windows (xterm if none is found); in WSL Windows Terminal (`wt.exe`, via winget) | Windows Terminal |
 | `runtimes` | Go, Node.js + npm, Python (pip, pipx), a JDK (also installed when `lsp` is chosen: the servers need them) | Go, Node.js, JDK 21, Python |
-| `lsp` | gopls (`go install`), pyright, typescript-language-server (JavaScript and TypeScript), vscode-langservers-extracted (HTML, CSS, JSON), the Angular language server and the formatter prettier (`npm -g`, into `~/.local`), the formatter black (pipx or `pip --user`), jdtls (download), groovy-language-server (download) | the same |
+| `lsp` | gopls (`go install`), pyright, typescript-language-server (JavaScript and TypeScript), vscode-langservers-extracted (HTML, CSS, JSON), the Angular language server and the formatter prettier (`npm -g`, into `~/.local`), the formatter black (pipx or `pip --user`), jdtls (download) | the same |
 
 System packages are installed with apt, dnf, pacman, zypper, apk or brew (through `sudo` unless you are root) and winget on
 Windows. A tool that cannot be installed is reported at the end; jd itself works without them (the language servers are
 used by the IDE from milestone 2 on). jdtls is downloaded from download.eclipse.org over
 HTTPS as one pinned milestone (1.63.0) and verified against its SHA-256 before it is unpacked; a download that differs is
-refused. The groovy-language-server download comes from its GitHub releases over HTTPS and is not checksum-verified (the
-project publishes no release to pin).
+refused.
 
 **Languages**: the language servers and formatters are installed per language: `python`, `html`, `css`, `json`, `yaml`, `docker` (Dockerfile), `compose` (Docker Compose), `javascript`
-(JavaScript and TypeScript), `angular`, `go`, `rust`, `c`, `cpp` (C++), `java`, `groovy`. The first time jd starts in a terminal it asks which ones you work
+(JavaScript and TypeScript), `angular`, `go`, `rust`, `c`, `cpp` (C++), `java`. The first time jd starts in a terminal it asks which ones you work
 with (nothing is checked beforehand; `space` toggles, `a` all, `n` none, `enter` installs, `esc` chooses no language, `ctrl+c` means "not now" and it asks again
 at the next start) and remembers the answer in `languages.json` in the config folder. Only the tools of those languages (and the runtimes they need) are installed, by the
 installer script, and later by the IDE when it starts (`:tools` installs what is missing). Change it any time from the command line,
@@ -261,12 +260,12 @@ the ones for the file type come first, missing ones are dim): type to narrow it,
 for that file type once its result was applied (`formatters.json` in the config folder; delete the entry there to forget it), `esc` cancels. `ctrl+space` (or `ctrl+n`) in insert mode opens the completion popup with the server's
 suggestions and the words of the file as a fallback: typing narrows it, `ctrl+n`/`ctrl+p` or the arrows choose, `tab` or `enter`
 accept, `esc` closes it. Defaults: gopls (Go), typescript-language-server (JavaScript, TypeScript, JSX), pyright (Python),
-vscode-html/css/json-language-server, jdtls (Java), groovy-language-server; the installer sets them up. Add or change servers in
+vscode-html/css/json-language-server, jdtls (Java); the installer sets them up. Add or change servers in
 `<config dir>/jd/lsp.json`: `{"servers": [{"name": "rust", "command": ["rust-analyzer"], "extensions": [".rs"], "languageId": "rust",
 "rootMarkers": ["Cargo.toml"], "formatter": ["rustfmt", "--emit", "stdout"]}]}` (an entry with the name of a default replaces it).
 
 **Tools are installed for you**: when a project window opens, jd checks for the language servers and formatters (gopls,
-typescript-language-server, pyright, the HTML/CSS/JSON servers, the Angular language server, jdtls, groovy-language-server,
+typescript-language-server, pyright, the HTML/CSS/JSON servers, the Angular language server, jdtls,
 prettier, black) and **installs what is missing in the background**, one after the other, with the language's own tool (`go
 install`, `npm install -g --prefix ~/.local`, `pipx` or `pip --user`, or a download); the progress shows in the status line
 and the result when it is done. A runtime that is missing (Go, Node.js, Python, Java) is reported, not installed: jd never

@@ -41,7 +41,7 @@ const (
                              (jd setup --mark-done: only record that the installer did it)
   jd install-lsp [--all] [--list] [--update] [<language>...]
                              install (--update: update) the language servers and formatters of the languages (python html css json yaml docker compose
-                             javascript angular go java groovy; none given: the languages chosen so far)
+                             javascript angular go java; none given: the languages chosen so far)
   jd install-git [--apply] [--local]
                              print (or with --apply write, overwriting existing values) the git diff/merge tool settings`
 )

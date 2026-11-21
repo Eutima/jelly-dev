@@ -61,7 +61,6 @@ func DefaultServers() []ServerSpec {
 		},
 		{Name: "rust-analyzer", Command: []string{"rust-analyzer"}, Extensions: []string{".rs"}, LanguageID: "rust", RootMarkers: []string{"Cargo.toml", "rust-project.json"}, Formatter: []string{"rustfmt", "--emit=stdout", "--edition=2021"}}, // the edition is fixed: rustfmt reads none from stdin
 		{Name: "jdtls", Command: []string{"jdtls"}, Extensions: []string{".java"}, LanguageID: "java", RootMarkers: []string{"pom.xml", "build.gradle", "build.gradle.kts"}},
-		{Name: "groovy", Command: []string{"groovy-language-server"}, Extensions: []string{".groovy", ".gradle"}, LanguageID: "groovy", RootMarkers: []string{"build.gradle", "settings.gradle"}},
 	}
 }
 

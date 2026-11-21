@@ -40,7 +40,6 @@ func Languages() []Language {
 		{ID: "c", Name: "C", Tools: []string{"clangd", "clang-format"}},
 		{ID: "cpp", Name: "C++", Tools: []string{"clangd", "clang-format"}},
 		{ID: "java", Name: "Java", Tools: []string{"jdtls"}},
-		{ID: "groovy", Name: "Groovy", Tools: []string{"groovy-language-server"}},
 	}
 }
 
@@ -111,6 +110,9 @@ func ToolsFor(languages []string) []string {
 	return names
 }
 
+// retiredLanguages were offered once and are gone; a saved choice that still names one keeps its other languages.
+var retiredLanguages = []string{"groovy"}
+
 // LoadLanguages returns the languages the user chose; ok is false when nothing was chosen yet (or the file is unreadable).
 func LoadLanguages(configDir string) (languages []string, ok bool) {
 	data, err := os.ReadFile(filepath.Join(configDir, languagesFile))
@@ -123,7 +125,11 @@ func LoadLanguages(configDir string) (languages []string, ok bool) {
 	if json.Unmarshal(data, &state) != nil {
 		return nil, false
 	}
-	ids, err := ParseLanguages(strings.Join(state.Languages, ","))
+	kept := slices.DeleteFunc(slices.Clone(state.Languages), func(id string) bool { return slices.Contains(retiredLanguages, id) })
+	if len(kept) == 0 && len(state.Languages) > 0 {
+		return nil, false // only retired languages were chosen: ask again
+	}
+	ids, err := ParseLanguages(strings.Join(kept, ","))
 	if err != nil {
 		return nil, false
 	}

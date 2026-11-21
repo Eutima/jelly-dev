@@ -294,7 +294,7 @@ func TestDefaultServers_CoverHTMLAndJavaScript(t *testing.T) {
 	for file, want := range map[string][2]string{
 		"index.html": {"html", "html"}, "app.js": {"typescript-language-server", "javascript"}, "x.mjs": {"typescript-language-server", "javascript"},
 		"view.jsx": {"typescript-language-server", "javascriptreact"}, "main.ts": {"typescript-language-server", "typescript"},
-		"a.py": {"pyright", "python"}, "A.java": {"jdtls", "java"}, "build.gradle": {"groovy", "groovy"}, "s.css": {"css", "css"},
+		"a.py": {"pyright", "python"}, "A.java": {"jdtls", "java"}, "s.css": {"css", "css"},
 	} {
 		spec, id, ok := specFor(DefaultServers(), file)
 		if !ok || spec.Name != want[0] || id != want[1] {

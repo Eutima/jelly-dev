@@ -51,7 +51,7 @@ if [ "$updates" -eq 1 ]; then echo "ok   apt-get update runs once"; else echo "F
 out=$(FAKE_WAYLAND=1 plan apt-get "git xterm go npm java")
 expect "wayland gets wl-clipboard" "$out" "install -y wl-clipboard"
 
-out=$(plan dnf "git xterm go npm javac java python3 pyright-langserver typescript-language-server jdtls groovy-language-server gopls xclip vscode-html-language-server ngserver prettier black yaml-language-server docker-langserver docker-compose-langserver clangd clang-format rustup rust-analyzer rustfmt")
+out=$(plan dnf "git xterm go npm javac java python3 pyright-langserver typescript-language-server jdtls gopls xclip vscode-html-language-server ngserver prettier black yaml-language-server docker-langserver docker-compose-langserver clangd clang-format rustup rust-analyzer rustfmt")
 expect "everything present is reported" "$out" "All dependencies are in place."
 expect_not "nothing is installed when everything is there" "$out" "[dry-run] sudo"
 
@@ -72,7 +72,6 @@ expect "black via pip" "$out" "python3 -m pip install --user black"
 expect "jdtls download is planned" "$out" "download https://download.eclipse.org/jdtls"
 expect "jdtls is a pinned milestone" "$out" "jdtls/milestones/1.63.0/"
 expect_not "jdtls is never a moving snapshot" "$out" "snapshots"
-expect "groovy server download is planned" "$out" "groovy-language-server release jar"
 
 out=$(plan apt-get "" "lsp")
 expect "the lsp group installs the runtimes it needs" "$out" "install -y golang-go"
@@ -105,7 +104,6 @@ expect "prettier formats html" "$out" "prettier"
 expect_not "no gopls without go" "$out" "gopls"
 expect_not "no angular server" "$out" "@angular/language-server"
 expect_not "no java server" "$out" "jdtls"
-expect_not "no groovy server" "$out" "groovy"
 expect_not "no typescript server" "$out" "typescript-language-server"
 out=$(FAKE_LANGS="python html;css" plan apt-get "git xclip xterm go npm java python3 pipx" "lsp")
 expect "spaces and semicolons separate languages: html" "$out" "vscode-langservers-extracted"

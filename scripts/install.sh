@@ -9,7 +9,7 @@
 #   JD_DEPS              dependency groups to handle, comma separated (default basics,terminal,runtimes,lsp)
 #   JD_DRY_RUN=1         print what would be installed instead of installing it
 #   JD_LANGS=<ids>       languages to install language servers and formatters for, comma separated: python html css json yaml docker compose
-#                        javascript angular go rust c cpp java groovy, all, or none (default: all; jd asks on its first start)
+#                        javascript angular go rust c cpp java, all, or none (default: all; jd asks on its first start)
 #   JD_BIN=<path>        jd is already installed there (pip, jd runs this script itself on its first start): do not download
 #                        jd and do not change the PATH, only install the dependencies and configure git
 set -eu
@@ -195,7 +195,7 @@ deps_runtimes() {
     lang_enabled go && { ensure_tool go "Go" go || true; }
     # Node.js also runs the Python server (pyright)
     any_lang python html css json yaml docker compose javascript angular && { ensure_tool node "Node.js and npm" npm || true; }
-    any_lang java groovy && { ensure_tool jdk "Java JDK" javac || true; }
+    any_lang java && { ensure_tool jdk "Java JDK" javac || true; }
     # Python runs black and starts the Java server
     # Python runs black and clang-format and starts the Java server
     any_lang python java c cpp && { ensure_tool python "Python 3 and pip" python3 || true; }
@@ -292,24 +292,6 @@ lsp_jdtls() {
     rm -f "$archive"
 }
 
-lsp_groovy() {
-    if have groovy-language-server; then log "ok       groovy-language-server"; return 0; fi
-    have java || { problem "groovy-language-server needs a JDK, which is missing"; return 0; }
-    jar=${XDG_DATA_HOME:-$HOME/.local/share}/groovy-language-server/groovy-language-server-all.jar
-    log "install  groovy-language-server (download to $jar)"
-    if [ -n "${JD_DRY_RUN:-}" ]; then
-        log "[dry-run] download the groovy-language-server release jar to $jar and write $install_dir/groovy-language-server"
-        return 0
-    fi
-    if mkdir -p "$(dirname "$jar")" "$install_dir" &&
-        fetch "https://github.com/GroovyLanguageServer/groovy-language-server/releases/latest/download/groovy-language-server-all.jar" "$jar"; then
-        printf '#!/bin/sh\nexec java -jar "%s" "$@"\n' "$jar" >"$install_dir/groovy-language-server"
-        chmod +x "$install_dir/groovy-language-server"
-    else
-        problem "groovy-language-server could not be downloaded from github.com/GroovyLanguageServer/groovy-language-server"
-    fi
-}
-
 # lsp_rust adds the language server and the formatter to the Rust toolchain; without a toolchain the stable one is installed.
 # rust_component tells whether the toolchain has a component: rustup keeps a proxy for it in ~/.cargo/bin either way.
 rust_component() { have rustup && rustup which "$1" >/dev/null 2>&1; }
@@ -333,7 +315,6 @@ deps_lsp() {
     lang_enabled compose && npm_tool "Docker Compose language server" docker-compose-langserver @microsoft/compose-language-service
     lang_enabled angular && npm_tool "Angular language server" ngserver @angular/language-server @angular/language-service typescript
     lang_enabled java && lsp_jdtls
-    lang_enabled groovy && lsp_groovy
     any_lang html css json yaml javascript angular && npm_tool "prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)" prettier prettier
     lang_enabled python && python_tool "black (Python formatter)" black black
     any_lang c cpp && python_tool "clang-format (C and C++ formatter)" clang-format clang-format

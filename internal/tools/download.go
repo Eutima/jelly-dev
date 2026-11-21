@@ -63,20 +63,6 @@ func (e Env) installJdtls(ctx context.Context, t Tool) error {
 		fmt.Sprintf("@%s \"%s\" %%*\r\n", python, script))
 }
 
-// installGroovy downloads the Groovy language server (a jar) and a launcher for it.
-func (e Env) installGroovy(ctx context.Context, t Tool) error {
-	if _, err := e.need(t, "a Java JDK", "java"); err != nil {
-		return err
-	}
-	jar := filepath.Join(e.DataDir(), "groovy-language-server", "groovy-language-server-all.jar")
-	if err := e.Fetch(ctx, groovyURL, jar); err != nil {
-		return fmt.Errorf("download groovy-language-server: %w", err)
-	}
-	return e.writeLauncher("groovy-language-server",
-		fmt.Sprintf("#!/bin/sh\nexec java -jar %q \"$@\"\n", jar),
-		fmt.Sprintf("@java -jar \"%s\" %%*\r\n", jar))
-}
-
 // verifySHA256 refuses a file whose SHA-256 differs from the expected hex digest.
 func verifySHA256(path, want string) error {
 	file, err := os.Open(path)

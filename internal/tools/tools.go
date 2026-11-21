@@ -78,7 +78,6 @@ func Defaults() []Tool {
 		{Name: "rust-analyzer", Binary: "rust-analyzer", Kind: Rustup, Packages: []string{"rust-analyzer"}, Purpose: "language server for Rust"},
 		{Name: "rustfmt", Binary: "rustfmt", Kind: Rustup, Packages: []string{"rustfmt"}, Purpose: "formatter for Rust"},
 		{Name: "jdtls", Binary: "jdtls", Kind: Download, Purpose: "language server for Java"},
-		{Name: "groovy-language-server", Binary: "groovy-language-server", Kind: Download, Purpose: "language server for Groovy"},
 		{Name: "prettier", Binary: "prettier", Kind: NPM, Packages: []string{"prettier"}, Purpose: "formatter for HTML, CSS, JavaScript, TypeScript, JSON and YAML"},
 		{Name: "black", Binary: "black", Kind: Python, Packages: []string{"black"}, Purpose: "formatter for Python"},
 	}
@@ -273,8 +272,6 @@ func (e Env) installDownload(ctx context.Context, t Tool) error {
 	switch t.Name {
 	case "jdtls":
 		return e.installJdtls(ctx, t)
-	case "groovy-language-server":
-		return e.installGroovy(ctx, t)
 	}
 	return fmt.Errorf("%s: %w", t.Name, errNoTool)
 }

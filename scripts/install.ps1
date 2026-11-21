@@ -5,7 +5,7 @@
 #              JD_SKIP_DEPS=1 (do not check or install dependencies),
 #              JD_DEPS (groups to handle, comma separated; default basics,terminal,runtimes,lsp),
 #              JD_LANGS (languages to install language servers and formatters for: python, html, css, json, yaml, docker, compose, javascript, angular,
-#              go, rust, c, cpp, java, groovy, all or none; default all),
+#              go, rust, c, cpp, java, all or none; default all),
 #              JD_DRY_RUN=1 (print what would be installed),
 #              JD_BIN (path of an installed jd.exe, for the pip package that runs this script itself on its first start:
 #              jd is not downloaded and the PATH stays as it is, only the dependencies and git are handled).
@@ -117,7 +117,7 @@ function Install-Download([string]$label, [string]$url, [scriptblock]$finish) {
 }
 
 # Test-Lang tells whether the tools of a language are wanted: JD_LANGS lists the languages (python, html, css, json, yaml, docker, compose,
-# javascript, angular, go, java, groovy), "none" means no language, "all" every one; without it every language is wanted.
+# javascript, angular, go, java), "none" means no language, "all" every one; without it every language is wanted.
 function Test-Lang([string[]]$ids) {
     if (-not $env:JD_LANGS) { return $true }
     $wanted = ($env:JD_LANGS -replace '[\s;]+', ',').ToLower().Split(',')
@@ -141,7 +141,7 @@ function Install-Dependencies {
     if ((Test-Group 'runtimes') -or (Test-Group 'lsp')) {
         if (Test-Lang @('go')) { Ensure-Winget 'Go' 'GoLang.Go' @('go') }
         if (Test-Lang @('python', 'html', 'css', 'json', 'yaml', 'docker', 'compose', 'javascript', 'angular')) { Ensure-Winget 'Node.js and npm' 'OpenJS.NodeJS.LTS' @('npm') }
-        if (Test-Lang @('java', 'groovy')) { Ensure-Winget 'Java JDK' 'EclipseAdoptium.Temurin.21.JDK' @('javac') }
+        if (Test-Lang @('java')) { Ensure-Winget 'Java JDK' 'EclipseAdoptium.Temurin.21.JDK' @('javac') }
         if (Test-Lang @('c', 'cpp')) { Ensure-Winget 'LLVM (clangd and clang-format for C and C++)' 'LLVM.LLVM' @('clangd') }
         if (Test-Lang @('rust')) { Ensure-Winget 'Rustup (the Rust toolchain)' 'Rustlang.Rustup' @('rustup') }
         if (Test-Lang @('python', 'java')) { Ensure-Winget 'Python (runs black and starts the Java language server)' 'Python.Python.3.12' @('python', 'py') }
@@ -202,20 +202,6 @@ function Install-Dependencies {
                 tar -xzf $archive -C $target
                 Remove-Item $archive -Force
                 Set-Content -Path (Join-Path $installDir 'jdtls.cmd') -Value "@python `"$target\bin\jdtls`" %*" -Encoding ASCII
-            }
-        }
-        }
-        if (Test-Lang @('groovy')) {
-        if (Get-Command groovy-language-server -ErrorAction SilentlyContinue) { Write-Host 'ok       groovy-language-server' }
-        elseif (-not (Get-Command java -ErrorAction SilentlyContinue)) { Write-Problem 'groovy-language-server needs a JDK, which is missing' }
-        else {
-            $url = 'https://github.com/GroovyLanguageServer/groovy-language-server/releases/latest/download/groovy-language-server-all.jar'
-            Install-Download 'groovy-language-server' $url {
-                $dir = Join-Path $env:LOCALAPPDATA 'groovy-language-server'
-                New-Item -ItemType Directory -Path $dir -Force | Out-Null
-                $jar = Join-Path $dir 'groovy-language-server-all.jar'
-                Invoke-WebRequest $url -OutFile $jar
-                Set-Content -Path (Join-Path $installDir 'groovy-language-server.cmd') -Value "@java -jar `"$jar`" %*" -Encoding ASCII
             }
         }
         }

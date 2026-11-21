@@ -24,7 +24,6 @@ const (
 	maxArchiveEntries = 100000
 	jdtlsVersion      = "1.63.0"
 	jdtlsFile         = "jdt-language-server-1.63.0-202610191322.tar.gz"
-	groovyURL         = "https://github.com/GroovyLanguageServer/groovy-language-server/releases/latest/download/groovy-language-server-all.jar"
 )
 
 // jdtlsURL and jdtlsSHA256 pin the jdtls download to one milestone; raise them together (the checksum is published next to

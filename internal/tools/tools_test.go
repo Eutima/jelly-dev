@@ -92,7 +92,7 @@ func TestDefaults_CoverServersAndFormatters(t *testing.T) {
 		binaries[tl.Binary] = true
 	}
 	for _, want := range []string{"gopls", "typescript-language-server", "pyright-langserver", "vscode-html-language-server", "ngserver",
-		"jdtls", "groovy-language-server", "prettier", "black"} {
+		"jdtls", "prettier", "black"} {
 		if !binaries[want] {
 			t.Errorf("%s is missing from the default tools", want)
 		}
@@ -185,7 +185,7 @@ func TestInstall_PythonPrefersPipxThenPipAndRetriesForManagedSystems(t *testing.
 
 func TestInstall_ReportsMissingRuntimes(t *testing.T) {
 	_, env := newMachine(t)
-	for name, needs := range map[string]string{"prettier": "npm", "gopls": "Go", "black": "Python", "jdtls": "Java", "groovy-language-server": "Java"} {
+	for name, needs := range map[string]string{"prettier": "npm", "gopls": "Go", "black": "Python", "jdtls": "Java"} {
 		err := env.Install(context.Background(), tool(name))
 		var missing *MissingRuntimeError
 		if !errors.As(err, &missing) || !strings.Contains(missing.Needs, needs) || !strings.Contains(err.Error(), "installer installs it") {
@@ -220,22 +220,6 @@ func TestInstall_AcceptsToolsInFoldersThatAreNotOnThePathYet(t *testing.T) {
 	}
 	if err := env.Install(context.Background(), tool("prettier")); err != nil {
 		t.Fatalf("a tool in ~/.local/bin counts as installed: %v (ran %v)", err, m.ran)
-	}
-}
-
-func TestInstall_GroovyDownloadsJarAndWritesLauncher(t *testing.T) {
-	m, env := newMachine(t, "java")
-	err := env.Install(context.Background(), tool("groovy-language-server"))
-	launcher := filepath.Join(env.BinDir(), "groovy-language-server")
-	data, readErr := os.ReadFile(launcher)
-	if err != nil || readErr != nil || !strings.Contains(string(data), "java -jar") || !strings.Contains(string(data), "groovy-language-server-all.jar") {
-		t.Fatalf("%v %v %q", err, readErr, data)
-	}
-	if len(m.fetched) != 1 || !strings.HasPrefix(m.fetched[0], "https://github.com/GroovyLanguageServer/") {
-		t.Fatalf("fetched %v", m.fetched)
-	}
-	if info, _ := os.Stat(launcher); info.Mode()&0o100 == 0 {
-		t.Fatal("the launcher must be executable")
 	}
 }
 
@@ -304,12 +288,13 @@ func TestInstall_JdtlsRefusesAnArchiveWithAnotherChecksum(t *testing.T) {
 }
 
 func TestInstall_WindowsLauncherIsACmdFile(t *testing.T) {
-	_, env := newMachine(t, "java")
+	m, env := newMachine(t, "java", "python3")
+	m.archive = jdtlsArchive(t, map[string]string{"bin/jdtls": "#!/usr/bin/env python3\n"})
 	env.GOOS = "windows"
-	if err := env.Install(context.Background(), tool("groovy-language-server")); err != nil {
+	if err := env.Install(context.Background(), tool("jdtls")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(env.BinDir(), "groovy-language-server.cmd")); err != nil {
+	if _, err := os.Stat(filepath.Join(env.BinDir(), "jdtls.cmd")); err != nil {
 		t.Fatalf("a .cmd launcher is expected: %v", err)
 	}
 }
