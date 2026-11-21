@@ -14,6 +14,7 @@ plan() {
         [ -n "${3:-}" ] && JD_DEPS=$3
         export JD_INSTALL_NO_MAIN JD_DRY_RUN
         [ -n "${3:-}" ] && export JD_DEPS
+        [ -n "${FAKE_LANGS:-}" ] && JD_LANGS=$FAKE_LANGS && export JD_LANGS
         . "$here/install.sh"
         unset WAYLAND_DISPLAY
         [ -n "${FAKE_WAYLAND:-}" ] && WAYLAND_DISPLAY=wayland-0
@@ -87,6 +88,39 @@ expect "no python means no black" "$out" "black (Python formatter) needs Python"
 out=$(plan "" "")
 expect "no package manager is reported, not fatal" "$out" "no supported package manager was found"
 expect "problems are summed up" "$out" "some tools are missing, jd itself works without them"
+
+# JD_LANGS limits the tools to the chosen languages: servers, formatters and the runtimes they need.
+out=$(FAKE_LANGS="python,html" plan apt-get "git xclip xterm" "runtimes,lsp")
+expect "python needs node and python" "$out" "install -y nodejs npm"
+expect "python needs python" "$out" "python3"
+expect_not "python and html need no go" "$out" "golang"
+expect_not "python and html need no jdk" "$out" "jdk"
+out=$(FAKE_LANGS="python,html" plan apt-get "git xclip xterm go npm java python3 pipx" "lsp")
+expect "pyright for python" "$out" "pyright"
+expect "black for python" "$out" "black"
+expect "the html server" "$out" "vscode-langservers-extracted"
+expect "prettier formats html" "$out" "prettier"
+expect_not "no gopls without go" "$out" "gopls"
+expect_not "no angular server" "$out" "@angular/language-server"
+expect_not "no java server" "$out" "jdtls"
+expect_not "no groovy server" "$out" "groovy"
+expect_not "no typescript server" "$out" "typescript-language-server"
+out=$(FAKE_LANGS="python html;css" plan apt-get "git xclip xterm go npm java python3 pipx" "lsp")
+expect "spaces and semicolons separate languages: html" "$out" "vscode-langservers-extracted"
+expect "spaces and semicolons separate languages: python" "$out" "pyright"
+out=$(FAKE_LANGS="go" plan apt-get "git xclip xterm go" "lsp")
+expect "go gets gopls" "$out" "gopls"
+expect_not "go needs no npm tool" "$out" "npm install"
+expect_not "go needs no black" "$out" "black"
+out=$(FAKE_LANGS="none" plan apt-get "git xclip xterm" "runtimes,lsp")
+expect_not "no language installs no runtime" "$out" "install -y"
+expect_not "no language installs no server" "$out" "pyright"
+out=$(FAKE_LANGS="ALL" plan apt-get "git xclip xterm go npm java python3 pipx" "lsp")
+expect "all means all (case ignored): jdtls" "$out" "jdtls"
+expect "all means all: gopls" "$out" "gopls"
+out=$(FAKE_LANGS="java" plan apt-get "git xclip xterm java python3" "lsp")
+expect "java gets its server" "$out" "jdtls"
+expect_not "java needs no node tool" "$out" "npm install"
 
 # main with JD_BIN (the pip package runs the script on jd's first start): no download of jd, no PATH change, git is
 # configured with the jd that is installed. The steps are replaced by fakes that record the calls.

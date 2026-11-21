@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 
@@ -27,15 +28,30 @@ type failure struct {
 // Installer installs the missing tools. A tool that failed is not tried again at every start (that would make every start
 // slow when, say, there is no network): the failure is remembered for RetryAfter, and the command :tools forces a new try.
 type Installer struct {
-	env   Env
-	tools []Tool
-	path  string
-	now   func() time.Time
+	env       Env
+	tools     []Tool
+	languages []string // the languages whose tools are installed automatically (only when restricted)
+	restrict  bool     // false: every tool counts (an installer built by hand); true: only those of languages
+	path      string
+	now       func() time.Time
 }
 
 // NewInstaller returns an installer for the default tools; configDir is where the failures are remembered.
+// The languages the user chose (languages.json) decide which tools are installed; without a choice the default languages do.
 func NewInstaller(configDir string) *Installer {
-	return &Installer{env: DefaultEnv(), tools: Defaults(), path: filepath.Join(configDir, stateFile), now: time.Now}
+	languages, ok := LoadLanguages(configDir)
+	if !ok {
+		languages = DefaultLanguages()
+	}
+	return &Installer{env: DefaultEnv(), tools: Defaults(), languages: languages, restrict: true, path: filepath.Join(configDir, stateFile), now: time.Now}
+}
+
+// wanted reports whether the tool belongs to a chosen language.
+func (i *Installer) wanted(name string) bool {
+	if !i.restrict { // an installer built by hand: everything
+		return true
+	}
+	return slices.Contains(ToolsFor(i.languages), name)
 }
 
 func (i *Installer) load() map[string]failure {
@@ -70,6 +86,9 @@ func (i *Installer) Pending(force bool) []string {
 	failures := i.load()
 	var names []string
 	for _, t := range i.env.Missing(i.tools) {
+		if !i.wanted(t.Name) {
+			continue
+		}
 		if f, failed := failures[t.Name]; failed && !force && i.now().Sub(f.At) < RetryAfter {
 			continue
 		}
@@ -77,6 +96,16 @@ func (i *Installer) Pending(force bool) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// IsInstalled reports whether the named tool is installed.
+func (i *Installer) IsInstalled(name string) bool {
+	for _, t := range i.tools {
+		if t.Name == name {
+			return i.env.Installed(t)
+		}
+	}
+	return false
 }
 
 // Purpose says what a tool is for.
@@ -115,6 +144,9 @@ func (i *Installer) Status() []string {
 	failures := i.load()
 	var lines []string
 	for _, t := range i.tools {
+		if !i.wanted(t.Name) && !i.env.Installed(t) { // tools of languages that were not chosen are not listed as missing
+			continue
+		}
 		switch f, failed := failures[t.Name]; {
 		case i.env.Installed(t):
 			lines = append(lines, fmt.Sprintf("ok       %s (%s)", t.Name, t.Purpose))

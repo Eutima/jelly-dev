@@ -192,6 +192,8 @@ func Themed(model tea.Model, theme Theme) tea.Model {
 		return typed.WithTheme(theme)
 	case WelcomeModel:
 		return typed.WithTheme(theme)
+	case LanguagesModel:
+		return typed.WithTheme(theme)
 	}
 	return model
 }

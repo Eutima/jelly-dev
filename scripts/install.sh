@@ -8,6 +8,8 @@
 #   JD_SKIP_DEPS=1       do not check or install dependencies
 #   JD_DEPS              dependency groups to handle, comma separated (default basics,terminal,runtimes,lsp)
 #   JD_DRY_RUN=1         print what would be installed instead of installing it
+#   JD_LANGS=<ids>       languages to install language servers and formatters for, comma separated: python html css json
+#                        javascript angular go java groovy, all, or none (default: all; jd asks on its first start)
 #   JD_BIN=<path>        jd is already installed there (pip, jd runs this script itself on its first start): do not download
 #                        jd and do not change the PATH, only install the dependencies and configure git
 set -eu
@@ -167,11 +169,30 @@ deps_terminal() {
     esac
 }
 
+# lang_enabled tells whether the tools of a language are wanted: JD_LANGS lists the languages, "none" means no language, all
+# means every one; without it every language is wanted.
+lang_enabled() {
+    [ -n "${JD_LANGS:-}" ] || return 0
+    case ",$(printf '%s' "$JD_LANGS" | tr ' ;' ',,' | tr 'A-Z' 'a-z')," in *",$1,"* | *",all,"*) return 0 ;; esac
+    return 1
+}
+
+# any_lang tells whether the tools of at least one of the languages are wanted.
+any_lang() {
+    for lang in "$@"; do
+        ! lang_enabled "$lang" || return 0
+    done
+    return 1
+}
+
 deps_runtimes() {
-    ensure_tool go "Go" go || true
-    ensure_tool node "Node.js and npm" npm || true
-    ensure_tool jdk "Java JDK" javac || true
-    ensure_tool python "Python 3 and pip" python3 || true
+    lang_enabled go && { ensure_tool go "Go" go || true; }
+    # Node.js also runs the Python server (pyright)
+    any_lang python html css json javascript angular && { ensure_tool node "Node.js and npm" npm || true; }
+    any_lang java groovy && { ensure_tool jdk "Java JDK" javac || true; }
+    # Python runs black and starts the Java server
+    any_lang python java && { ensure_tool python "Python 3 and pip" python3 || true; }
+    return 0
 }
 
 # fetch downloads a URL to a file.
@@ -270,15 +291,16 @@ lsp_groovy() {
 }
 
 deps_lsp() {
-    lsp_gopls
-    npm_tool "pyright (Python)" pyright-langserver pyright
-    npm_tool "typescript-language-server (JavaScript, TypeScript)" typescript-language-server typescript typescript-language-server
-    npm_tool "HTML, CSS and JSON language servers" vscode-html-language-server vscode-langservers-extracted
-    npm_tool "Angular language server" ngserver @angular/language-server @angular/language-service typescript
-    lsp_jdtls
-    lsp_groovy
-    npm_tool "prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)" prettier prettier
-    python_tool "black (Python formatter)" black black
+    lang_enabled go && lsp_gopls
+    lang_enabled python && npm_tool "pyright (Python)" pyright-langserver pyright
+    any_lang javascript angular && npm_tool "typescript-language-server (JavaScript, TypeScript)" typescript-language-server typescript typescript-language-server
+    any_lang html css json && npm_tool "HTML, CSS and JSON language servers" vscode-html-language-server vscode-langservers-extracted
+    lang_enabled angular && npm_tool "Angular language server" ngserver @angular/language-server @angular/language-service typescript
+    lang_enabled java && lsp_jdtls
+    lang_enabled groovy && lsp_groovy
+    any_lang html css json javascript angular && npm_tool "prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)" prettier prettier
+    lang_enabled python && python_tool "black (Python formatter)" black black
+    return 0
 }
 
 install_dependencies() {

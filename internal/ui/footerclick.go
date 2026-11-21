@@ -180,6 +180,8 @@ func commandKeys(shown string) []string {
 		return []string{"v"}
 	case "o/t/r":
 		return []string{"o"}
+	case "space":
+		return []string{" "}
 	case "gd":
 		return []string{"g", "d"}
 	case "gr":
