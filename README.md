@@ -1,12 +1,10 @@
 # Jelly Diff
 
-<p align="center"><img src="docs/jelly-merge-logo.png" alt="Jelly Diff logo" width="384"></p>
+<p align="center"><img src="docs/jelly-diff-logo.png" alt="Jelly Diff logo" width="384"></p>
 
-The command is `jd`.
-
-A terminal diff and merge tool with a JetBrains-style UI: side-by-side panes, colored change
-blocks and word-level highlights. It will diff files, diff the clipboard, show `git diff` and
-act as a three-pane `git mergetool`.
+A terminal diff and merge tool with a JetBrains-style UI: side-by-side panes, colored change blocks and
+word-level highlights. It diffs files, directories and the clipboard, shows `git diff` and acts as a three-pane
+`git mergetool`, optionally with Claude or Codex resolving the conflicts. The command is `jd`.
 
 - Type: tool
 - Tier: 1
@@ -14,10 +12,69 @@ act as a three-pane `git mergetool`.
 - License: MIT
 - Stack: Go + Bubble Tea (deliberate deviation from the Python tool default)
 
-## Status
+## Install
+
+Latest release, checked against the SHA-256 checksum published with it (an integrity check, not a signature):
+
+```
+curl -fsSL https://raw.githubusercontent.com/Eutima/jelly-diff/master/scripts/install.sh | sh   # Linux, macOS
+irm https://raw.githubusercontent.com/Eutima/jelly-diff/master/scripts/install.ps1 | iex        # Windows (PowerShell)
+```
+
+The installer:
+
+- puts `jd` in `~/.local/bin` (Windows: `%LOCALAPPDATA%\Programs\jelly-diff`) and removes an old `jelly-diff` binary there;
+- adds that directory to your PATH (Linux/macOS: your shell profile; Windows: the user PATH). Reload the shell
+  (`exec "$SHELL" -l`, or open a new terminal) so `jd` is found and tab-completes;
+- runs `jd install-git --apply`, making `jd` the global `diff.tool` and `merge.tool` of git (overwrites existing values).
+
+Options (environment variables): `JELLY_DIFF_VERSION` (for example `v0.2.0`) picks a release, `INSTALL_DIR` changes
+the target, `JD_SKIP_GIT_CONFIG=1` leaves the git configuration alone.
+
+Check it: `jd --version`.
+
+## Usage
+
+```
+jd <file-a> <file-b>                  compare two files, or two directories
+jd --clip <file>                      compare a file with the clipboard (--clip-left: clipboard on the left)
+jd git [--staged] [<rev> | <a>..<b>]  browse the changes of the current git repository
+jd merge <base> <local> <remote> <merged>   three-way merge (what git mergetool calls)
+jd merge <file-a> <file-b>            merge b into a without git; the result is written to a
+jd merge <dir-a> <dir-b>              the same for two directories
+jd install-git [--apply] [--local]    print (or write) the git diff/merge tool settings
+```
+
+With `jd` as git's tools: `git difftool`, `git difftool --dir-diff` and `git mergetool`.
+
+Keys in the diff views: `n`/`p` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, `q` quit.
+Keys in the merge view (conflicts):
+
+| Key | Action |
+|---|---|
+| `n` / `p` | next / previous change |
+| `o` / `t` / `b` / `r` | take ours / theirs / both / base |
+| `ctrl+o` / `ctrl+t` | take ours / theirs for all open conflicts |
+| `m` | auto-resolve conflicts that are none in fact (whitespace, different words) |
+| `a` / `c` | let Claude / Codex resolve all open conflicts (if the CLI is installed) |
+| `e`, `d`, `i` | edit, delete, insert a line of the result |
+| `u` | undo |
+| `s` | save (when every conflict is resolved) |
+| `q` | quit |
+
+Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage error. A merge exits 0 only after saving.
+
+`playground/` has sample files, two directory trees, merge inputs and a script that creates git repositories with
+local changes and with a merge stopped on conflicts: see `playground/README.md`.
+
+## Details
+
+### Status
 
 Done: file diff, word-level highlights, unified view, clipboard compare, git changes, directory diff, three-pane
 merge, git tool setup, themes (dark, light, mono), syntax highlighting. Releases are published automatically.
+
+### Diff, clipboard, git and directories
 
 Usage: `jd <file-a> <file-b>`. Flags must come before file names.
 Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage error.
@@ -32,6 +89,8 @@ are followed). Compared are regular files and links to regular files; links to d
 files and `.git` directories are skipped.
 Keys (diff): `n`/`p` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, mouse wheel, `q` quit.
 The mouse is captured for wheel scrolling; hold Shift while dragging to select text in most terminals.
+
+### Merge
 
 Merge: `jd merge <base> <local> <remote> <merged>` shows ours | result | theirs. Non-conflicting changes are
 merged automatically; conflicts start with the base lines. The result pane has a line cursor:
@@ -76,28 +135,11 @@ never changed and nothing is deleted.
 
 The result is written atomically with the line endings of the local file and a final newline; the exit code is 0 only
 after saving.
+
 Use as git tool: `jd install-git` prints the `git config` commands, `--apply` writes them (`--local` for
 the current repository only), then use `git difftool` and `git mergetool`.
 
-## Try it
-
-`playground/` has sample files, two directory trees, merge inputs and a script that creates git repositories with local
-changes and with a merge stopped on conflicts: see `playground/README.md`.
-
-## Install
-
-Latest release, checked against the SHA-256 checksum published with it (an integrity check, not a signature):
-
-```
-curl -fsSL https://raw.githubusercontent.com/Eutima/jelly-diff/master/scripts/install.sh | sh   # Linux, macOS
-irm https://raw.githubusercontent.com/Eutima/jelly-diff/master/scripts/install.ps1 | iex        # Windows (PowerShell)
-```
-
-The installer also runs `jd install-git --apply`, making `jd` the global `diff.tool` and `merge.tool` of git
-(overwrites existing values; set `JD_SKIP_GIT_CONFIG=1` to skip). Set `JELLY_DIFF_VERSION` (for example `v0.2.0`) to pick a release and `INSTALL_DIR` to change the target
-(default `~/.local/bin`, on Windows `%LOCALAPPDATA%\Programs\jelly-diff`).
-
-## Run
+### Build from source and test
 
 ```
 go build -o bin/jd ./cmd/jelly-diff
@@ -116,13 +158,13 @@ the diff, clipboard, git, directory and merge views (in the merge view the resul
 choice): monokai colors in the dark theme, github colors in the light theme, none in mono. Changed words keep their
 own highlight. Files over 512 KiB and files without a known lexer are not highlighted.
 
-## Known limitations of the terminal UI
+### Known limitations of the terminal UI
 
 - On terminals that do not answer the background-color query (some serial consoles and test harnesses) every start,
   including `jd --version`, waits about 5 seconds. This comes from bubbletea v1 (it queries the terminal while
   initializing) and goes away on terminals such as xterm, iTerm2, kitty, Alacritty, WezTerm; tmux and screen are skipped.
 
-## Build and release
+### Build and release
 
 `jd --version` (or `jd version`, only as the sole argument; use `./version` for a file of that name) prints the
 version. A plain `go build` reports the version Go records for the build (a pseudo-version with the commit, or `dev`
@@ -143,14 +185,14 @@ Every push to `master` runs the tests (`.github/workflows/release.yml`) and then
 (`feat` = minor, `fix`/`perf` = patch, `!` or `BREAKING CHANGE` = major) and GoReleaser publishes the archives and
 `checksums.txt` to GitHub. Pushes with only `chore`, `docs`, `test`, `ci` or `refactor` commits create no release.
 
-## Config
+### Config
 
 Environment variables (see `.env.example`):
 
 - `JELLY_DIFF_THEME`: `dark` (default), `light` or `mono` (no colors: bold = added, strikethrough = deleted, reverse video = changed words).
 - `NO_COLOR`: any non-empty value selects `mono` unless `JELLY_DIFF_THEME` is set.
 
-## Known limitations
+### Known limitations
 
 - A missing trailing newline at the end of a file is not shown as a difference.
 - Binary detection only checks for NUL bytes (UTF-16 files are shown as garbage); files and git blobs are limited to 64 MiB.
