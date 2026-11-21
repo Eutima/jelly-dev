@@ -104,7 +104,7 @@ func (m DiffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m DiffModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	page := max(m.bodyHeight()-1, 1)
 	switch msg.String() {
-	case "q", "ctrl+c", "esc":
+	case "q", "ctrl+c", "ctrl+d", "esc":
 		return m, tea.Quit
 	case "j", "down":
 		m.offset++

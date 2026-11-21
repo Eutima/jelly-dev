@@ -132,9 +132,14 @@ func renderText(text string, spans []diff.Span, width int, base, word lipgloss.S
 func renderSyntaxText(
 	text string, spans []diff.Span, syntax []SyntaxSpan, painter *syntaxPainter, width int, base, word lipgloss.Style,
 ) string {
+	return renderSegmentLine(layoutText(text, spans, syntax, painter, width), width, base, word)
+}
+
+// renderSegmentLine draws segments exactly width columns wide.
+func renderSegmentLine(segments []segment, width int, base, word lipgloss.Style) string {
 	var out strings.Builder
 	used := 0
-	for _, seg := range layoutText(text, spans, syntax, painter, width) {
+	for _, seg := range segments {
 		style := base
 		switch {
 		case seg.highlight:
@@ -151,6 +156,67 @@ func renderSyntaxText(
 		out.WriteString(base.Render(strings.Repeat(" ", width-used)))
 	}
 	return out.String()
+}
+
+// wrapCells splits display cells into lines of at most width columns (hard wrap; a wide rune that does not fit
+// starts the next line). Text without cells gives one empty line.
+func wrapCells(cells []displayCell, width int) [][]displayCell {
+	if width <= 0 {
+		return nil
+	}
+	lines := [][]displayCell{nil}
+	used := 0
+	for _, cell := range cells {
+		if used+cell.width > width && used > 0 {
+			lines, used = append(lines, nil), 0
+		}
+		last := len(lines) - 1
+		lines[last] = append(lines[last], cell)
+		used += cell.width
+	}
+	return lines
+}
+
+// wrappedHeight is the number of lines text takes when wrapped to width columns.
+func wrappedHeight(text string, width int) int {
+	if width <= 0 {
+		return 1
+	}
+	used, lines := 0, 1
+	for _, cell := range displayCells(text, nil, nil, nil) {
+		if used+cell.width > width && used > 0 {
+			lines, used = lines+1, 0
+		}
+		used += cell.width
+	}
+	return lines
+}
+
+// groupSegments joins neighbouring cells of the same look into segments.
+func groupSegments(cells []displayCell) []segment {
+	var segments []segment
+	for _, cell := range cells {
+		if last := len(segments) - 1; last >= 0 && segments[last].highlight == cell.highlight &&
+			segments[last].paint == cell.paint {
+			segments[last].text += string(cell.r)
+			continue
+		}
+		segments = append(segments, segment{text: string(cell.r), highlight: cell.highlight, paint: cell.paint})
+	}
+	return segments
+}
+
+// renderSyntaxLines is renderSyntaxText for text that is wrapped instead of cut: it returns one string of
+// exactly width columns per wrapped line.
+func renderSyntaxLines(
+	text string, spans []diff.Span, syntax []SyntaxSpan, painter *syntaxPainter, width int, base, word lipgloss.Style,
+) []string {
+	wrapped := wrapCells(displayCells(text, spans, syntax, painter), width)
+	lines := make([]string, len(wrapped))
+	for i, cells := range wrapped {
+		lines[i] = renderSegmentLine(groupSegments(cells), width, base, word)
+	}
+	return lines
 }
 
 func padRight(text string, width int) string {

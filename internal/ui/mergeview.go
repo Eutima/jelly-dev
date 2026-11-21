@@ -108,7 +108,7 @@ func choiceName(choice Choice) string {
 
 // layout returns the panes that are shown (left to right) and their widths.
 func (m MergeModel) layout() (panes []int, widths [mergePanes]int) {
-	if m.width < threePaneWidth {
+	if m.width < threePaneWidth || m.editing {
 		pane := m.viewPane
 		if m.editing {
 			pane = paneResult
@@ -194,35 +194,108 @@ func (m MergeModel) View() string {
 	var out strings.Builder
 	out.WriteString(m.header(panes, widths))
 	out.WriteByte('\n')
-	end := min(m.offset+m.bodyHeight(), len(m.rows))
-	for i := m.offset; i < end; i++ {
-		row := m.rows[i]
-		out.WriteString(m.marker(i, row))
-		for index, pane := range panes {
-			if index > 0 {
-				side := paneOurs // the gutter before the result pane belongs to ours, the one before theirs to theirs
-				if pane == paneTheirs {
-					side = paneTheirs
-				}
-				out.WriteString(m.gutter(row, side))
-			}
-			if pane == paneResult {
-				out.WriteString(m.resultCell(i, row, numWidth, widths[pane]))
-			} else {
-				out.WriteString(m.theme.renderCell(row.cells[pane], numWidth, widths[pane]))
-			}
-		}
-		out.WriteByte('\n')
+	if m.editing {
+		out.WriteString(m.editorBody(widths[paneResult]))
+		out.WriteString(m.footer())
+		return out.String()
 	}
-	for i := end - m.offset; i < m.bodyHeight(); i++ {
+	drawn := 0
+	for i := m.offset; i < len(m.rows) && drawn < m.bodyHeight(); i++ {
+		row := m.rows[i]
+		height := m.rowHeight(i, panes, widths, numWidth)
+		var cells [mergePanes][]string
+		for _, pane := range panes {
+			cell := row.cells[pane]
+			if pane == paneResult && i == m.cursor && cell.Kind != CellFiller {
+				cell.Kind = CellCursor
+			}
+			cells[pane] = m.theme.renderCellLines(cell, numWidth, widths[pane], height, !m.noWrap)
+		}
+		for line := 0; line < height && drawn < m.bodyHeight(); line++ {
+			out.WriteString(m.marker(i, row, line > 0))
+			for index, pane := range panes {
+				if index > 0 {
+					side := paneOurs // the gutter before the result pane belongs to ours, the one before theirs to theirs
+					if pane == paneTheirs {
+						side = paneTheirs
+					}
+					out.WriteString(m.gutter(row, side, line > 0))
+				}
+				out.WriteString(cells[pane][line])
+			}
+			out.WriteByte('\n')
+			drawn++
+		}
+	}
+	for ; drawn < m.bodyHeight(); drawn++ {
 		out.WriteByte('\n')
 	}
 	out.WriteString(m.footer())
 	return out.String()
 }
 
-// marker draws the edge column of a row: a bar for the selected change and the state of its chunk.
-func (m MergeModel) marker(rowIndex int, row mergeRow) string {
+// numWidth is the width of the line number column.
+func (m MergeModel) numWidth() int { return len(fmt.Sprint(max(len(m.rows), 1))) + 1 }
+
+// rowHeight is the number of screen lines a row takes: one, or with wrapping the most lines any shown pane needs.
+func (m MergeModel) rowHeight(i int, panes []int, widths [mergePanes]int, numWidth int) int {
+	if m.noWrap {
+		return 1
+	}
+	height := 1
+	for _, pane := range panes {
+		cell := m.rows[i].cells[pane]
+		if cell.Kind == CellFiller {
+			continue
+		}
+		num := numWidth
+		if widths[pane] < numWidth {
+			num = 0
+		}
+		height = max(height, wrappedHeight(cell.Text, widths[pane]-num))
+	}
+	return height
+}
+
+// rowFullyVisible tells whether row is completely shown when the view starts at offset.
+func (m MergeModel) rowFullyVisible(row int) bool {
+	if row < m.offset || row >= len(m.rows) {
+		return false
+	}
+	panes, widths := m.layout()
+	numWidth, used := m.numWidth(), 0
+	for i := m.offset; i <= row; i++ {
+		if used += m.rowHeight(i, panes, widths, numWidth); used > m.bodyHeight() {
+			return i == m.offset && i == row // a row taller than the screen counts as visible when it starts the view
+		}
+	}
+	return true
+}
+
+// firstRowFor returns the lowest offset at which row is completely visible (the row itself when it is taller
+// than the screen).
+func (m MergeModel) firstRowFor(row int) int {
+	if len(m.rows) == 0 {
+		return 0
+	}
+	row = min(max(row, 0), len(m.rows)-1)
+	panes, widths := m.layout()
+	numWidth, used, first := m.numWidth(), 0, row
+	for i := row; i >= 0; i-- {
+		if used += m.rowHeight(i, panes, widths, numWidth); used > m.bodyHeight() && i < row {
+			break
+		}
+		first = i
+	}
+	return first
+}
+
+// lastOffset is the highest useful offset: the last rows fill the screen from the bottom.
+func (m MergeModel) lastOffset() int { return m.firstRowFor(len(m.rows) - 1) }
+
+// marker draws the edge column of a row: a bar for the selected change and the state of its chunk. A
+// continuation line is a further screen line of a wrapped row.
+func (m MergeModel) marker(rowIndex int, row mergeRow, continuation bool) string {
 	if m.width < markerWidth {
 		return ""
 	}
@@ -235,7 +308,7 @@ func (m MergeModel) marker(rowIndex int, row mergeRow) string {
 	if state == stateUntouched {
 		return bar + m.theme.Gutter.Render(" ")
 	}
-	if !row.first {
+	if !row.first || continuation {
 		return bar + m.theme.Gutter.Render(symbolContinue)
 	}
 	switch state {
@@ -306,7 +379,10 @@ func (m MergeModel) paneLabels(panes []int, widths [mergePanes]int) string {
 		if file := sanitize(files[pane]); file != "" {
 			label += " · " + file
 		}
-		if len(panes) == 1 {
+		switch {
+		case m.editing:
+			label += "   (editing)"
+		case len(panes) == 1:
 			label += "   (v: switch pane)"
 		}
 		style := m.theme.Header.Faint(true)
@@ -373,13 +449,13 @@ func (m MergeModel) hints() [][]hint {
 	if left := m.Unresolved(); left > 0 {
 		save.label = fmt.Sprintf("save (%d left)", left)
 	}
-	view := []hint{{"↑↓", "move", true, 2}, {"n/p", "change", true, 0}}
+	view := []hint{{"↑↓", "move", true, 2}, {"n/p", "change", true, 0}, {"w", "wrap", true, 2}}
 	if m.width < threePaneWidth {
 		view = append(view, hint{"v", "pane", true, 0})
 	}
 	resolve := []hint{
-		{"→/o", "ours", selected, 0}, {"←/t", "theirs", selected, 0}, {"b", "both", selected, 0},
-		{"r", "base", selected, 1}, {"m", "auto-resolve", true, 0}, {"ctrl+o", "all ours", m.Unresolved() > 0, 1}, {"ctrl+t", "all theirs", m.Unresolved() > 0, 1}, {"e", "edit", onLine, 0},
+		{"→", "ours", selected, 0}, {"←", "theirs", selected, 0}, {"b", "both", selected, 0}, {"x", "ignore", selected && m.unresolvedSelected(), 1}, {"⌫", "cancel", selected && m.choiceMade(), 1},
+		{"r", "base", selected, 1}, {"m", "auto-resolve", true, 0}, {"ctrl+o", "all ours", m.Unresolved() > 0, 1}, {"ctrl+t", "all theirs", m.Unresolved() > 0, 1}, {"e", "edit", len(m.rows) > 0, 0},
 	}
 	resolve = append(resolve, m.assistantHints()...)
 	return [][]hint{
@@ -430,7 +506,7 @@ func (m MergeModel) shortcutLine() string {
 func (m MergeModel) actionLine() string {
 	footer := m.theme.Footer
 	switch {
-	case m.editing:
+	case m.editing && m.status == "":
 		return renderSegments([]barPart{{" " + m.editingStatus(), m.theme.Header}}, m.width, footer)
 	case m.status != "" && m.warn:
 		return renderSegments([]barPart{{" ! " + m.status, m.theme.Warning.Background(footer.GetBackground())}}, m.width, footer)
@@ -448,10 +524,23 @@ func (m MergeModel) actionLine() string {
 			title = fmt.Sprintf("Resolve conflict %d/%d", number, m.ConflictCount())
 		}
 		segments = append(segments, barPart{" " + title + "   ", m.theme.Header})
-		for _, k := range [][2]string{{"→/o", "Use ours"}, {"←/t", "Use theirs"}, {"b", "Use both"}, {"e", "Edit"}} {
+		chunk := m.changed[m.current]
+		mark := func(side int) string {
+			if m.sideIncluded(chunk, side) {
+				return " ✓"
+			}
+			return ""
+		}
+		for _, k := range [][2]string{{"→", "ours" + mark(paneOurs)}, {"←", "theirs" + mark(paneTheirs)}, {"b", "both"}, {"e", "edit"}} {
 			segments = append(segments, key(k[0], k[1])...)
 		}
-		segments = append(segments, barPart{" r base  m auto-resolve", footer.Faint(true)})
+		if m.stateOf(chunk) == stateUnresolved {
+			segments = append(segments, key("x", "ignore")...)
+		}
+		if m.choices[chunk] != ChoiceAuto {
+			segments = append(segments, key("⌫", "cancel")...)
+		}
+		segments = append(segments, barPart{" o/t/r pick+next  m auto-resolve", footer.Faint(true)})
 	case m.Unresolved() > 0:
 		segments = []barPart{{" Press n to jump to the next conflict, m to auto-resolve the simple ones", footer}}
 	case m.dirty:
@@ -465,6 +554,9 @@ func (m MergeModel) actionLine() string {
 func (m MergeModel) footer() string {
 	if m.height < fullChromeHeight {
 		return m.compactFooter()
+	}
+	if m.editing {
+		return m.actionLine() + "\n" + m.editorHints()
 	}
 	return m.actionLine() + "\n" + m.shortcutLine()
 }
@@ -490,17 +582,33 @@ func (m MergeModel) headerLines() int {
 	return 1
 }
 
+// rowAtLine returns the row drawn on screen line y of the body and the line of that row (-1 for none).
+func (m MergeModel) rowAtLine(y int, panes []int, widths [mergePanes]int) (row, line int) {
+	if y < 0 || y >= m.bodyHeight() {
+		return -1, 0
+	}
+	numWidth, top := m.numWidth(), 0
+	for i := m.offset; i < len(m.rows); i++ {
+		height := m.rowHeight(i, panes, widths, numWidth)
+		if y < top+height {
+			return i, y - top
+		}
+		top += height
+	}
+	return -1, 0
+}
+
 // click handles a left click on a gutter button (», « or ×) of a change: it selects the change and applies or
 // discards that side.
 func (m *MergeModel) click(x, y int) {
 	if m.editing || m.width < threePaneWidth {
 		return
 	}
-	index := m.offset + y - m.headerLines()
-	if y < m.headerLines() || index < 0 || index >= len(m.rows) || y-m.headerLines() >= m.bodyHeight() {
+	panes, widths := m.layout()
+	index, line := m.rowAtLine(y-m.headerLines(), panes, widths)
+	if y < m.headerLines() || index < 0 || line > 0 { // the buttons are drawn on the first screen line of a row only
 		return
 	}
-	_, widths := m.layout()
 	left := markerWidth + widths[paneOurs]
 	right := left + mergeGutterWidth + widths[paneResult]
 	side, apply := -1, false
@@ -519,6 +627,115 @@ func (m *MergeModel) click(x, y int) {
 		m.applyChoice(choice, false) // the user points at a change: stay on it instead of jumping on
 	}
 	m.clamp()
+}
+
+// sideIncluded tells whether a side's lines are part of the choice of a chunk.
+func (m MergeModel) sideIncluded(chunk, side int) bool {
+	choice := m.choices[chunk]
+	if side == paneTheirs {
+		return choice == ChoiceTheirs || choice == ChoiceBoth
+	}
+	return choice == ChoiceOurs || choice == ChoiceBoth
+}
+
+// unresolvedSelected tells whether the selected change is a conflict that still waits for a decision.
+func (m MergeModel) unresolvedSelected() bool {
+	return m.current >= 0 && m.stateOf(m.changed[m.current]) == stateUnresolved
+}
+
+// choiceMade tells whether the selected change has a decision that can be cancelled.
+func (m MergeModel) choiceMade() bool {
+	return m.current >= 0 && m.choices[m.changed[m.current]] != ChoiceAuto
+}
+
+// toggleSide is the keyboard version of the » / « / × buttons: it adds the side to the selected change, or
+// removes it when it is part of the result already. The change stays selected, so the other side can still be added.
+func (m *MergeModel) toggleSide(side int) {
+	if m.current < 0 {
+		m.notice("Select a change first (n/p)", true)
+		return
+	}
+	chunk := m.changed[m.current]
+	name, other, otherName := "ours", m.chunks[chunk].Ours, "theirs"
+	arrow, otherArrow := "→", "←"
+	if side == paneTheirs {
+		name, other, otherName = "theirs", m.chunks[chunk].Theirs, "ours"
+		arrow, otherArrow = "←", "→"
+	}
+	if equalLines(other, m.chunks[chunk].Base) {
+		m.notice(fmt.Sprintf("%s has no change here", name), true)
+		return
+	}
+	apply := !m.sideIncluded(chunk, side)
+	choice := m.sideChoice(chunk, side, apply)
+	if !apply && choice == ChoiceBase && m.chunks[chunk].Kind == merge.Conflict {
+		choice = ChoiceAuto // removing the last side takes the conflict back to its initial, highlighted, unresolved state
+	}
+	m.applyChoice(choice, false)
+	what := "Change"
+	if number := m.conflictNumber(chunk); number > 0 {
+		what = fmt.Sprintf("Conflict %d", number)
+	}
+	hint := fmt.Sprintf("%s adds %s · ⌫ cancels · n next", otherArrow, otherName)
+	text := fmt.Sprintf("✓ %s: %s applied · %s removes it · %s", what, name, arrow, hint)
+	if !apply {
+		text = fmt.Sprintf("%s: %s removed · %s adds it again · ⌫ cancels · n next", what, name, arrow)
+		if choice == ChoiceAuto {
+			text = fmt.Sprintf("%s: %s removed · unresolved again · %s adds it again", what, name, arrow)
+		}
+	}
+	if left := m.Unresolved(); left > 0 {
+		text += fmt.Sprintf(" (%d conflict(s) left)", left)
+	} else if apply {
+		text = fmt.Sprintf("✓ %s: %s applied", what, name) // short: the completion message follows it
+	}
+	m.notice(text, false)
+}
+
+// ignoreChange resolves the selected conflict by keeping the lines the result pane shows now and taking neither
+// side. The change stays selected, like after the arrows and clicks.
+func (m *MergeModel) ignoreChange() {
+	if m.current < 0 {
+		m.notice("Select a change first (n/p)", true)
+		return
+	}
+	chunk := m.changed[m.current]
+	switch {
+	case m.chunks[chunk].Kind != merge.Conflict:
+		m.notice("Nothing to ignore: this change merged automatically (r reverts it)", true)
+		return
+	case m.choices[chunk] != ChoiceAuto:
+		m.notice("Already decided - ⌫ cancels the decision, then x ignores", true)
+		return
+	}
+	m.applyChoice(ChoiceBase, false)
+	text := fmt.Sprintf("✓ Conflict %d: ignored - the current lines are kept", m.conflictNumber(chunk))
+	if left := m.Unresolved(); left > 0 {
+		text += fmt.Sprintf(" · ⌫ cancels · n next (%d conflict(s) left)", left)
+	}
+	m.notice(text, false)
+}
+
+// cancelChange throws the decision for the selected change away: it is unresolved again (automatic for a change
+// that merged by itself).
+func (m *MergeModel) cancelChange() {
+	if m.current < 0 {
+		m.notice("Select a change first (n/p)", true)
+		return
+	}
+	chunk := m.changed[m.current]
+	if m.choices[chunk] == ChoiceAuto {
+		m.notice("Nothing to cancel: no decision made for this change", true)
+		return
+	}
+	m.setChoice(chunk, ChoiceAuto, nil)
+	m.rebuild()
+	what := "Change"
+	if number := m.conflictNumber(chunk); number > 0 {
+		what = fmt.Sprintf("Conflict %d", number)
+	}
+	m.notice(fmt.Sprintf("%s: decision cancelled · %d conflict(s) left (u undoes)", what, m.Unresolved()), false)
+	m.keepVisible()
 }
 
 // sideChoice returns the choice of a chunk after applying (») or discarding (×) the change of one side. Applying

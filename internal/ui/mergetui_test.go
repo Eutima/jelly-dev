@@ -414,7 +414,7 @@ func TestMergeView_ShowsPositionAndProgress_WhenConflictSelected(t *testing.T) {
 	model = mergePress(model, "n")
 	view := model.View()
 	for _, want := range []string{"Jelly Diff", "OURS", "RESULT", "THEIRS", "2 conflicts remaining", "Conflict 1 of 2 · unresolved",
-		"0/2 resolved", "Resolve conflict 1/2", "[→/o] Use ours", "● Modified"} {
+		"0/2 resolved", "Resolve conflict 1/2", "[→] ours", "● Modified"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view lacks %q:\n%s", want, view)
 		}
@@ -643,19 +643,78 @@ func TestMergeView_HidesAppliedButton_WhenSideWasApplied(t *testing.T) {
 	}
 }
 
-func TestMergeModel_AppliesOursOrTheirs_WhenArrowKeysPressed(t *testing.T) {
-	press := func(model MergeModel, keyType tea.KeyType) MergeModel {
-		updated, _ := model.Update(tea.KeyMsg{Type: keyType})
-		return updated.(MergeModel)
-	}
+func arrowPress(model MergeModel, keyType tea.KeyType) MergeModel {
+	updated, _ := model.Update(tea.KeyMsg{Type: keyType})
+	return updated.(MergeModel)
+}
+
+func TestMergeModel_AddsSideAndStays_WhenArrowKeysPressed(t *testing.T) {
 	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
-	model = press(mergePress(model, "n"), tea.KeyRight) // the first change is the conflict at line 2
-	if model.Result()[1] != "X" {
-		t.Fatalf("right arrow must take ours: %v", model.Result())
+	model = mergePress(model, "n") // the first change is the conflict at line 2
+	current := model.current
+	model = arrowPress(model, tea.KeyRight)
+	if model.Result()[1] != "X" || model.current != current || model.Unresolved() != 1 {
+		t.Fatalf("right arrow must take ours and stay: %v current %d", model.Result(), model.current)
 	}
-	model = press(model, tea.KeyLeft) // moved on to the second conflict
-	if model.Result()[7] != "Y2" || model.Unresolved() != 0 {
-		t.Fatalf("left arrow must take theirs: %v", model.Result())
+	model = arrowPress(model, tea.KeyLeft)
+	if got := model.Result(); got[1] != "X" || got[2] != "Y" || model.current != current {
+		t.Fatalf("left arrow after right must add theirs (both): %v", got)
+	}
+}
+
+func TestMergeModel_RemovesSide_WhenSameArrowPressedAgain(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = mergePress(model, "n")
+	model = arrowPress(arrowPress(model, tea.KeyRight), tea.KeyLeft) // both
+	model = arrowPress(model, tea.KeyRight)                          // remove ours
+	if got := model.Result(); got[1] != "Y" || got[2] == "X" {
+		t.Fatalf("second right arrow must remove ours: %v", got)
+	}
+	model = arrowPress(model, tea.KeyLeft)
+	if model.choices[model.changed[model.current]] != ChoiceAuto || model.Unresolved() != 2 || model.Result()[1] != "b" {
+		t.Fatalf("removing the last side must make the conflict unresolved again: %v", model.Result())
+	}
+	if model.stateOf(model.changed[model.current]) != stateUnresolved || model.paneKinds(model.changed[model.current], model.Result()[1:2])[paneOurs] != CellConflict {
+		t.Fatal("the initial conflict highlighting must be back")
+	}
+}
+
+func TestMergeModel_CancelsDecision_WhenBackspacePressed(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = arrowPress(mergePress(model, "n"), tea.KeyRight)
+	if model.Unresolved() != 1 {
+		t.Fatalf("unresolved %d", model.Unresolved())
+	}
+	model = arrowPress(model, tea.KeyBackspace)
+	if model.Unresolved() != 2 || model.Result()[1] != "b" || !strings.Contains(model.View(), "decision cancelled") {
+		t.Fatalf("unresolved %d result %v\n%s", model.Unresolved(), model.Result(), model.View())
+	}
+	if model = arrowPress(model, tea.KeyBackspace); !strings.Contains(model.View(), "Nothing to cancel") {
+		t.Fatalf("cancelling twice must explain itself:\n%s", model.View())
+	}
+	model = mergePress(model, "u") // the cancel is one undo step: ours is applied again
+	if model.Result()[1] != "X" || model.Unresolved() != 1 {
+		t.Fatalf("undo must bring ours back: %v unresolved %d", model.Result(), model.Unresolved())
+	}
+}
+
+func TestMergeModel_JumpsOn_WhenLetterKeysPressed(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = mergePress(model, "n", "o")
+	if model.Result()[1] != "X" || model.changed[model.current] == model.changed[0] {
+		t.Fatalf("o must take ours and move on: %v current %d", model.Result(), model.current)
+	}
+}
+
+func TestMergeModel_ExplainsArrow_WhenNoChangeSelectedOrSideUnchanged(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	if model = arrowPress(model, tea.KeyRight); !strings.Contains(model.View(), "Select a change first") {
+		t.Fatalf("no selection must be explained:\n%s", model.View())
+	}
+	one, _ := newMergeTestModel("a\nb\nc\n", "a\nB\nc\n", "a\nb\nc\n", &saver{}) // only ours changed
+	one = arrowPress(mergePress(one, "n"), tea.KeyLeft)
+	if !strings.Contains(one.View(), "theirs has no change here") {
+		t.Fatalf("an unchanged side must be explained:\n%s", one.View())
 	}
 }
 
@@ -695,5 +754,95 @@ func TestMergeModel_TakesOneSideForAllConflicts_WhenCtrlOrCtrlTPressed(t *testin
 	ctrlT, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlT})
 	if got := ctrlT.(MergeModel).Result(); got[1] != "Y" || got[7] != "Y2" {
 		t.Fatalf("ctrl+t must take theirs everywhere: %v", got)
+	}
+}
+
+func TestMergeView_ShowsAllConflictsResolved_WhenLastConflictResolvedByAnyAction(t *testing.T) {
+	for name, keys := range map[string][]string{
+		"letter o":    {"n", "o"},
+		"arrow right": {"n", "right"},
+		"both":        {"n", "b"},
+		"auto":        {"ctrl+o"},
+		"edit":        {"n", "e", "A", "x", "esc", ":", "w", "q", "enter"},
+	} {
+		model, _ := newMergeTestModel("a\nb\nc\n", "a\nOURS\nc\n", "a\nTHEIRS\nc\n", &saver{})
+		for _, key := range keys {
+			msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
+			switch key {
+			case "right":
+				msg = tea.KeyMsg{Type: tea.KeyRight}
+			case "esc":
+				msg = tea.KeyMsg{Type: tea.KeyEsc}
+			case "enter":
+				msg = tea.KeyMsg{Type: tea.KeyEnter}
+			case "ctrl+o":
+				msg = tea.KeyMsg{Type: tea.KeyCtrlO}
+			}
+			updated, _ := model.Update(msg)
+			model = updated.(MergeModel)
+		}
+		if view := model.View(); model.Unresolved() != 0 || !strings.Contains(strings.ToLower(view), "all conflicts resolved") ||
+			!strings.Contains(view, "press s to save") {
+			t.Errorf("%s: message expected (unresolved %d):\n%s", name, model.Unresolved(), view)
+		}
+	}
+}
+
+func TestMergeView_KeepsOtherMessage_WhenConflictsStillOpen(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = mergePress(model, "n", "o")
+	if strings.Contains(strings.ToLower(model.status), "all conflicts resolved") {
+		t.Fatalf("one conflict is left: %q", model.status)
+	}
+}
+
+func TestMergeModel_IgnoresConflictAndStays_WhenXPressed(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = mergePress(model, "n")
+	current, cursor := model.current, model.cursor
+	model = mergePress(model, "x")
+	if model.Unresolved() != 1 || model.current != current || model.cursor != cursor {
+		t.Fatalf("unresolved %d current %d (was %d) cursor %d (was %d)", model.Unresolved(), model.current, current, model.cursor, cursor)
+	}
+	if got := model.Result(); got[1] != "b" || got[7] != "h" {
+		t.Fatalf("the current lines must be kept: %v", got)
+	}
+	if !strings.Contains(model.status, "ignored") {
+		t.Fatalf("status %q", model.status)
+	}
+	if model = mergePress(model, "u"); model.Unresolved() != 2 {
+		t.Fatalf("u must undo the ignore, unresolved %d", model.Unresolved())
+	}
+	model = arrowPress(mergePress(model, "x"), tea.KeyBackspace)
+	if model.Unresolved() != 2 {
+		t.Fatalf("backspace must cancel the ignore, unresolved %d", model.Unresolved())
+	}
+}
+
+func TestMergeModel_ExplainsX_WhenNothingToIgnore(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	if model = mergePress(model, "x"); !strings.Contains(model.View(), "Select a change first") {
+		t.Fatalf("no selection must be explained:\n%s", model.View())
+	}
+	model = mergePress(model, "n", "o", "p", "x") // the first conflict is decided already
+	if !strings.Contains(model.View(), "Already decided") || model.Unresolved() != 1 || model.Result()[1] != "X" {
+		t.Fatalf("a decided conflict must be left alone:\n%s", model.View())
+	}
+	auto, _ := newMergeTestModel("a\nb\nc\n", "a\nB\nc\n", "a\nb\nc\n", &saver{}) // only ours changed: merges automatically
+	if auto = mergePress(auto, "n", "x"); !strings.Contains(auto.View(), "Nothing to ignore") {
+		t.Fatalf("an automatic change must be explained:\n%s", auto.View())
+	}
+}
+
+func TestMergeModel_IgnoresInTwoWayMerge_WhenXPressed(t *testing.T) {
+	chunks := merge.TwoWay(split("a\nb\nc"), split("a\nB\nc"))
+	model, _ := NewMergeModel(MergeTitles{}, chunks, (&saver{}).save)
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 12})
+	model = mergePress(updated.(MergeModel), "n", "x")
+	if model.Unresolved() != 0 || !reflect.DeepEqual(model.Result(), []string{"a", "c"}) {
+		t.Fatalf("unresolved %d result %v", model.Unresolved(), model.Result())
+	}
+	if !strings.Contains(strings.ToLower(model.View()), "all conflicts resolved") {
+		t.Fatalf("completion message expected:\n%s", model.View())
 	}
 }

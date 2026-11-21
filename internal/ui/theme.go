@@ -57,6 +57,39 @@ func (t Theme) renderCell(cell Cell, numWidth, cellWidth int) string {
 	return t.LineNumber.Background(style.GetBackground()).Render(number) + text
 }
 
+// renderCellLines draws a pane cell as exactly height lines of cellWidth columns. With wrap the text continues on
+// further lines (only the first one carries the line number); without it the text is cut with "…".
+func (t Theme) renderCellLines(cell Cell, numWidth, cellWidth, height int, wrap bool) []string {
+	style := t.styleFor(cell.Kind)
+	blank := style.Render(strings.Repeat(" ", cellWidth))
+	var lines []string
+	switch {
+	case cell.Kind == CellFiller:
+	case !wrap:
+		lines = []string{t.renderCell(cell, numWidth, cellWidth)}
+	default:
+		num := numWidth
+		if cellWidth < numWidth {
+			num = 0
+		}
+		wrapped := renderSyntaxLines(cell.Text, cell.Spans, cell.Syntax, t.painter, cellWidth-num, style, t.wordStyleFor(cell.Kind))
+		for i, text := range wrapped {
+			number := strings.Repeat(" ", num)
+			if i == 0 && num > 0 {
+				number = fmt.Sprintf("%*d ", num-1, cell.No)
+			}
+			lines = append(lines, t.LineNumber.Background(style.GetBackground()).Render(number)+text)
+		}
+		if cellWidth-num <= 0 {
+			lines = []string{t.renderCell(cell, numWidth, cellWidth)}
+		}
+	}
+	for len(lines) < height {
+		lines = append(lines, blank)
+	}
+	return lines
+}
+
 func (t Theme) styleFor(kind CellKind) lipgloss.Style {
 	switch kind {
 	case CellAdded:

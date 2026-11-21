@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/eutima/jelly-diff/internal/ai"
 	"github.com/eutima/jelly-diff/internal/merge"
+	"github.com/eutima/jelly-diff/internal/vimbuf"
 )
 
 const (
@@ -87,13 +89,17 @@ type MergeModel struct {
 	current  int   // index into changed, -1 when none selected
 	cursor   int   // row of the line cursor in the result pane
 
-	editing       bool // a result line is being edited
-	editor        lineEditor
-	editRow       int // row of the line being edited
-	editChunk     int // chunk and line (within the chunk's result) of the line being edited
-	editLine      int
-	editNew       bool // the line was just inserted: cancelling the edit removes it again
-	editBeforeRow int  // cursor row before a line was inserted
+	noWrap       bool           // long lines are cut with "…" instead of wrapped (toggled with w)
+	editing      bool           // the vim-style editor is open on one chunk of the result
+	vim          *vimbuf.Buffer // the editor's text and state while editing
+	editConfirm  bool           // ctrl+d asked whether to apply the unapplied edits
+	editChunk    int            // the chunk being edited
+	editBefore   []string       // read-only result lines above the chunk
+	editAfter    []string       // read-only result lines below the chunk
+	editFirst    int            // result line number of the first edited line
+	editCtx      int            // cursor line (index into the context + edited + context view) while it is on a read-only line, else -1
+	editGPending bool           // a g was typed on a read-only line (gg goes to the top)
+	editTop      int            // first shown line of the editor view (context lines included)
 
 	width, height int
 	offset        int
@@ -250,8 +256,33 @@ func (m MergeModel) paneKinds(i int, result []string) [mergePanes]CellKind {
 // Init implements tea.Model.
 func (m MergeModel) Init() tea.Cmd { return nil }
 
-// Update implements tea.Model.
+// Update implements tea.Model. When a message resolves the last open conflict, the status line says so.
 func (m MergeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	before := m.Unresolved()
+	updated, cmd := m.update(msg)
+	if result, ok := updated.(MergeModel); ok && before > 0 && result.Unresolved() == 0 && !result.warn && !result.editing {
+		result.announceAllResolved()
+		return result, cmd
+	}
+	return updated, cmd
+}
+
+// allResolvedNotice is shown when the last open conflict was resolved.
+const allResolvedNotice = "✓ All conflicts resolved - press s to save"
+
+// announceAllResolved adds the completion message to the status line, after the message of the action that
+// resolved the last conflict (unless that message says it already).
+func (m *MergeModel) announceAllResolved() {
+	switch {
+	case strings.Contains(strings.ToLower(m.status), "all conflicts resolved"):
+	case m.status == "":
+		m.notice(allResolvedNotice, false)
+	default:
+		m.notice(m.status+" · "+allResolvedNotice, false)
+	}
+}
+
+func (m MergeModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -282,7 +313,7 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	key := msg.String()
 	m.notice("", false) // a message lives until the next key press
-	if key != "q" && key != "esc" && key != "ctrl+c" {
+	if key != "q" && key != "esc" && key != "ctrl+c" && key != "ctrl+d" {
 		m.quitArmed = false
 	}
 	if m.aiBusy {
@@ -293,7 +324,7 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	page := max(m.bodyHeight()-1, 1)
 	switch key {
-	case "q", "esc", "ctrl+c":
+	case "q", "esc", "ctrl+c", "ctrl+d":
 		return m.quit()
 	case "j", "down":
 		m.moveCursor(1)
@@ -315,10 +346,18 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.resolveAll(ChoiceOurs)
 	case "ctrl+left", "ctrl+t":
 		m.resolveAll(ChoiceTheirs)
-	case "o", "right":
+	case "o":
 		m.resolve(ChoiceOurs)
-	case "t", "left":
+	case "t":
 		m.resolve(ChoiceTheirs)
+	case "right":
+		m.toggleSide(paneOurs)
+	case "left":
+		m.toggleSide(paneTheirs)
+	case "backspace", "delete":
+		m.cancelChange()
+	case "x":
+		m.ignoreChange()
 	case "b":
 		m.resolve(ChoiceBoth)
 	case "r":
@@ -326,15 +365,19 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "m":
 		m.autoResolve()
 	case "e", "enter":
-		m.startEdit()
+		m.startEdit(false)
 	case "d":
 		m.deleteLine()
 	case "i":
-		m.insertLine()
+		m.startEdit(true)
 	case "u":
 		m.undo()
 	case "v":
 		m.cycleView()
+	case "w":
+		m.noWrap = !m.noWrap
+		m.offset = m.firstRowFor(m.offset)
+		m.notice(map[bool]string{true: "Long lines are cut (w wraps them)", false: "Long lines are wrapped (w cuts them)"}[m.noWrap], false)
 	case "s":
 		m.saveResult()
 	}
@@ -355,7 +398,7 @@ func (m MergeModel) quit() (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	m.quitArmed = true
-	m.notice("Unsaved result - press q again (or ctrl+c) to discard it, or s to save", true)
+	m.notice("Unsaved result - press q again (or ctrl+c, ctrl+d) to discard it, or s to save", true)
 	return m, nil
 }
 
@@ -419,7 +462,7 @@ func (m MergeModel) nextUnresolved() int {
 func (m *MergeModel) keepVisible() {
 	if m.current >= 0 {
 		start := m.starts[m.current]
-		if start < m.offset || start >= m.offset+m.bodyHeight() {
+		if !m.rowFullyVisible(start) {
 			m.offset = max(start-m.bodyHeight()/3, 0)
 		}
 	}
@@ -482,39 +525,21 @@ func (m *MergeModel) saveResult() {
 func (m MergeModel) bodyHeight() int { return max(m.height-m.chrome(), 1) }
 
 func (m *MergeModel) clamp() {
-	m.offset = min(max(m.offset, 0), max(len(m.rows)-m.bodyHeight(), 0))
+	m.offset = min(max(m.offset, 0), m.lastOffset())
 }
 
-// resultCell draws the result pane cell of row i: the line editor, the cursor line, or a normal cell.
+// resultCell draws the result pane cell of row i: the cursor line or a normal cell.
 func (m MergeModel) resultCell(i int, row mergeRow, numWidth, width int) string {
 	cell := row.cells[paneResult]
-	switch {
-	case m.editing && i == m.editRow:
-		return m.editorCell(cell.No, numWidth, width)
-	case i == m.cursor && cell.Kind != CellFiller:
+	if i == m.cursor && cell.Kind != CellFiller {
 		cell.Kind = CellCursor
 	}
 	return m.theme.renderCell(cell, numWidth, width)
 }
 
-// editorCell draws the line number and the editor in exactly width columns.
-func (m MergeModel) editorCell(number, numWidth, width int) string {
-	num := numWidth
-	if width < numWidth {
-		num = 0
-	}
-	label := ""
-	if num > 0 {
-		label = fmt.Sprintf("%*d ", num-1, number)
-	}
-	base := m.theme.Selected.Underline(true)
-	cursor := m.theme.Selected.Reverse(!m.theme.Selected.GetReverse())
-	return m.theme.LineNumber.Background(base.GetBackground()).Render(label) + m.editor.view(width-num, base, cursor)
-}
-
 // gutter draws the strip between two panes: an arrow on the first row of a change that the
 // neighbouring side contributes to, a bar on the other rows of a change.
-func (m MergeModel) gutter(row mergeRow, side int) string {
+func (m MergeModel) gutter(row mergeRow, side int, continuation bool) string {
 	if m.chunks[row.chunk].Kind == merge.Unchanged {
 		return m.theme.Gutter.Render("  │  ")
 	}
@@ -523,7 +548,7 @@ func (m MergeModel) gutter(row mergeRow, side int) string {
 		style = m.theme.GutterCur
 	}
 	apply, discard := m.buttonShown(row, side, true), m.buttonShown(row, side, false)
-	if !apply && !discard {
+	if continuation || !apply && !discard {
 		return style.Render("  ┃  ")
 	}
 	glyph := func(shown bool, symbol string) string {

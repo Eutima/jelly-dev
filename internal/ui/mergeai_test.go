@@ -40,7 +40,7 @@ func TestMergeAssistant_AppliesResolution_WhenAssistantAnswers(t *testing.T) {
 
 	model = runAssistantKey(t, model, "a")
 
-	if model.Unresolved() != 0 || !strings.Contains(model.status, "Fake resolved 2 conflict(s)") {
+	if model.Unresolved() != 0 || !strings.Contains(model.status, "Fake resolved 2 conflict(s)") || !strings.Contains(model.status, "All conflicts resolved") {
 		t.Fatalf("unresolved = %d, status = %q", model.Unresolved(), model.status)
 	}
 	want := []string{"a", "XY", "c", "d", "e", "f", "g", "X2Y2", "i"}

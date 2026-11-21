@@ -233,3 +233,33 @@ func TestUpdate_KeepsScrollPosition_WhenTogglingWithoutSelection(t *testing.T) {
 		t.Fatalf("offset %d, want 1", model.offset)
 	}
 }
+
+func TestViews_QuitOnCtrlD_LikeCtrlC(t *testing.T) {
+	// quitsAfter presses the keys one after the other and reports whether the last one ended the program
+	quitsAfter := func(model tea.Model, keys ...tea.KeyType) bool {
+		for i, key := range keys {
+			updated, cmd := model.Update(tea.KeyMsg{Type: key})
+			model = updated
+			if cmd != nil {
+				if _, ok := cmd().(tea.QuitMsg); ok {
+					return i == len(keys)-1
+				}
+			}
+		}
+		return false
+	}
+	merged, _ := newMergeTestModel("a\nb\n", "a\nb\n", "a\nb\n", &saver{})
+	diffModel := NewDiffModel("a", "b", []string{"x"}, []string{"y"})
+	for _, key := range []tea.KeyType{tea.KeyCtrlC, tea.KeyCtrlD} {
+		if !quitsAfter(diffModel, key) {
+			t.Errorf("diff: key %v must quit", key)
+		}
+		// an unsaved result asks first: the first press warns, the second one quits
+		if quitsAfter(merged, key) || !quitsAfter(merged, key, key) {
+			t.Errorf("merge: key %v must ask first and quit on the second press", key)
+		}
+	}
+	if !quitsAfter(merged, tea.KeyCtrlC, tea.KeyCtrlD) || !quitsAfter(merged, tea.KeyCtrlD, tea.KeyCtrlC) {
+		t.Error("merge: ctrl+c and ctrl+d must be interchangeable for the confirmation")
+	}
+}

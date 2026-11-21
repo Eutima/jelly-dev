@@ -260,7 +260,7 @@ func (m GitModel) forwardToDiff(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	switch key {
-	case "ctrl+c", "q":
+	case "ctrl+c", "ctrl+d", "q":
 		m.abortLoad() // also stops a running git process
 		return m, tea.Quit
 	case "tab":

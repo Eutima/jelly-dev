@@ -3,10 +3,12 @@ package ui
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/eutima/jelly-diff/internal/merge"
+	"github.com/eutima/jelly-diff/internal/vimbuf"
 )
 
 // moveCursor moves the line cursor by delta rows and scrolls it into view.
@@ -18,10 +20,28 @@ func (m *MergeModel) setCursor(row int) {
 	if m.cursor < m.offset {
 		m.offset = m.cursor
 	}
-	if m.cursor >= m.offset+m.bodyHeight() {
-		m.offset = m.cursor - m.bodyHeight() + 1
+	if !m.rowFullyVisible(m.cursor) {
+		m.offset = m.firstRowFor(m.cursor)
 	}
 	m.syncCurrent()
+}
+
+// rebuildKeepingCursor rebuilds the rows after a change of the result and keeps the cursor on the line it was on
+// (the same line of the same chunk, or the chunk's last line when the chunk became shorter). The scroll position
+// stays unless the cursor would leave the screen.
+func (m *MergeModel) rebuildKeepingCursor() {
+	if len(m.rows) == 0 {
+		m.rebuild()
+		return
+	}
+	chunk := m.rows[m.cursor].chunk
+	offset := m.cursor - m.chunkRow[chunk]
+	m.rebuild()
+	start, end := m.chunkRow[chunk], len(m.rows)-1
+	if chunk+1 < len(m.chunkRow) {
+		end = m.chunkRow[chunk+1] - 1
+	}
+	m.setCursor(min(start+offset, max(end, start)))
 }
 
 // syncCurrent selects the change that contains the cursor row (-1 when the cursor is on unchanged lines).
@@ -76,14 +96,9 @@ func (m *MergeModel) autoResolve() {
 		m.setChoice(s.chunk, ChoiceCustom, s.lines)
 		m.history[len(m.history)-1].joined = i > 0
 	}
-	m.rebuild()
+	m.rebuildKeepingCursor()
 	left := m.Unresolved()
 	m.notice(fmt.Sprintf("✓ Auto-resolved %d of %d conflict(s), %d left (u undoes)", len(steps), total, left), false)
-	if next := m.nextUnresolved(); next >= 0 {
-		m.gotoChange(next)
-	} else {
-		m.keepVisible()
-	}
 }
 
 // resolveAll takes one side for every conflict that is still unresolved. Conflicts that were decided already and
@@ -103,9 +118,8 @@ func (m *MergeModel) resolveAll(choice Choice) {
 		m.setChoice(chunk, choice, nil)
 		m.history[len(m.history)-1].joined = i > 0
 	}
-	m.rebuild()
+	m.rebuildKeepingCursor()
 	m.notice(fmt.Sprintf("✓ Used %s for %d conflict(s) in the whole file (u undoes)", choiceName(choice), len(chunks)), false)
-	m.keepVisible()
 }
 
 // setCustom stores (or removes) the hand-edited lines of a chunk in a fresh map, so older copies of the
@@ -133,19 +147,6 @@ func (m MergeModel) resultLineAt(row int) (chunk, index int, ok bool) {
 	return chunk, index, m.rows[row].cells[paneResult].Kind != CellFiller
 }
 
-// startEdit opens the editor on the result line under the cursor.
-func (m *MergeModel) startEdit() {
-	chunk, index, ok := m.resultLineAt(m.cursor)
-	if !ok {
-		m.notice("No result line here to edit (use i to insert one)", true)
-		return
-	}
-	m.editing, m.editNew = true, false
-	m.editRow, m.editChunk, m.editLine = m.cursor, chunk, index
-	m.editor = newLineEditor(m.rows[m.cursor].cells[paneResult].Text)
-	m.notice("", false)
-}
-
 // deleteLine removes the result line under the cursor.
 func (m *MergeModel) deleteLine() {
 	chunk, index, ok := m.resultLineAt(m.cursor)
@@ -160,85 +161,11 @@ func (m *MergeModel) deleteLine() {
 	m.setCursor(m.cursor)
 }
 
-// insertLine adds an empty result line below the cursor and opens the editor on it.
-func (m *MergeModel) insertLine() {
-	if len(m.rows) == 0 {
-		m.notice("Nothing to insert into", true)
-		return
-	}
-	chunk := m.rows[m.cursor].chunk
-	result := m.chunkResult(chunk)
-	index := len(result)
-	if _, _, ok := m.resultLineAt(m.cursor); ok {
-		index = m.cursor - m.chunkRow[chunk] + 1
-	}
-	m.editBeforeRow = m.cursor
-	m.setChoice(chunk, ChoiceCustom, slices.Insert(slices.Clone(result), index, ""))
-	m.rebuild()
-	m.setCursor(m.chunkRow[chunk] + index)
-	m.editing, m.editNew = true, true
-	m.editRow, m.editChunk, m.editLine = m.cursor, chunk, index
-	m.editor = newLineEditor("")
-	m.notice("", false)
-}
-
-// handleEditKey routes a key press to the line editor and applies or discards the edit.
-func (m MergeModel) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	editor, action := m.editor.handle(msg)
-	m.editor = editor
-	switch action {
-	case editApply:
-		m.commitEdit()
-	case editCancel:
-		m.cancelEdit()
-	}
-	m.clamp()
-	return m, nil
-}
-
-// commitEdit stores the edited line. A freshly inserted line is already on the undo history, so the edit
-// completes that step instead of adding another one.
-func (m *MergeModel) commitEdit() {
-	lines := slices.Clone(m.chunkResult(m.editChunk))
-	if m.editLine >= len(lines) {
-		m.editing, m.editNew = false, false
-		return
-	}
-	lines[m.editLine] = m.editor.String()
-	if m.editNew {
-		m.setCustom(m.editChunk, lines, true)
-		m.markDirty()
-	} else if lines[m.editLine] != m.chunkResult(m.editChunk)[m.editLine] {
-		m.setChoice(m.editChunk, ChoiceCustom, lines)
-	}
-	m.editing, m.editNew = false, false
-	m.notice("", false)
-	m.rebuild()
-	m.setCursor(m.cursor)
-}
-
-// cancelEdit leaves the editor; an inserted line that was never filled in is removed again.
-func (m *MergeModel) cancelEdit() {
-	wasNew := m.editNew
-	m.editing, m.editNew = false, false
-	if wasNew {
-		m.undo()
-		m.notice("", false)
-		m.setCursor(m.editBeforeRow) // undo moves the cursor to the chunk start: go back to where the insert began
-	}
-}
-
 func nonNil(lines []string) []string {
 	if lines == nil {
 		return []string{}
 	}
 	return lines
-}
-
-// editingStatus is the footer text while a line is being edited.
-func (m MergeModel) editingStatus() string {
-	return fmt.Sprintf("Editing line %d · enter apply   esc cancel   ←/→ home end move   ctrl+u/ctrl+k delete to start/end",
-		m.rows[m.editRow].cells[paneResult].No)
 }
 
 // changeAfterCursor returns the index (into changed) of the first change that starts below the cursor row,
@@ -264,4 +191,335 @@ func (m MergeModel) changeBeforeCursor() int {
 		}
 	}
 	return len(m.starts) - 1
+}
+
+// startEdit opens the vim-style editor on the result lines of the chunk under the result cursor, with the cursor on
+// the line under it. All other result lines are shown above and below, read-only. With below set it adds an
+// empty line under the cursor line and starts typing in it.
+func (m *MergeModel) startEdit(below bool) {
+	if len(m.rows) == 0 {
+		m.notice("Nothing to edit", true)
+		return
+	}
+	chunk := m.rows[m.cursor].chunk
+	var before, after []string
+	for i := 0; i < len(m.chunks); i++ {
+		switch lines := m.chunkResult(i); {
+		case i < chunk:
+			before = append(before, lines...)
+		case i > chunk:
+			after = append(after, lines...)
+		}
+	}
+	m.editFirst = len(before) + 1
+	m.editBefore, m.editAfter = before, after
+
+	lines := m.chunkResult(chunk)
+	buffer := vimbuf.New(lines, make([]int, len(lines)))
+	buffer.SetPage(m.bodyHeight())
+	if _, index, ok := m.resultLineAt(m.cursor); ok && len(lines) > 0 {
+		buffer.GotoLine(index + 1)
+	}
+	switch {
+	case !below:
+	case len(lines) == 0:
+		buffer.Handle("i")
+	default:
+		buffer.OpenLineBelow()
+	}
+	m.editing, m.vim, m.editChunk, m.editTop, m.editCtx, m.editGPending = true, buffer, chunk, 0, -1, false
+	m.keepEditorVisible()
+	m.notice("", false)
+}
+
+// editorKeys turns a key message into the key names the editor understands.
+func editorKeys(msg tea.KeyMsg) []string {
+	switch msg.Type {
+	case tea.KeyRunes:
+		if msg.Alt {
+			return nil
+		}
+		keys := make([]string, 0, len(msg.Runes))
+		for _, r := range msg.Runes {
+			keys = append(keys, string(r))
+		}
+		return keys
+	case tea.KeySpace:
+		return []string{" "}
+	}
+	return []string{msg.String()}
+}
+
+// handleEditKey feeds a key press to the editor and carries out what it asks for (:w, :wq, :q, :q!).
+func (m MergeModel) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.notice("", false)
+	if m.editConfirm {
+		return m.answerEditPrompt(msg)
+	}
+	if msg.String() == "ctrl+d" { // like q in the merge view: leave, but ask first when there are unapplied edits
+		if !m.vim.Modified() {
+			m.closeEditor()
+			m.clamp()
+			return m, nil
+		}
+		m.editConfirm = true
+		return m, nil
+	}
+	if m.editNavigate(msg.String()) {
+		m.keepEditorVisible()
+		return m, nil
+	}
+	for _, key := range editorKeys(msg) {
+		switch m.vim.Handle(key) {
+		case vimbuf.Write:
+			m.applyEdit()
+		case vimbuf.WriteQuit:
+			m.applyEdit()
+			m.closeEditor()
+		case vimbuf.Quit, vimbuf.ForceQuit:
+			m.closeEditor()
+		}
+		if !m.editing {
+			break
+		}
+	}
+	if m.editing {
+		if text := m.vim.Message(); text != "" {
+			m.notice(text, true)
+		}
+		m.keepEditorVisible()
+	}
+	m.clamp()
+	return m, nil
+}
+
+// editTotal is the number of lines of the editor view: read-only context, edited chunk, read-only context.
+func (m MergeModel) editTotal() int { return len(m.editBefore) + m.vim.LineCount() + len(m.editAfter) }
+
+// editViewRow is the index of the cursor line in the editor view.
+func (m MergeModel) editViewRow() int {
+	if m.editCtx >= 0 {
+		return m.editCtx
+	}
+	row, _ := m.vim.Cursor()
+	return len(m.editBefore) + row
+}
+
+// moveEditCursor puts the cursor on a line of the editor view: a read-only context line, or a line of the edited
+// chunk (which hands the cursor back to the editor).
+func (m *MergeModel) moveEditCursor(target int) {
+	target = min(max(target, 0), m.editTotal()-1)
+	before, count := len(m.editBefore), m.vim.LineCount()
+	if target >= before && target < before+count {
+		m.editCtx = -1
+		m.vim.GotoLine(target - before + 1)
+		return
+	}
+	m.editCtx = target
+}
+
+// editNavigate lets the cursor leave the edited chunk and walk over the read-only lines (which cannot be changed).
+// It handles only plain navigation keys in normal mode; everything else goes to the editor. It reports whether the
+// key was used.
+func (m *MergeModel) editNavigate(key string) bool {
+	if m.vim.Mode() == vimbuf.Command {
+		return false // typing a command: every key belongs to the command line
+	}
+	page := max(m.bodyHeight()-1, 1)
+	step := 0
+	switch key {
+	case "j", "down", "ctrl+n":
+		step = 1
+	case "k", "up", "ctrl+p":
+		step = -1
+	case "pgdown", "ctrl+f":
+		step = page
+	case "pgup", "ctrl+b":
+		step = -page
+	}
+	onContext := m.editCtx >= 0
+	if !onContext {
+		if m.vim.Mode() != vimbuf.Normal || m.vim.Pending() != "" {
+			return false
+		}
+		row, _ := m.vim.Cursor()
+		last := m.vim.LineCount() - 1
+		// only the moves that would run into the edge of the chunk continue over the context lines
+		switch {
+		case step > 0 && row+step > last && len(m.editAfter) > 0 && (row == last || step > 1):
+		case step < 0 && row+step < 0 && len(m.editBefore) > 0 && (row == 0 || step < -1):
+		case key == "G" && row == last && len(m.editAfter) > 0:
+			m.moveEditCursor(m.editTotal() - 1)
+			return true
+		case key == "g" && row == 0 && len(m.editBefore) > 0 && m.editGPending:
+			m.editGPending = false
+			m.vim.Handle("esc")
+			m.moveEditCursor(0)
+			return true
+		default:
+			m.editGPending = key == "g" && row == 0
+			return false
+		}
+		m.moveEditCursor(m.editViewRow() + step)
+		return true
+	}
+	switch key {
+	case ":":
+		return false // command line: handled by the editor, it needs no cursor in the chunk
+	case "G":
+		m.moveEditCursor(m.editTotal() - 1)
+	case "g":
+		if m.editGPending {
+			m.editGPending = false
+			m.moveEditCursor(0)
+		} else {
+			m.editGPending = true
+		}
+	default:
+		if step != 0 {
+			m.moveEditCursor(m.editCtx + step)
+		} else if len(key) == 1 || key == "enter" || key == "backspace" || key == "delete" {
+			m.notice("Read-only line - move into the change to edit it", true)
+		}
+	}
+	if key != "g" {
+		m.editGPending = false
+	}
+	return true
+}
+
+// answerEditPrompt handles the answer to "apply the edits?": y applies and leaves, n discards and leaves, anything
+// else keeps editing.
+func (m MergeModel) answerEditPrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.editConfirm = false
+	switch msg.String() {
+	case "y", "Y", "enter":
+		m.applyEdit()
+		m.closeEditor()
+	case "n", "N", "ctrl+d":
+		m.closeEditor()
+	}
+	m.clamp()
+	return m, nil
+}
+
+func (m *MergeModel) closeEditor() {
+	m.editing, m.vim, m.editConfirm = false, nil, false
+	m.setCursor(m.cursor)
+}
+
+// applyEdit stores the edited lines in the chunk; it becomes a hand-edited one when its lines changed.
+func (m *MergeModel) applyEdit() {
+	edited := m.vim.Lines()
+	m.vim.MarkWritten()
+	if equalLines(edited, m.chunkResult(m.editChunk)) {
+		m.notice("No changes to apply", false)
+		return
+	}
+	m.setChoice(m.editChunk, ChoiceCustom, nonNil(edited))
+	m.rebuild()
+	m.notice(fmt.Sprintf("✓ Applied the edit · %d conflict(s) left (u undoes)", m.Unresolved()), false)
+}
+
+// keepEditorVisible scrolls the editor view so that its cursor line is shown.
+func (m *MergeModel) keepEditorVisible() {
+	row := m.editViewRow()
+	body := m.bodyHeight()
+	if row < m.editTop {
+		m.editTop = row
+	}
+	if row >= m.editTop+body {
+		m.editTop = row - body + 1
+	}
+	total := len(m.editBefore) + m.vim.LineCount() + len(m.editAfter)
+	m.editTop = max(min(m.editTop, total-1), 0)
+}
+
+// editingStatus is the footer text while the editor is open: the command line, or the mode and position.
+func (m MergeModel) editingStatus() string {
+	if m.editConfirm {
+		return "Apply the changes before leaving?  y apply and leave · n discard and leave · any other key keeps editing"
+	}
+	if m.vim.Mode() == vimbuf.Command {
+		return ":" + m.vim.CommandLine()
+	}
+	if m.editCtx >= 0 {
+		return fmt.Sprintf("-- READ-ONLY --   %d   (move into the change to edit · :q leaves · ctrl+d leaves)", m.editFirst-len(m.editBefore)+m.editCtx)
+	}
+	row, col := m.vim.Cursor()
+	pending := m.vim.Pending()
+	if pending != "" {
+		pending = "   " + pending
+	}
+	modified := ""
+	if m.vim.Modified() {
+		modified = "  [+]"
+	}
+	return fmt.Sprintf("%s%s%s   %d:%d   (dimmed lines are read-only)", m.vim.Mode(), modified, pending, m.editFirst+row, col+1)
+}
+
+// editorBody draws the editor view (full width) below the header: the read-only lines above, the edited chunk, the
+// read-only lines below. Context lines are dimmed.
+func (m MergeModel) editorBody(width int) string {
+	before, count := len(m.editBefore), m.vim.LineCount()
+	total := before + count + len(m.editAfter)
+	row, col := m.vim.Cursor()
+	lastNo := m.editFirst - before + total - 1
+	numWidth := len(fmt.Sprint(lastNo)) + 1
+	textWidth := max(width-numWidth, 0)
+	styles := editLineStyles{base: m.theme.Equal, selected: m.theme.Selected, cursor: m.theme.Selected.Reverse(!m.theme.Selected.GetReverse())}
+	context := editLineStyles{base: m.theme.Equal.Faint(true), selected: m.theme.Equal.Faint(true), cursor: m.theme.Equal.Faint(true)}
+	var out strings.Builder
+	for i := m.editTop; i < m.editTop+m.bodyHeight(); i++ {
+		out.WriteString(m.theme.Gutter.Render(strings.Repeat(" ", min(markerWidth, m.width))))
+		if i >= total {
+			out.WriteString(m.theme.Equal.Render(strings.Repeat(" ", width)))
+			out.WriteByte('\n')
+			continue
+		}
+		label := fmt.Sprintf("%*d ", numWidth-1, m.editFirst-before+i)
+		tw := textWidth
+		if width < numWidth {
+			label, tw = "", width
+		}
+		var line string
+		var style editLineStyles
+		cursor, from, to := -1, 0, 0
+		switch {
+		case i < before:
+			line, style = m.editBefore[i], context
+			if i == m.editCtx {
+				style = editLineStyles{base: m.theme.Selected, selected: m.theme.Selected, cursor: m.theme.Selected}
+			}
+		case i >= before+count:
+			line, style = m.editAfter[i-before-count], context
+			if i == m.editCtx {
+				style = editLineStyles{base: m.theme.Selected, selected: m.theme.Selected, cursor: m.theme.Selected}
+			}
+		default:
+			index := i - before
+			line, style = m.vim.Line(index), styles
+			if index == row && m.editCtx < 0 {
+				cursor = col
+			}
+			if f, t, ok := m.vim.Selected(index); ok {
+				from, to = f, t
+			}
+		}
+		out.WriteString(m.theme.LineNumber.Render(label))
+		out.WriteString(renderEditLine([]rune(line), tw, cursor, from, to, style))
+		out.WriteByte('\n')
+	}
+	return out.String()
+}
+
+// editorHints is the second footer line while the editor is open.
+func (m MergeModel) editorHints() string {
+	footer := m.theme.Footer
+	return renderSegments([]barPart{
+		{" esc", m.theme.Header}, {" normal  ", footer}, {"i", m.theme.Header}, {" insert  ", footer},
+		{"v/V", m.theme.Header}, {" visual  ", footer}, {":w", m.theme.Header}, {" apply  ", footer},
+		{":wq", m.theme.Header}, {" apply+leave  ", footer}, {":q", m.theme.Header}, {" leave  ", footer},
+		{":q!", m.theme.Header}, {" discard  ", footer}, {"ctrl+d", m.theme.Header}, {" leave (asks)", footer},
+	}, m.width, footer)
 }

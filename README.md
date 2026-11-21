@@ -53,11 +53,15 @@ Keys in the merge view (conflicts):
 | Key | Action |
 |---|---|
 | `n` / `p` | next / previous change |
-| `o` / `t` / `b` / `r` | take ours / theirs / both / base |
+| `→` / `←` | add ours / theirs to the change and stay on it (like `»` / `«`); the other arrow adds the second side (= both); the same arrow again removes the side |
+| `x` | ignore both sides of an open conflict: keep the lines the result pane shows now (the base; nothing in `jd merge a b`), mark it resolved and stay on it |
+| `backspace` / `delete` | cancel the decision for the change (unresolved again) |
+| `o` / `t` / `b` / `r` | take ours / theirs / both / base and jump to the next conflict |
 | `ctrl+o` / `ctrl+t` | take ours / theirs for all open conflicts |
 | `m` | auto-resolve conflicts that are none in fact (whitespace, different words) |
 | `a` / `c` | let Claude / Codex resolve all open conflicts (if the CLI is installed) |
-| `e`, `d`, `i` | edit, delete, insert a line of the result |
+| `e` / `enter`, `i`, `d` | open the vim-style editor on the change under the cursor (`i`: on a new line below), delete the line |
+| `w` | wrap long lines (default) or cut them with `…` |
 | `u` | undo |
 | `s` | save (when every conflict is resolved) |
 | `q` | quit |
@@ -102,7 +106,11 @@ merged automatically; conflicts start with the base lines. The result pane has a
   A button disappears (and is no longer clickable) once its action is done, e.g. `»` after ours was applied.
 - `ctrl+→` or `ctrl+o` / `ctrl+←` or `ctrl+t` take ours / theirs for every conflict that is still unresolved (decided conflicts and automatic
   merges stay; one `u` undoes it).
-- `o` or `→` takes ours, `t` or `←` theirs, `b` both, `r` reverts the change to the base.
+- `→` / `←` work like the gutter buttons: they add ours / theirs to the selected change and stay on it, so the other side can
+  still be added (the second arrow gives both); the same arrow again removes that side (like `×`) and `backspace` or `delete`
+  cancels the whole decision. Move on with `n`. `o` takes ours, `t` theirs, `b` both and `r` reverts to the base, each
+  followed by a jump to the next unresolved conflict. `x` ignores both sides of an open conflict (keeps the lines shown
+  in the result now) and stays on it; unlike `r` it only applies to open conflicts and does not jump.
 - `m` (auto-resolve) resolves every conflict that is none in fact: a change of whitespace only, or both sides editing
   different words of the same lines. Real conflicts stay open; one `u` undoes the whole step.
 - `a` asks Claude (`claude` CLI) and `c` asks Codex (`codex` CLI) to resolve every conflict that is still open; a
@@ -111,11 +119,23 @@ merged automatically; conflicts start with the base lines. The result pane has a
   assistant's service**, so do not use it on files that must not leave your machine. The assistant runs in an empty
   temporary directory without tools (Claude) or in a read-only sandbox (Codex) and times out after 5 minutes; `q`
   cancels a running request. Needs a logged-in CLI.
-- `e` or `enter` edits the line under the cursor in place (`enter` applies, `esc` cancels, arrows/home/end move,
-  `ctrl+u`/`ctrl+k` delete to the start/end of the line), `d` deletes the line, `i` inserts a new line below it and
-  opens it for editing (`esc` removes it again). A block edited by hand counts as resolved.
+- `e` or `enter` opens a vim-style editor on the **change under the cursor** (`i` opens it on a new empty line below the
+  cursor, in insert mode); `d` deletes the line under the cursor. The editor takes the whole screen and starts in
+  normal mode. The lines of the change are editable; all other lines of the result are shown above and below,
+  dimmed and read-only: the cursor can walk over them (`j`/`k`, arrows, `pgup`/`pgdn`, `gg`/`G`; the status line says
+  `READ-ONLY`) but any attempt to change them is refused:
+  - motions: `h j k l` and arrows, `w b e`, `0 ^ $`, `gg G` and `{n}G`, `ctrl+u`, `pgup`/`pgdn`, counts (`3j`, `2dw`);
+  - insert mode: `i a I A o O`; `esc` returns to normal mode;
+  - changes: `x X D C`, operators `d c y` with a motion (`dd cc yy dw cw d$ dj dG ...`), `p P`, `r{char}`, `J`, `~`, `u`, `ctrl+r`;
+  - visual mode: `v` (characters) and `V` (lines), then `d x y c`;
+  - Ex commands: `:w` applies the text to the merge and stays, `:wq` or `:x` applies and leaves, `:q` leaves (refuses
+    while there are unapplied changes), `:q!` discards them, `:{n}` goes to line n. `ctrl+d` works like `q` in the merge view: it leaves right away when
+    nothing changed, otherwise it asks whether to apply (`y`), discard (`n`) or keep editing (any other key).
+
+  Not supported: `.`, macros, named registers, search, text objects. Applying stores the lines in the change, which then
+  counts as resolved; one `u` in the merge view undoes a whole `:w`.
 - `u` undoes the last step (also edits, deletions and insertions), `s` saves (only when every conflict is resolved),
-  `q` or `ctrl+c` quits (asks before discarding an unsaved result), `v` switches the shown pane on narrow terminals.
+  `q`, `ctrl+c` or `ctrl+d` quits (asks before discarding an unsaved result), `v` switches the shown pane on narrow terminals.
 
 Layout: a header shows the document, the number of conflicts remaining, the save state (`Modified`, `Saved`,
 `Save failed`), the position (`Conflict 2 of 5`) and a progress bar; the result pane (40%) sits between ours and

@@ -98,7 +98,7 @@ func (m DirMergeModel) updateChild(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m DirMergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.status = ""
 	switch msg.String() {
-	case "q", "esc", "ctrl+c":
+	case "q", "esc", "ctrl+c", "ctrl+d":
 		return m, tea.Quit
 	case "j", "down":
 		m.selected++
