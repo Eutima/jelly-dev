@@ -16,14 +16,14 @@ else
     log=$(git log --format="${marker}%n%B")
 fi
 
-bump=none
+bump="none"
 raise() {
     # Only ever raise the bump level: none < patch < minor < major.
     case "$1:$bump" in
-        major:*) bump=major ;;
+        major:*) bump="major" ;;
         minor:major) ;;
-        minor:*) bump=minor ;;
-        patch:none) bump=patch ;;
+        minor:*) bump="minor" ;;
+        patch:none) bump="patch" ;;
     esac
 }
 
