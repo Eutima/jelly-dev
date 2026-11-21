@@ -58,6 +58,10 @@ automatically. Below 72 columns one pane is shown at a time (`v` switches pane);
 to one line each. The footer shows the actions for the selected change and the shortcuts in groups; unavailable ones
 are dimmed.
 
+Without git: `jelly-diff merge <file-a> <file-b>` merges file b into file a and writes the result to file a (atomically,
+with a's line endings). There is no common ancestor, so every difference is a conflict you decide (`»`/`«`/`×`, `o`/`t`/`b`,
+`ctrl+o` keeps all of a, `ctrl+t` takes all of b); identical files print "no differences" and write nothing.
+
 The result is written atomically with the line endings of the local file and a final newline; the exit code is 0 only
 after saving.
 Use as git tool: `jelly-diff install-git` prints the `git config` commands, `--apply` writes them (`--local` for

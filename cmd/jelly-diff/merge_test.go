@@ -112,7 +112,7 @@ func TestRun_Fails_WhenMergeInputIsBinaryOrUIFails(t *testing.T) {
 }
 
 func TestRun_ReportsUsage_WhenMergeArgumentCountWrong(t *testing.T) {
-	if code := run([]string{"merge", "a", "b"}, &bytes.Buffer{}, &bytes.Buffer{}, testEnv(noUI)); code != exitUsage {
+	if code := run([]string{"merge", "a", "b", "c"}, &bytes.Buffer{}, &bytes.Buffer{}, testEnv(noUI)); code != exitUsage {
 		t.Fatalf("code %d", code)
 	}
 }
@@ -244,5 +244,76 @@ func TestRun_HighlightsMergeView_WhenMergedFileIsGoSource(t *testing.T) {
 	}
 	if !strings.Contains(view, monokaiKeywordColor) {
 		t.Fatalf("expected syntax colors in the merge view:\n%q", view)
+	}
+}
+
+func pairFixture(t *testing.T, a, b string) (args []string, aPath string) {
+	t.Helper()
+	dir := t.TempDir()
+	aPath, bPath := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
+	for path, content := range map[string]string{aPath: a, bPath: b} {
+		if err := os.WriteFile(path, []byte(content), 0o640); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return []string{"merge", aPath, bPath}, aPath
+}
+
+func TestRun_WritesResultIntoFileA_WhenTheirsHunkTakenAndSaved(t *testing.T) {
+	args, a := pairFixture(t, "1\nold\n3\n", "1\nnew\n3\n")
+	code := run(args, &bytes.Buffer{}, &bytes.Buffer{}, testEnv(pressKeys("n", "t", "s")))
+	if code != exitOK || readFile(t, a) != "1\nnew\n3\n" {
+		t.Fatalf("code %d a %q", code, readFile(t, a))
+	}
+}
+
+func TestRun_KeepsFileAContent_WhenAllOursTaken(t *testing.T) {
+	args, a := pairFixture(t, "1\nold\n3\nx\n", "1\nnew\n3\n")
+	code := run(args, &bytes.Buffer{}, &bytes.Buffer{}, testEnv(func(model tea.Model) error {
+		model, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 10})
+		model, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+		_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+		return nil
+	}))
+	if code != exitOK || readFile(t, a) != "1\nold\n3\nx\n" {
+		t.Fatalf("code %d a %q", code, readFile(t, a))
+	}
+}
+
+func TestRun_FailsAndLeavesFileAUntouched_WhenNothingSaved(t *testing.T) {
+	args, a := pairFixture(t, "1\nold\n", "1\nnew\n")
+	var stderr bytes.Buffer
+	code := run(args, &bytes.Buffer{}, &stderr, testEnv(pressKeys("n", "t")))
+	if code != exitFailure || readFile(t, a) != "1\nold\n" || !strings.Contains(stderr.String(), "not saved") {
+		t.Fatalf("code %d a %q err %q", code, readFile(t, a), stderr.String())
+	}
+}
+
+func TestRun_ReportsNoDifferencesAndWritesNothing_WhenFilesAreIdentical(t *testing.T) {
+	args, a := pairFixture(t, "same\r\n", "same\r\n")
+	var stdout bytes.Buffer
+	code := run(args, &stdout, &bytes.Buffer{}, testEnv(func(tea.Model) error { t.Fatal("no UI expected"); return nil }))
+	if code != exitOK || !strings.Contains(stdout.String(), "no differences") || readFile(t, a) != "same\r\n" {
+		t.Fatalf("code %d out %q", code, stdout.String())
+	}
+}
+
+func TestRun_KeepsCRLFOfFileA_WhenSaving(t *testing.T) {
+	args, a := pairFixture(t, "1\r\nold\r\n", "1\nnew\n")
+	if code := run(args, &bytes.Buffer{}, &bytes.Buffer{}, testEnv(pressKeys("n", "t", "s"))); code != exitOK {
+		t.Fatalf("code %d", code)
+	}
+	if got := readFile(t, a); got != "1\r\nnew\r\n" {
+		t.Fatalf("a %q", got)
+	}
+}
+
+func TestRun_RefusesToMergeDirectoryWithFile(t *testing.T) {
+	dir := t.TempDir()
+	file := writeFile(t, "f", "x\n")
+	var stderr bytes.Buffer
+	if code := run([]string{"merge", dir, file}, &bytes.Buffer{}, &stderr, testEnv(noUI)); code != exitFailure ||
+		!strings.Contains(stderr.String(), "directory with a file") {
+		t.Fatalf("code %d err %q", code, stderr.String())
 	}
 }

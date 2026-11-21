@@ -17,22 +17,80 @@ import (
 
 const (
 	mergeArgCount = 4 // BASE LOCAL REMOTE MERGED, the order of git mergetool's variables
+	pairArgCount  = 2 // A B: merge B into A without git
 	defaultMode   = 0o644
 	lf            = "\n"
 	crlf          = "\r\n"
 )
 
-// runMerge handles `jelly-diff merge BASE LOCAL REMOTE MERGED` (the git mergetool entry point).
+// runMerge handles `jelly-diff merge BASE LOCAL REMOTE MERGED` (the git mergetool entry point) and
+// `jelly-diff merge A B` (two files or directories without git; the result goes into A).
 func runMerge(args []string, stdout, stderr io.Writer, env environment) int {
-	if len(args) != mergeArgCount {
+	var err error
+	switch len(args) {
+	case mergeArgCount:
+		err = mergeFiles(args[0], args[1], args[2], args[3], stdout, env)
+	case pairArgCount:
+		err = mergePair(args[0], args[1], stdout, env)
+	default:
 		fmt.Fprintf(stderr, "%s\n", usage)
 		return exitUsage
 	}
-	if err := mergeFiles(args[0], args[1], args[2], args[3], stdout, env); err != nil {
+	if err != nil {
 		printError(stderr, err)
 		return exitFailure
 	}
 	return exitOK
+}
+
+// mergePair merges file b into file a (or directory b into directory a) without a common ancestor.
+func mergePair(aPath, bPath string, stdout io.Writer, env environment) error {
+	aIsDir, bIsDir := isDirectory(aPath), isDirectory(bPath)
+	switch {
+	case aIsDir && bIsDir:
+		return errors.New("merging directories is not supported yet")
+	case aIsDir != bIsDir:
+		return fmt.Errorf("cannot merge a directory with a file: %s, %s", aPath, bPath)
+	}
+	a, err := source.ReadTextFile(aPath)
+	if err != nil {
+		return err
+	}
+	b, err := source.ReadTextFile(bPath)
+	if err != nil {
+		return err
+	}
+	chunks := merge.TwoWay(diff.SplitLines(a), diff.SplitLines(b))
+	titles := ui.MergeTitles{
+		Name: filepath.Base(aPath), Ours: filepath.Base(aPath), Result: filepath.Base(aPath), Theirs: filepath.Base(bPath),
+	}
+	lineEnding := lineEndingOf(a)
+	save := func(lines []string) error { return writeResult(aPath, lines, lineEnding) }
+	model, outcome := ui.NewMergeModel(titles, chunks, save)
+	if model.ChangeCount() == 0 {
+		fmt.Fprintln(stdout, "no differences")
+		return nil
+	}
+	return showMerge(model.WithHighlight(aPath, bPath), outcome, env)
+}
+
+// lineEndingOf returns the line ending the result is written with: CRLF when the text uses it, else LF.
+func lineEndingOf(text string) string {
+	if strings.Contains(text, crlf) {
+		return crlf
+	}
+	return lf
+}
+
+// showMerge runs the merge viewer; it is an error when the user left without saving the result.
+func showMerge(model ui.MergeModel, outcome *ui.MergeOutcome, env environment) error {
+	if err := env.runUI(model); err != nil {
+		return fmt.Errorf("run ui: %w", err)
+	}
+	if !outcome.Saved {
+		return errors.New("merge not saved")
+	}
+	return nil
 }
 
 func mergeFiles(basePath, localPath, remotePath, mergedPath string, stdout io.Writer, env environment) error {
@@ -48,10 +106,7 @@ func mergeFiles(basePath, localPath, remotePath, mergedPath string, stdout io.Wr
 	if err != nil {
 		return err
 	}
-	lineEnding := lf
-	if strings.Contains(local, crlf) {
-		lineEnding = crlf
-	}
+	lineEnding := lineEndingOf(local)
 	save := func(lines []string) error { return writeResult(mergedPath, lines, lineEnding) }
 
 	chunks := merge.Merge(diff.SplitLines(base), diff.SplitLines(local), diff.SplitLines(remote))
@@ -63,14 +118,7 @@ func mergeFiles(basePath, localPath, remotePath, mergedPath string, stdout io.Wr
 		fmt.Fprintln(stdout, "nothing to merge")
 		return save(model.Result())
 	}
-	model = model.WithHighlight(mergedPath, localPath, remotePath)
-	if err := env.runUI(model); err != nil {
-		return fmt.Errorf("run ui: %w", err)
-	}
-	if !outcome.Saved {
-		return errors.New("merge not saved")
-	}
-	return nil
+	return showMerge(model.WithHighlight(mergedPath, localPath, remotePath), outcome, env)
 }
 
 // readBase reads the common ancestor; a missing file (add/add conflict) counts as empty.
