@@ -682,3 +682,18 @@ func TestMergeModel_TakesOneSideForAllConflicts_WhenCtrlArrowPressed(t *testing.
 		t.Fatalf("ctrl+left must take theirs: %v", got)
 	}
 }
+
+func TestMergeModel_TakesOneSideForAllConflicts_WhenCtrlOrCtrlTPressed(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	model = mergePress(model, "n", "t") // conflict 1 is decided by hand: theirs
+	ctrlO, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	got := ctrlO.(MergeModel).Result()
+	if got[1] != "Y" || got[7] != "X2" {
+		t.Fatalf("ctrl+o must take ours for the open conflict only and keep the decided one: %v", got)
+	}
+	model, _ = newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	ctrlT, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlT})
+	if got := ctrlT.(MergeModel).Result(); got[1] != "Y" || got[7] != "Y2" {
+		t.Fatalf("ctrl+t must take theirs everywhere: %v", got)
+	}
+}
