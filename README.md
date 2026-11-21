@@ -27,9 +27,13 @@ Or with pip (any platform with a wheel: Linux glibc/musl including Alpine, macOS
 pip install jelly-dev      # puts the jd command on the PATH; pipx install jelly-dev works too
 ```
 
-The wheel carries the same static binary as the release (no download at install time). It does not set up git or install
-language servers and runtimes; `jd install-git --apply` sets jd as git's diff and merge tool, and the IDE installs the language
-servers it needs when it starts (`:tools`). Releases are published by the workflow `pypi` (`.github/workflows/pypi.yml`).
+The wheel carries the same static binary as the release (no download at install time). A wheel cannot run code when it is
+installed, so jd runs the installer script itself the first time it starts interactively (`jd` or `jd <folder>`): the script
+that is part of the release, the same as `curl ... | sh`, without downloading jd again. It installs the tools the IDE needs
+(the groups below, through your package manager and `sudo` unless you are root) and makes jd git's diff and merge tool
+(overwriting existing values). It says so before it starts and runs only once; `jd setup` runs it again. `JD_SKIP_SETUP=1` skips
+it, `JD_SKIP_DEPS=1`, `JD_SKIP_GIT_CONFIG=1`, `JD_DEPS` and `JD_DRY_RUN=1` work as for the installer.
+Releases are published by the workflow `pypi` (`.github/workflows/pypi.yml`).
 
 The installer:
 

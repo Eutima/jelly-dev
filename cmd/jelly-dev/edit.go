@@ -95,6 +95,7 @@ func runIDE(args []string, stdout, stderr io.Writer, env environment) int {
 			open.root = latest.Path
 		}
 	}
+	setupOnFirstStart(dir, stdout, stderr, env) // after the target is known: a mistyped folder fails before anything is installed
 	newWindow := env.newWindow
 	if newWindow == nil {
 		newWindow = launch.NewWindow

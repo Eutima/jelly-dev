@@ -4,7 +4,9 @@
 #              JD_SKIP_GIT_CONFIG=1 (do not set jd as git's diff and merge tool),
 #              JD_SKIP_DEPS=1 (do not check or install dependencies),
 #              JD_DEPS (groups to handle, comma separated; default basics,terminal,runtimes,lsp),
-#              JD_DRY_RUN=1 (print what would be installed).
+#              JD_DRY_RUN=1 (print what would be installed),
+#              JD_BIN (path of an installed jd.exe, for the pip package that runs this script itself on its first start:
+#              jd is not downloaded and the PATH stays as it is, only the dependencies and git are handled).
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -13,6 +15,7 @@ $ProgressPreference = 'SilentlyContinue'
 $repo = 'Eutima/jelly-dev'
 $installDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\jelly-dev' }
 
+if (-not $env:JD_BIN) {
 $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
     'AMD64' { 'amd64' }
     'ARM64' { 'arm64' }
@@ -59,6 +62,7 @@ if (@($userPath -split ';') -notcontains $installDir) {
     $newPath = (@($userPath -split ';') + $installDir | Where-Object { $_ }) -join ';'
     [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
     Write-Host "Added $installDir to your user PATH."
+}
 }
 # ---- dependencies: git, Windows Terminal, runtimes and language servers for the IDE ----------------------------
 $script:problems = @()
@@ -184,13 +188,16 @@ if (-not $env:JD_SKIP_DEPS) { Install-Dependencies }
 # Make jd the global default diff and merge tool of git (opt out with JD_SKIP_GIT_CONFIG=1).
 if (-not $env:JD_SKIP_GIT_CONFIG) {
     if (Get-Command git -ErrorAction SilentlyContinue) {
-        & (Join-Path $installDir 'jd.exe') install-git --apply | Out-Null
+        $jdExe = if ($env:JD_BIN) { $env:JD_BIN } else { Join-Path $installDir 'jd.exe' }
+        & $jdExe install-git --apply | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Could not configure git; run: jd install-git --apply' }
         Write-Host 'Configured git: jd is now the global diff.tool and merge.tool (git difftool / git mergetool)'
     } else {
         Write-Host 'note: git not found; later run: jd install-git --apply'
     }
 }
-# Make jd available in this session right away (other open terminals need a restart).
-if (@($env:Path -split ';') -notcontains $installDir) { $env:Path = "$env:Path;$installDir" }
-Write-Host "Installed $installDir\jd.exe (open new terminals to pick up PATH; run: jd --version)"
+if (-not $env:JD_BIN) {
+    # Make jd available in this session right away (other open terminals need a restart).
+    if (@($env:Path -split ';') -notcontains $installDir) { $env:Path = "$env:Path;$installDir" }
+    Write-Host "Installed $installDir\jd.exe (open new terminals to pick up PATH; run: jd --version)"
+}

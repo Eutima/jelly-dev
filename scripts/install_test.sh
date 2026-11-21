@@ -88,5 +88,29 @@ out=$(plan "" "")
 expect "no package manager is reported, not fatal" "$out" "no supported package manager was found"
 expect "problems are summed up" "$out" "some tools are missing, jd itself works without them"
 
+# main with JD_BIN (the pip package runs the script on jd's first start): no download of jd, no PATH change, git is
+# configured with the jd that is installed. The steps are replaced by fakes that record the calls.
+# shellcheck disable=SC1091,SC2329,SC2034 # install.sh is sourced; the fakes replace functions of install.sh
+main_calls() {
+    (
+        JD_INSTALL_NO_MAIN=1
+        export JD_INSTALL_NO_MAIN
+        . "$here/install.sh"
+        calls=""
+        install_jd() { calls="$calls install_jd"; }
+        install_dependencies() { calls="$calls deps"; }
+        configure_git() { calls="$calls git:${JD_BIN:-default}"; }
+        add_to_path() { calls="$calls path"; }
+        main
+        echo "$calls"
+    )
+}
+out=$(main_calls)
+expect "the installer downloads jd and sets the PATH" "$out" "install_jd deps git:default path"
+out=$(JD_BIN=/opt/jd main_calls)
+expect "with JD_BIN the dependencies and git are handled" "$out" "deps git:/opt/jd"
+expect_not "with JD_BIN jd is not downloaded" "$out" "install_jd"
+expect_not "with JD_BIN the PATH stays" "$out" "path"
+
 if [ "$failures" -gt 0 ]; then echo "$failures failure(s)"; exit 1; fi
 echo "all install tests passed"

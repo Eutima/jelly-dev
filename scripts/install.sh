@@ -8,6 +8,8 @@
 #   JD_SKIP_DEPS=1       do not check or install dependencies
 #   JD_DEPS              dependency groups to handle, comma separated (default basics,terminal,runtimes,lsp)
 #   JD_DRY_RUN=1         print what would be installed instead of installing it
+#   JD_BIN=<path>        jd is already installed there (pip, jd runs this script itself on its first start): do not download
+#                        jd and do not change the PATH, only install the dependencies and configure git
 set -eu
 
 repo="Eutima/jelly-dev"
@@ -363,7 +365,7 @@ install_jd() {
 configure_git() {
     [ -z "${JD_SKIP_GIT_CONFIG:-}" ] || return 0
     if have git; then
-        "$install_dir/jd" install-git --apply >/dev/null || fail "could not configure git; run: jd install-git --apply"
+        "${JD_BIN:-$install_dir/jd}" install-git --apply >/dev/null || fail "could not configure git; run: jd install-git --apply"
         echo "Configured git: jd is now the global diff.tool and merge.tool (git difftool / git mergetool)"
     else
         echo "note: git not found; later run: jd install-git --apply"
@@ -391,12 +393,16 @@ add_to_path() {
 }
 
 main() {
-    install_jd
+    if [ -z "${JD_BIN:-}" ]; then
+        install_jd
+    fi
     if [ -z "${JD_SKIP_DEPS:-}" ]; then
         install_dependencies
     fi
     configure_git # after the dependencies: git may have been installed just now
-    add_to_path
+    if [ -z "${JD_BIN:-}" ]; then
+        add_to_path
+    fi
 }
 
 # Tests source this file without running it.
