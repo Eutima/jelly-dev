@@ -394,7 +394,7 @@ func TestRun_PrintsVersion_WhenVersionFlagGiven(t *testing.T) {
 	for _, arg := range []string{"--version", "version"} {
 		var stdout bytes.Buffer
 		if code := run([]string{arg}, &stdout, &bytes.Buffer{}, testEnv(noUI)); code != exitOK ||
-			!strings.HasPrefix(stdout.String(), "jelly-diff ") {
+			!strings.HasPrefix(stdout.String(), "jd ") {
 			t.Fatalf("%s: code %d stdout %q", arg, code, stdout.String())
 		}
 	}

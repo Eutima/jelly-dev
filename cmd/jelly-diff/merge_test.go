@@ -159,7 +159,7 @@ func TestInstallGit_PrintsSettingsWithoutWriting_WhenApplyMissing(t *testing.T) 
 	if code := run([]string{"install-git"}, &stdout, &bytes.Buffer{}, env); code != exitOK {
 		t.Fatalf("code %d", code)
 	}
-	for _, want := range []string{"git config --global merge.tool 'jelly-diff'", "mergetool.jelly-diff.cmd", "nothing changed"} {
+	for _, want := range []string{"git config --global merge.tool 'jd'", "mergetool.jd.cmd", "nothing changed"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("output lacks %q:\n%s", want, stdout.String())
 		}

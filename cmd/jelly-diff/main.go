@@ -1,4 +1,4 @@
-// Command jelly-diff is a terminal diff and merge tool with a JetBrains-style UI.
+// Command jd is a terminal diff and merge tool with a JetBrains-style UI.
 package main
 
 import (
@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
+	"github.com/eutima/jelly-diff/internal/ai"
 	"github.com/eutima/jelly-diff/internal/config"
 	"github.com/eutima/jelly-diff/internal/diff"
 	"github.com/eutima/jelly-diff/internal/source"
@@ -25,17 +26,17 @@ const (
 
 	clipboardTitle = "clipboard"
 	usage          = `usage:
-  jelly-diff <file-a> <file-b>       compare two files, or two directories
-  jelly-diff --clip <file>           compare a file with the clipboard (clipboard on the right)
-  jelly-diff --clip-left <file>      compare the clipboard (left) with a file
-  jelly-diff git [--staged] [<rev> | <a>..<b>] [-- <path>...]
-                                     browse changes of the git repository in the current directory
-  jelly-diff merge <base> <local> <remote> <merged>
-                                     three-way merge; writes <merged> (git mergetool order)
-  jelly-diff merge <a> <b>           merge b into a without git (two files, or two directories); the result is written to a
-  jelly-diff --version               print the version
-  jelly-diff install-git [--apply] [--local]
-                                     print (or with --apply write, overwriting existing values) the git diff/merge tool settings`
+  jd <file-a> <file-b>       compare two files, or two directories
+  jd --clip <file>           compare a file with the clipboard (clipboard on the right)
+  jd --clip-left <file>      compare the clipboard (left) with a file
+  jd git [--staged] [<rev> | <a>..<b>] [-- <path>...]
+                             browse changes of the git repository in the current directory
+  jd merge <base> <local> <remote> <merged>
+                             three-way merge; writes <merged> (git mergetool order)
+  jd merge <a> <b>           merge b into a without git (two files, or two directories); the result is written to a
+  jd --version               print the version
+  jd install-git [--apply] [--local]
+                             print (or with --apply write, overwriting existing values) the git diff/merge tool settings`
 )
 
 // uiRunner shows a model in the terminal and blocks until the user quits.
@@ -55,6 +56,16 @@ type environment struct {
 	enableAttributes func()
 	busy             busyFunc
 	workDir          string
+	// detectAssistants finds the installed assistant CLIs (Claude, Codex); nil means none.
+	detectAssistants func() []ai.Assistant
+}
+
+// assistants returns the installed assistant CLIs that can resolve merge conflicts.
+func (e environment) assistants() []ai.Assistant {
+	if e.detectAssistants == nil {
+		return nil
+	}
+	return e.detectAssistants()
 }
 
 // gitChanges is a repository view that can list changed files and load their texts.
@@ -74,11 +85,11 @@ func openGit(dir string, spec source.GitSpec) (gitChanges, error) {
 func main() {
 	workDir, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "jelly-diff: %v\n", err)
+		fmt.Fprintf(os.Stderr, "jd: %v\n", err)
 		os.Exit(exitFailure)
 	}
 	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, openGit: openGit, gitConfig: runGitConfig, getenv: os.Getenv, namedTheme: ui.NamedTheme, enableAttributes: enableTextAttributes,
-		busy: newBusy(os.Stderr, stderrIsTerminal()), workDir: workDir}
+		busy: newBusy(os.Stderr, stderrIsTerminal()), workDir: workDir, detectAssistants: ai.Detect}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, env))
 }
 
@@ -119,25 +130,25 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 			return runMerge(args[1:], stdout, stderr, env)
 		}
 	}
-	flags := flag.NewFlagSet("jelly-diff", flag.ContinueOnError)
+	flags := flag.NewFlagSet("jd", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	clipRight := flags.Bool("clip", false, "")
 	clipLeft := flags.Bool("clip-left", false, "")
 	if err := flags.Parse(args); err != nil {
-		fmt.Fprintf(stderr, "jelly-diff: %v\n%s\n", err, usage)
+		fmt.Fprintf(stderr, "jd: %v\n%s\n", err, usage)
 		return exitUsage
 	}
 	positional := flags.Args()
 	for _, arg := range positional {
 		if len(arg) > 1 && arg[0] == '-' {
-			fmt.Fprintf(stderr, "jelly-diff: flags must come before file names: %s\n%s\n", arg, usage)
+			fmt.Fprintf(stderr, "jd: flags must come before file names: %s\n%s\n", arg, usage)
 			return exitUsage
 		}
 	}
 
 	switch {
 	case *clipRight && *clipLeft:
-		fmt.Fprintf(stderr, "jelly-diff: use either --clip or --clip-left\n%s\n", usage)
+		fmt.Fprintf(stderr, "jd: use either --clip or --clip-left\n%s\n", usage)
 		return exitUsage
 	case *clipRight || *clipLeft:
 		if len(positional) != 1 {
@@ -239,21 +250,21 @@ func show(leftTitle, rightTitle, left, right string, syntaxNames []string, stdou
 	return nil
 }
 
-// runGit handles `jelly-diff git [--staged] [<rev>] [-- <path>...]`.
+// runGit handles `jd git [--staged] [<rev>] [-- <path>...]`.
 func runGit(args []string, stdout, stderr io.Writer, env environment) int {
 	var paths []string
 	if dash := indexOf(args, "--"); dash >= 0 {
 		args, paths = args[:dash], args[dash+1:]
 	}
-	flags := flag.NewFlagSet("jelly-diff git", flag.ContinueOnError)
+	flags := flag.NewFlagSet("jd git", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	staged := flags.Bool("staged", false, "")
 	if err := flags.Parse(args); err != nil {
-		fmt.Fprintf(stderr, "jelly-diff: %v\n%s\n", err, usage)
+		fmt.Fprintf(stderr, "jd: %v\n%s\n", err, usage)
 		return exitUsage
 	}
 	if flags.NArg() > 1 {
-		fmt.Fprintf(stderr, "jelly-diff: at most one revision allowed (flags must come before the revision, paths after --)\n%s\n", usage)
+		fmt.Fprintf(stderr, "jd: at most one revision allowed (flags must come before the revision, paths after --)\n%s\n", usage)
 		return exitUsage
 	}
 	spec := source.GitSpec{Staged: *staged, Paths: paths}
@@ -308,7 +319,7 @@ func printError(w io.Writer, err error) {
 		}
 		return r
 	}, err.Error())
-	fmt.Fprintf(w, "jelly-diff: %s\n", clean)
+	fmt.Fprintf(w, "jd: %s\n", clean)
 }
 
 // attributeProfile returns the color profile to use for the mono theme: terminals that can show text

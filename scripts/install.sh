@@ -1,7 +1,8 @@
 #!/bin/sh
 # Install the latest jelly-diff release (Linux and macOS).
 #   curl -fsSL https://raw.githubusercontent.com/Eutima/jelly-diff/master/scripts/install.sh | sh
-# Environment: JELLY_DIFF_VERSION (e.g. v0.2.0, default latest), INSTALL_DIR (default ~/.local/bin).
+# Environment: JELLY_DIFF_VERSION (e.g. v0.2.0, default latest), INSTALL_DIR (default ~/.local/bin),
+# JD_SKIP_GIT_CONFIG=1 (do not set jd as git's diff and merge tool).
 set -eu
 
 repo="Eutima/jelly-diff"
@@ -60,12 +61,35 @@ else
 fi
 [ "$expected" = "$actual" ] || fail "checksum mismatch for $archive"
 
-tar -xzf "$tmp/$archive" -C "$tmp" jelly-diff
+tar -xzf "$tmp/$archive" -C "$tmp" jd
 mkdir -p "$install_dir"
-install -m 0755 "$tmp/jelly-diff" "$install_dir/jelly-diff"
+install -m 0755 "$tmp/jd" "$install_dir/jd"
+rm -f "$install_dir/jelly-diff" # the command used to be called jelly-diff
 
-echo "Installed $install_dir/jelly-diff"
+echo "Installed $install_dir/jd"
+
+# Make jd the global default diff and merge tool of git (opt out with JD_SKIP_GIT_CONFIG=1).
+if [ -z "${JD_SKIP_GIT_CONFIG:-}" ]; then
+    if command -v git >/dev/null 2>&1; then
+        "$install_dir/jd" install-git --apply >/dev/null || fail "could not configure git; run: jd install-git --apply"
+        echo "Configured git: jd is now the global diff.tool and merge.tool (git difftool / git mergetool)"
+    else
+        echo "note: git not found; later run: jd install-git --apply"
+    fi
+fi
 case ":$PATH:" in
-    *":$install_dir:"*) ;;
-    *) echo "note: $install_dir is not on your PATH; add it to your shell profile" ;;
+    *":$install_dir:"*) echo "Run: jd --version" ;;
+    *)
+        case ${SHELL##*/} in
+            zsh) profile=$HOME/.zshrc ;;
+            bash) if [ -f "$HOME/.bashrc" ]; then profile=$HOME/.bashrc; else profile=$HOME/.bash_profile; fi ;;
+            *) profile=$HOME/.profile ;;
+        esac
+        line="export PATH=\"$install_dir:\$PATH\""
+        if ! grep -qsF "$line" "$profile"; then
+            printf '\n# added by the jd installer\n%s\n' "$line" >> "$profile"
+            echo "Added $install_dir to PATH in $profile"
+        fi
+        echo "Reload your shell to use jd (and tab completion for it):  exec \"\$SHELL\" -l"
+        ;;
 esac

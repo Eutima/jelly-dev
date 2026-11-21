@@ -281,7 +281,7 @@ func (m MergeModel) header(panes []int, widths [mergePanes]int) string {
 	}
 	bg := m.theme.Header.GetBackground()
 	title := []barPart{
-		{" Jelly-", m.theme.StatusModified.Background(bg)}, {"Merge", m.theme.Jelly.Bold(true).Background(bg)},
+		{" Jelly ", m.theme.StatusModified.Background(bg)}, {"Diff", m.theme.Jelly.Bold(true).Background(bg)},
 		{"  " + sanitize(m.titles.Name), m.theme.Header},
 	}
 	status := []barPart{m.conflictSummary(), {"   ", m.theme.Header}, m.saveBadge(), {" ", m.theme.Header}}
@@ -377,12 +377,14 @@ func (m MergeModel) hints() [][]hint {
 	if m.width < threePaneWidth {
 		view = append(view, hint{"v", "pane", true, 0})
 	}
+	resolve := []hint{
+		{"→/o", "ours", selected, 0}, {"←/t", "theirs", selected, 0}, {"b", "both", selected, 0},
+		{"r", "base", selected, 1}, {"m", "auto-resolve", true, 0}, {"ctrl+o", "all ours", m.Unresolved() > 0, 1}, {"ctrl+t", "all theirs", m.Unresolved() > 0, 1}, {"e", "edit", onLine, 0},
+	}
+	resolve = append(resolve, m.assistantHints()...)
 	return [][]hint{
 		view,
-		{
-			{"→/o", "ours", selected, 0}, {"←/t", "theirs", selected, 0}, {"b", "both", selected, 0},
-			{"r", "base", selected, 1}, {"m", "auto-resolve", true, 0}, {"ctrl+o", "all ours", m.Unresolved() > 0, 1}, {"ctrl+t", "all theirs", m.Unresolved() > 0, 1}, {"e", "edit", onLine, 0},
-		},
+		resolve,
 		{{"d", "del", onLine, 2}, {"i", "ins", len(m.rows) > 0, 2}},
 		{{"u", "undo", len(m.history) > 0, 0}, save, {"q", "quit", true, 0}},
 	}

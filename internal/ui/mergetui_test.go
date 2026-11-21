@@ -413,7 +413,7 @@ func TestMergeView_ShowsPositionAndProgress_WhenConflictSelected(t *testing.T) {
 	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
 	model = mergePress(model, "n")
 	view := model.View()
-	for _, want := range []string{"Jelly-Merge", "OURS", "RESULT", "THEIRS", "2 conflicts remaining", "Conflict 1 of 2 · unresolved",
+	for _, want := range []string{"Jelly Diff", "OURS", "RESULT", "THEIRS", "2 conflicts remaining", "Conflict 1 of 2 · unresolved",
 		"0/2 resolved", "Resolve conflict 1/2", "[→/o] Use ours", "● Modified"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view lacks %q:\n%s", want, view)

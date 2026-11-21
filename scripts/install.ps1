@@ -1,6 +1,7 @@
 # Install the latest jelly-diff release (Windows, PowerShell 5.1+).
 #   irm https://raw.githubusercontent.com/Eutima/jelly-diff/master/scripts/install.ps1 | iex
-# Environment: JELLY_DIFF_VERSION (e.g. v0.2.0, default latest), INSTALL_DIR (default %LOCALAPPDATA%\Programs\jelly-diff).
+# Environment: JELLY_DIFF_VERSION (e.g. v0.2.0, default latest), INSTALL_DIR (default %LOCALAPPDATA%\Programs\jelly-diff),
+#              JD_SKIP_GIT_CONFIG=1 (do not set jd as git's diff and merge tool).
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -43,7 +44,8 @@ try {
 
     Expand-Archive (Join-Path $tmp $archive) -DestinationPath $tmp -Force
     New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-    Copy-Item (Join-Path $tmp 'jelly-diff.exe') (Join-Path $installDir 'jelly-diff.exe') -Force
+    Copy-Item (Join-Path $tmp 'jd.exe') (Join-Path $installDir 'jd.exe') -Force
+    Remove-Item (Join-Path $installDir 'jelly-diff.exe') -Force -ErrorAction SilentlyContinue # old command name
 }
 finally {
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -53,6 +55,18 @@ $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (@($userPath -split ';') -notcontains $installDir) {
     $newPath = (@($userPath -split ';') + $installDir | Where-Object { $_ }) -join ';'
     [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-    Write-Host "Added $installDir to your user PATH; restart the terminal to use it."
+    Write-Host "Added $installDir to your user PATH."
 }
-Write-Host "Installed $installDir\jelly-diff.exe"
+# Make jd the global default diff and merge tool of git (opt out with JD_SKIP_GIT_CONFIG=1).
+if (-not $env:JD_SKIP_GIT_CONFIG) {
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        & (Join-Path $installDir 'jd.exe') install-git --apply | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Could not configure git; run: jd install-git --apply' }
+        Write-Host 'Configured git: jd is now the global diff.tool and merge.tool (git difftool / git mergetool)'
+    } else {
+        Write-Host 'note: git not found; later run: jd install-git --apply'
+    }
+}
+# Make jd available in this session right away (other open terminals need a restart).
+if (@($env:Path -split ';') -notcontains $installDir) { $env:Path = "$env:Path;$installDir" }
+Write-Host "Installed $installDir\jd.exe (open new terminals to pick up PATH; run: jd --version)"

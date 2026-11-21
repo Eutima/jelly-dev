@@ -7,12 +7,12 @@ import (
 	"strings"
 )
 
-const toolName = "jelly-diff"
+const toolName = "jd"
 
 // gitSetting is one `git config` entry.
 type gitSetting struct{ key, value string }
 
-// gitSettings returns the configuration that makes git use jelly-diff as diff and merge tool.
+// gitSettings returns the configuration that makes git use jd as diff and merge tool.
 func gitSettings() []gitSetting {
 	return []gitSetting{
 		{"diff.tool", toolName},
@@ -32,7 +32,7 @@ func runGitConfig(scope, key, value string) error {
 	return nil
 }
 
-// runInstallGit prints the git configuration for jelly-diff and applies it with --apply.
+// runInstallGit prints the git configuration for jd and applies it with --apply.
 func runInstallGit(args []string, stdout, stderr io.Writer, env environment) int {
 	apply, scope := false, "--global"
 	for _, arg := range args {
@@ -42,7 +42,7 @@ func runInstallGit(args []string, stdout, stderr io.Writer, env environment) int
 		case "--local":
 			scope = "--local"
 		default:
-			fmt.Fprintf(stderr, "jelly-diff: unknown argument %q\n%s\n", arg, usage)
+			fmt.Fprintf(stderr, "jd: unknown argument %q\n%s\n", arg, usage)
 			return exitUsage
 		}
 	}
@@ -57,7 +57,7 @@ func runInstallGit(args []string, stdout, stderr io.Writer, env environment) int
 		}
 	}
 	if !apply {
-		fmt.Fprintln(stdout, "# nothing changed; run `jelly-diff install-git --apply` to write these settings")
+		fmt.Fprintln(stdout, "# nothing changed; run `jd install-git --apply` to write these settings")
 		fmt.Fprintln(stdout, "# note: --apply overwrites existing values of these keys (diff.tool, merge.tool, ...)")
 	}
 	return exitOK

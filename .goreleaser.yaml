@@ -6,7 +6,7 @@ project_name: jelly-diff
 builds:
   - id: jelly-diff
     main: ./cmd/jelly-diff
-    binary: jelly-diff
+    binary: jd
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]

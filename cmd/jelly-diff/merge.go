@@ -72,7 +72,7 @@ func mergePair(aPath, bPath string, stdout io.Writer, env environment) error {
 		fmt.Fprintln(stdout, "no differences")
 		return nil
 	}
-	return showMerge(model.WithHighlight(aPath, bPath), outcome, env)
+	return showMerge(model.WithHighlight(aPath, bPath).WithAssistants(env.assistants()...), outcome, env)
 }
 
 // lineEndingOf returns the line ending the result is written with: CRLF when the text uses it, else LF.
@@ -119,7 +119,7 @@ func mergeFiles(basePath, localPath, remotePath, mergedPath string, stdout io.Wr
 		fmt.Fprintln(stdout, "nothing to merge")
 		return save(model.Result())
 	}
-	return showMerge(model.WithHighlight(mergedPath, localPath, remotePath), outcome, env)
+	return showMerge(model.WithHighlight(mergedPath, localPath, remotePath).WithAssistants(env.assistants()...), outcome, env)
 }
 
 // mergeDirectories lists the files that differ between two directories; each opens in the merge viewer and is
@@ -171,7 +171,7 @@ func mergeDirectories(aDir, bDir string, stdout io.Writer, env environment) erro
 		if model.ChangeCount() == 0 {
 			return ui.MergeModel{}, nil, errors.New("no line differences (the files are equal, empty, or differ only in line endings)")
 		}
-		return model.WithHighlight(aPath, bPath), outcome, nil
+		return model.WithHighlight(aPath, bPath).WithAssistants(env.assistants()...), outcome, nil
 	}
 	if err := env.runUI(ui.NewDirMergeModel(aDir, bDir, files, open)); err != nil {
 		return fmt.Errorf("run ui: %w", err)

@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"slices"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/eutima/jelly-diff/internal/ai"
 	"github.com/eutima/jelly-diff/internal/merge"
 )
 
@@ -71,6 +73,10 @@ type MergeModel struct {
 	theme   Theme
 	save    func(lines []string) error
 	outcome *MergeOutcome
+
+	assistants []ai.Assistant     // installed assistant CLIs that can resolve conflicts
+	aiBusy     bool               // a request to an assistant is running
+	aiCancel   context.CancelFunc // stops the running request
 
 	syntaxNames []string                   // file names the highlighting lexer is chosen from; empty means no highlighting
 	paneSyntax  [mergePanes][][]SyntaxSpan // spans per pane and line; the result pane is recomputed on every change
@@ -261,6 +267,9 @@ func (m MergeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.offset += wheelLines
 		}
 		m.clamp()
+	case aiDoneMsg:
+		m = m.applyAssistant(msg)
+		m.clamp()
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -275,6 +284,12 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.notice("", false) // a message lives until the next key press
 	if key != "q" && key != "esc" && key != "ctrl+c" {
 		m.quitArmed = false
+	}
+	if m.aiBusy {
+		m.notice("Waiting for the assistant... (q quits)", false)
+	}
+	if assistant, ok := m.assistantFor(key); ok {
+		return m.askAssistant(assistant)
 	}
 	page := max(m.bodyHeight()-1, 1)
 	switch key {
@@ -329,6 +344,9 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // quit leaves the viewer; unsaved work needs a second press.
 func (m MergeModel) quit() (tea.Model, tea.Cmd) {
+	if (!m.dirty || m.quitArmed) && m.aiCancel != nil {
+		m.aiCancel() // do not leave an assistant process running
+	}
 	if !m.dirty || m.quitArmed {
 		if m.embedded {
 			m.done = true

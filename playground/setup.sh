@@ -3,7 +3,7 @@
 # Creates (or recreates) playground/sandbox/ with everything needed to try jelly-diff:
 #   sandbox/files/        generated extra inputs (binary, CRLF, escape sequences, optional big files)
 #   sandbox/dirs/         two directory trees to compare
-#   sandbox/merge/        inputs for `jelly-diff merge`
+#   sandbox/merge/        inputs for `jd merge`
 #   sandbox/repo-merge/   a git repository stopped in the middle of a merge with conflicts
 #   sandbox/repo-changes/ a git repository with history, tags, a branch and many kinds of local changes
 #
@@ -13,7 +13,7 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project="$(cd "$here/.." && pwd)"
 sandbox="$here/sandbox"
-jd="$project/bin/jelly-diff"
+jd="$project/bin/jd"
 big=false
 case "${1:-}" in
   "") ;;
@@ -82,13 +82,13 @@ new_repo() { # new_repo <path>: empty repository with a local identity and the j
   git init -q -b main "$1"
   git -C "$1" config user.name "Playground"
   git -C "$1" config user.email "playground@example.com"
-  git -C "$1" config merge.tool jelly-diff
-  git -C "$1" config mergetool.jelly-diff.cmd "\"$jd\" merge \"\$BASE\" \"\$LOCAL\" \"\$REMOTE\" \"\$MERGED\""
-  git -C "$1" config mergetool.jelly-diff.trustExitCode true
+  git -C "$1" config merge.tool jd
+  git -C "$1" config mergetool.jd.cmd "\"$jd\" merge \"\$BASE\" \"\$LOCAL\" \"\$REMOTE\" \"\$MERGED\""
+  git -C "$1" config mergetool.jd.trustExitCode true
   git -C "$1" config mergetool.keepBackup false
   git -C "$1" config mergetool.prompt false
-  git -C "$1" config diff.tool jelly-diff
-  git -C "$1" config difftool.jelly-diff.cmd "\"$jd\" \"\$LOCAL\" \"\$REMOTE\""
+  git -C "$1" config diff.tool jd
+  git -C "$1" config difftool.jd.cmd "\"$jd\" \"\$LOCAL\" \"\$REMOTE\""
   git -C "$1" config difftool.prompt false
 }
 
@@ -223,9 +223,9 @@ cat <<EOF
 
 Playground ready in: $sandbox
 
-  files/          jelly-diff $here/files/greeting_v1.go $here/files/greeting_v2.go
-  dirs/           jelly-diff $sandbox/dirs/left $sandbox/dirs/right
-  merge/          jelly-diff merge $sandbox/merge/base.txt $sandbox/merge/local.txt $sandbox/merge/remote.txt $sandbox/merge/merged.txt
+  files/          jd $here/files/greeting_v1.go $here/files/greeting_v2.go
+  dirs/           jd $sandbox/dirs/left $sandbox/dirs/right
+  merge/          jd merge $sandbox/merge/base.txt $sandbox/merge/local.txt $sandbox/merge/remote.txt $sandbox/merge/merged.txt
   repo-changes/   cd $sandbox/repo-changes && $jd git
   repo-merge/     cd $sandbox/repo-merge && git mergetool        (3 conflicted files)
 

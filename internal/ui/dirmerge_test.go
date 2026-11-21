@@ -57,7 +57,7 @@ func TestDirMergeModel_OpensMergeViewAndMarksFileMerged_WhenSavedAndLeft(t *test
 	s := &saver{}
 	model := dirMergeTestModel(t, s)
 	model = dirPress(model, enterKey)
-	if !model.hasChild || !strings.Contains(model.View(), "Jelly-Merge") {
+	if !model.hasChild || !strings.Contains(model.View(), "Jelly Diff") {
 		t.Fatalf("the merge view must be shown:\n%s", model.View())
 	}
 	model = dirPress(model, runes("n"), runes("t"), runes("s"), runes("q"))
