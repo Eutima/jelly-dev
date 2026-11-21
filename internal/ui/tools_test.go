@@ -17,6 +17,8 @@ type fakeTools struct {
 	results   map[string]error
 	installed []string
 	forced    []bool
+	added     []string            // the languages AddLanguage was asked for
+	addTools  map[string][]string // the tools AddLanguage installs, by language
 }
 
 func (f *fakeTools) Pending(force bool) []string {
@@ -27,6 +29,26 @@ func (f *fakeTools) Pending(force bool) []string {
 func (f *fakeTools) Install(_ context.Context, name string) error {
 	f.installed = append(f.installed, name)
 	return f.results[name]
+}
+
+func (f *fakeTools) LanguageStates() []tools.LanguageState {
+	return []tools.LanguageState{
+		{ID: "python", Name: "Python", Tools: []string{"pyright", "black"}, Missing: []string{"pyright", "black"}},
+		{ID: "go", Name: "Go", Tools: []string{"gopls"}},
+		{ID: "html", Name: "HTML", Tools: []string{"vscode-langservers-extracted", "prettier"}, Missing: []string{"prettier"}},
+	}
+}
+
+func (f *fakeTools) AddLanguage(_ context.Context, id string) ([]tools.InstallResult, error) {
+	f.added = append(f.added, id)
+	if err := f.results["add:"+id]; err != nil {
+		return nil, err
+	}
+	var results []tools.InstallResult
+	for _, name := range f.addTools[id] {
+		results = append(results, tools.InstallResult{Tool: name, Err: f.results[name]})
+	}
+	return results, nil
 }
 
 func (f *fakeTools) Status() []string {
@@ -165,4 +187,79 @@ func TestTools_CommandWithoutInstallerExplainsAndDoesNotRunTwice(t *testing.T) {
 		t.Fatal("a run in progress is not restarted")
 	}
 	_ = tea.Quit
+}
+
+func addLangProject(t *testing.T, installer *fakeTools) ProjectModel {
+	t.Helper()
+	model, _ := newProjectFixture(t, 110, sampleFiles)
+	model.hooks.Tools = installer
+	return inEditor(model)
+}
+
+func TestAddLanguage_ListsAllLanguagesAndInstallsTheServerAndFormatterOfTheChosenOne(t *testing.T) {
+	installer := &fakeTools{results: map[string]error{}, addTools: map[string][]string{"python": {"pyright", "black"}}}
+	model, _ := typeCommand(addLangProject(t, installer), "addlang")
+	view := stripANSI(model.View())
+	for _, want := range []string{"Add a language", "Python", "pyright, black", "Go", "gopls", "(installed)", "(missing: prettier)"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("the list lacks %q:\n%s", want, view)
+		}
+	}
+	model = typeIntoPicker(model, "pyth") // the list is searchable
+	if view = stripANSI(model.View()); strings.Contains(view, "gopls") || !strings.Contains(view, "Python") {
+		t.Fatalf("typing narrows the list:\n%s", view)
+	}
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(ProjectModel)
+	if model.langs != nil || !strings.Contains(model.toolStatus, "Installing pyright and black for Python") {
+		t.Fatalf("choosing closes the list and shows the progress: %q", model.toolStatus)
+	}
+	model = settleProject(model, cmd)
+	view = stripANSI(model.View())
+	if len(installer.added) != 1 || installer.added[0] != "python" || !strings.Contains(view, "Python added: installed pyright and black") || model.toolStatus != "" {
+		t.Fatalf("the language is added: %v\n%s", installer.added, view)
+	}
+}
+
+func TestAddLanguage_AlreadyInstalledFailuresMissingRuntimeAndCancel(t *testing.T) {
+	// everything there already
+	installer := &fakeTools{results: map[string]error{}, addTools: map[string][]string{}}
+	model, _ := typeCommand(addLangProject(t, installer), "language")
+	model = typeIntoPicker(model, "go")
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = settleProject(updated.(ProjectModel), cmd)
+	if view := stripANSI(model.View()); !strings.Contains(view, "Go added: its language server and formatter are installed already") {
+		t.Fatalf("an installed language is added without installing:\n%s", view)
+	}
+	// a failure, and a missing runtime that points to jd setup
+	failing := &fakeTools{
+		results:  map[string]error{"pyright": &tools.MissingRuntimeError{Tool: "pyright", Needs: "npm (Node.js)"}, "black": errors.New("offline")},
+		addTools: map[string][]string{"python": {"pyright", "black"}},
+	}
+	model, _ = typeCommand(addLangProject(t, failing), "addlang")
+	model = typeIntoPicker(model, "python")
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = settleProject(updated.(ProjectModel), cmd)
+	view := stripANSI(model.View())
+	if !strings.Contains(view, "could not install") || !strings.Contains(view, "pyright") || !model.Editor().warn {
+		t.Fatalf("failures are shown as a warning:\n%s", view)
+	}
+	// esc closes the list and installs nothing
+	cancelled := &fakeTools{results: map[string]error{}}
+	model, _ = typeCommand(addLangProject(t, cancelled), "addlang")
+	if model, _ = projectKeys(model, "esc"); model.langs != nil || len(cancelled.added) != 0 {
+		t.Fatal("esc closes the list and installs nothing")
+	}
+	// no installer (a window without tools) and an install that is running
+	plain, _ := newProjectFixture(t, 100, sampleFiles)
+	plain, _ = typeCommand(inEditor(plain), "addlang")
+	if !strings.Contains(stripANSI(plain.View()), "Tool installation is not available") {
+		t.Fatalf("without an installer the command says so:\n%s", plain.View())
+	}
+	busy := addLangProject(t, &fakeTools{results: map[string]error{}})
+	busy.toolStatus = "Installing black (1/2)..."
+	busy, _ = typeCommand(busy, "addlang")
+	if busy.langs != nil || !strings.Contains(stripANSI(busy.View()), "already") {
+		t.Fatalf("while tools are installed the list does not open:\n%s", busy.View())
+	}
 }

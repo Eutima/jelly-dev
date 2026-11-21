@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/eutima/jelly-dev/internal/source"
@@ -30,10 +31,13 @@ type failure struct {
 type Installer struct {
 	env       Env
 	tools     []Tool
-	languages []string // the languages whose tools are installed automatically (only when restricted)
-	restrict  bool     // false: every tool counts (an installer built by hand); true: only those of languages
-	path      string
-	now       func() time.Time
+	configDir string // where languages.json and the failures are kept; empty for an installer built by hand
+	restrict  bool   // false: every tool counts (an installer built by hand); true: only those of languages
+	mu        sync.Mutex
+	languages []string // the languages whose tools are installed automatically (only when restricted); guarded by mu: the IDE
+	// asks from its own goroutine while a language is being added in another
+	path string
+	now  func() time.Time
 }
 
 // NewInstaller returns an installer for the default tools; configDir is where the failures are remembered.
@@ -43,7 +47,7 @@ func NewInstaller(configDir string) *Installer {
 	if !ok {
 		languages = DefaultLanguages()
 	}
-	return &Installer{env: DefaultEnv(), tools: Defaults(), languages: languages, restrict: true, path: filepath.Join(configDir, stateFile), now: time.Now}
+	return &Installer{env: DefaultEnv(), tools: Defaults(), configDir: configDir, languages: languages, restrict: true, path: filepath.Join(configDir, stateFile), now: time.Now}
 }
 
 // wanted reports whether the tool belongs to a chosen language.
@@ -51,6 +55,8 @@ func (i *Installer) wanted(name string) bool {
 	if !i.restrict { // an installer built by hand: everything
 		return true
 	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
 	return slices.Contains(ToolsFor(i.languages), name)
 }
 

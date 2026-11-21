@@ -52,6 +52,14 @@ func DefaultServers() []ServerSpec {
 		// wins, so a Compose file goes to the Compose server and not to the YAML server
 		{Name: "dockerfile", Command: []string{"docker-langserver", "--stdio"}, Extensions: []string{"dockerfile", "dockerfile.*"}, LanguageID: "dockerfile"},
 		{Name: "compose", Command: []string{"docker-compose-langserver", "--stdio"}, Extensions: []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml", "docker-compose.*.yml", "docker-compose.*.yaml", "compose.*.yml", "compose.*.yaml"}, LanguageID: "dockercompose"},
+		{
+			Name: "clangd", Command: []string{"clangd"},
+			Extensions:  []string{".c", ".h", ".cc", ".cpp", ".cxx", ".c++", ".hpp", ".hh", ".hxx"},
+			LanguageIDs: map[string]string{".c": "c", ".h": "c", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".c++": "cpp", ".hpp": "cpp", ".hh": "cpp", ".hxx": "cpp"},
+			RootMarkers: []string{"compile_commands.json", "CMakeLists.txt", ".clangd", "Makefile"},
+			Formatter:   []string{"clang-format", "--assume-filename={file}"},
+		},
+		{Name: "rust-analyzer", Command: []string{"rust-analyzer"}, Extensions: []string{".rs"}, LanguageID: "rust", RootMarkers: []string{"Cargo.toml", "rust-project.json"}, Formatter: []string{"rustfmt", "--emit=stdout", "--edition=2021"}}, // the edition is fixed: rustfmt reads none from stdin
 		{Name: "jdtls", Command: []string{"jdtls"}, Extensions: []string{".java"}, LanguageID: "java", RootMarkers: []string{"pom.xml", "build.gradle", "build.gradle.kts"}},
 		{Name: "groovy", Command: []string{"groovy-language-server"}, Extensions: []string{".groovy", ".gradle"}, LanguageID: "groovy", RootMarkers: []string{"build.gradle", "settings.gradle"}},
 	}

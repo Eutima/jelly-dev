@@ -285,7 +285,7 @@ func TestDefaultServers_CoverHTMLAndJavaScript(t *testing.T) {
 
 func TestLoadServers_MergesConfigFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "lsp.json")
-	config := `{"servers":[{"name":"gopls","command":["gopls","-remote=auto"],"extensions":[".go"]},{"name":"rust","command":["rust-analyzer"],"extensions":[".rs"],"languageId":"rust"}]}`
+	config := `{"servers":[{"name":"gopls","command":["gopls","-remote=auto"],"extensions":[".go"]},{"name":"zig","command":["zls"],"extensions":[".zig"],"languageId":"zig"}]}`
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +297,7 @@ func TestLoadServers_MergesConfigFile(t *testing.T) {
 	if len(spec.Command) != 2 || spec.Command[1] != "-remote=auto" {
 		t.Fatalf("a configured server replaces the default: %+v", spec)
 	}
-	if spec, id, ok := specFor(servers, "lib.rs"); !ok || spec.Name != "rust" || id != "rust" {
+	if spec, id, ok := specFor(servers, "main.zig"); !ok || spec.Name != "zig" || id != "zig" {
 		t.Fatalf("a new server is added: %+v", spec)
 	}
 	if servers, err := LoadServers(filepath.Join(t.TempDir(), "missing.json")); err != nil || len(servers) != len(DefaultServers()) {

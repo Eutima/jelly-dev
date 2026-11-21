@@ -81,6 +81,7 @@ type ProjectModel struct {
 	knownFiles    []string            // the file list of the last search, shown at once the next time
 	dlg           *unsavedDialog      // the question about unsaved changes, nil when none is open
 	pick          *formatPick         // the list of formatters to choose from, nil when closed
+	langs         *languagePick       // the list of languages (:addlang), nil when closed
 	terms         []*terminal.Session // the shells (tabs) of the panel under the editor
 	termActive    int                 // the tab that is shown
 	termShown     bool                // whether the panel is visible (hidden shells keep running)
@@ -267,6 +268,8 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.askToClose(true)
 	case FormatPickMsg:
 		return m.openFormatPicker(msg)
+	case languageAddedMsg:
+		return m.languageAdded(msg)
 	case externalDoneMsg:
 		if msg.err != nil {
 			m.say(fmt.Sprintf("%s: %v", msg.what, msg.err), true)
@@ -417,6 +420,9 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.pick != nil {
 		return m.updateFormatPicker(msg)
+	}
+	if m.langs != nil {
+		return m.updateLanguagePicker(msg)
 	}
 	if m.picker != nil {
 		return m.updatePicker(msg)
@@ -610,6 +616,8 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 		return m.quit()
 	case "qa!", "qall!":
 		return m.quit()
+	case "addlang", "addlanguage", "language", "lang", "languages":
+		return m.openLanguagePicker()
 	case "tools":
 		return m.toolsCommand(argument)
 	case "projects", "recent":
@@ -691,6 +699,9 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.pick != nil {
 		return m.updateFormatPicker(msg)
+	}
+	if m.langs != nil {
+		return m.updateLanguagePicker(msg)
 	}
 	if m.picker != nil {
 		return m.updatePicker(msg)
@@ -774,6 +785,9 @@ func (m ProjectModel) View() string {
 	}
 	if m.pick != nil {
 		return m.pick.picker.overlay(screen, m.width, m.height)
+	}
+	if m.langs != nil {
+		return m.langs.picker.overlay(screen, m.width, m.height)
 	}
 	return screen
 }

@@ -36,6 +36,9 @@ func Languages() []Language {
 		{ID: "javascript", Name: "JavaScript and TypeScript", Tools: []string{"typescript-language-server", "prettier"}},
 		{ID: "angular", Name: "Angular", Tools: []string{"angular-language-server", "typescript-language-server", "prettier"}},
 		{ID: "go", Name: "Go", Tools: []string{"gopls"}},
+		{ID: "rust", Name: "Rust", Tools: []string{"rust-analyzer", "rustfmt"}},
+		{ID: "c", Name: "C", Tools: []string{"clangd", "clang-format"}},
+		{ID: "cpp", Name: "C++", Tools: []string{"clangd", "clang-format"}},
 		{ID: "java", Name: "Java", Tools: []string{"jdtls"}},
 		{ID: "groovy", Name: "Groovy", Tools: []string{"groovy-language-server"}},
 	}

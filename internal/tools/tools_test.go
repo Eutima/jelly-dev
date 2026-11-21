@@ -15,19 +15,20 @@ import (
 
 // machine is a fake computer: which commands exist, which commands were run, which downloads were asked for.
 type machine struct {
-	t        *testing.T
-	home     string
-	have     map[string]bool
-	ran      []string
-	runEnv   [][]string
-	fail     map[string]error // by command name
-	fetched  []string
-	archive  func(dest string) error
-	installs map[string]string // a command that appears after running the key (like npm creating prettier)
+	t          *testing.T
+	home       string
+	have       map[string]bool
+	ran        []string
+	runEnv     [][]string
+	fail       map[string]error // by command name
+	fetched    []string
+	archive    func(dest string) error
+	components map[string]bool   // the components rustup has installed (a proxy file exists for every one of them)
+	installs   map[string]string // a command that appears after running the key (like npm creating prettier)
 }
 
 func newMachine(t *testing.T, have ...string) (*machine, Env) {
-	m := &machine{t: t, home: t.TempDir(), have: map[string]bool{}, fail: map[string]error{}, installs: map[string]string{}}
+	m := &machine{t: t, home: t.TempDir(), have: map[string]bool{}, components: map[string]bool{}, fail: map[string]error{}, installs: map[string]string{}}
 	for _, name := range have {
 		m.have[name] = true
 	}
@@ -40,6 +41,12 @@ func newMachine(t *testing.T, have ...string) (*machine, Env) {
 			return "", errors.New("not found")
 		},
 		Run: func(_ context.Context, extra []string, name string, args ...string) error {
+			if name == "rustup" && len(args) == 2 && args[0] == "which" { // asks, installs nothing: is the component there?
+				if m.components[args[1]] {
+					return nil
+				}
+				return errors.New("unknown binary " + args[1] + " in the toolchain")
+			}
 			m.ran = append(m.ran, name+" "+strings.Join(args, " "))
 			m.runEnv = append(m.runEnv, extra)
 			if err := m.fail[name]; err != nil {
@@ -48,6 +55,7 @@ func newMachine(t *testing.T, have ...string) (*machine, Env) {
 			for key, binary := range m.installs {
 				if strings.Contains(strings.Join(args, " "), key) {
 					m.have[binary] = true
+					m.components[binary] = true
 				}
 			}
 			return nil

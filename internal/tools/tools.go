@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
 )
 
 // Kind is how a tool is installed.
@@ -25,6 +26,10 @@ const (
 	Python
 	// Download tools are fetched from their project's site.
 	Download
+	// Rustup tools are installed with rustup component add.
+	Rustup
+	// System tools come from the package manager of the machine and need root rights: jd only says how (the installer does it).
+	System
 )
 
 // Tool is a language server or formatter.
@@ -34,6 +39,14 @@ type Tool struct {
 	Kind     Kind
 	Packages []string // npm packages, the Go package path, the pip package
 	Purpose  string   // what it is for, e.g. "language server for Go"
+	Hint     string   // how to install a System tool by hand
+}
+
+// ManualInstallError is returned for a tool that jd cannot install without root rights.
+type ManualInstallError struct{ Tool, Hint string }
+
+func (e *ManualInstallError) Error() string {
+	return fmt.Sprintf("%s has to be installed with your package manager: %s", e.Tool, e.Hint)
 }
 
 // Defaults are the tools jd installs: the servers of lsp.DefaultServers and their formatters.
@@ -52,6 +65,11 @@ func Defaults() []Tool {
 			Packages: []string{"dockerfile-language-server-nodejs"}, Purpose: "language server for Dockerfiles"},
 		{Name: "compose-language-service", Binary: "docker-compose-langserver", Kind: NPM,
 			Packages: []string{"@microsoft/compose-language-service"}, Purpose: "language server for Docker Compose files"},
+		{Name: "clangd", Binary: "clangd", Kind: System, Purpose: "language server for C and C++",
+			Hint: "apt install clangd, dnf install clang-tools-extra, apk add clang-extra-tools, pacman -S clang, brew install llvm; or run jd setup"},
+		{Name: "clang-format", Binary: "clang-format", Kind: Python, Packages: []string{"clang-format"}, Purpose: "formatter for C and C++"},
+		{Name: "rust-analyzer", Binary: "rust-analyzer", Kind: Rustup, Packages: []string{"rust-analyzer"}, Purpose: "language server for Rust"},
+		{Name: "rustfmt", Binary: "rustfmt", Kind: Rustup, Packages: []string{"rustfmt"}, Purpose: "formatter for Rust"},
 		{Name: "jdtls", Binary: "jdtls", Kind: Download, Purpose: "language server for Java"},
 		{Name: "groovy-language-server", Binary: "groovy-language-server", Kind: Download, Purpose: "language server for Groovy"},
 		{Name: "prettier", Binary: "prettier", Kind: NPM, Packages: []string{"prettier"}, Purpose: "formatter for HTML, CSS, JavaScript, TypeScript, JSON and YAML"},
@@ -97,7 +115,7 @@ func (e Env) DataDir() string {
 
 // ExtraPaths are the folders tools end up in, which may not be on the PATH of the shell that started jd.
 func (e Env) ExtraPaths() []string {
-	paths := []string{e.BinDir()}
+	paths := []string{e.BinDir(), filepath.Join(e.Home, ".cargo", "bin")}
 	if gobin := e.Getenv("GOBIN"); gobin != "" {
 		paths = append(paths, gobin)
 	}
@@ -133,6 +151,16 @@ func EnsurePath() {
 
 // Installed reports whether the tool's command can be found.
 func (e Env) Installed(t Tool) bool {
+	if t.Kind == Rustup {
+		// rustup puts a proxy for rust-analyzer and rustfmt into ~/.cargo/bin whether the component is installed or not, so the
+		// file on the PATH proves nothing: rustup says whether the toolchain has it
+		if _, err := e.LookPath("rustup"); err != nil {
+			return false
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		return e.Run(ctx, nil, "rustup", "which", t.Binary) == nil
+	}
 	if _, err := e.LookPath(t.Binary); err == nil {
 		return true
 	}
@@ -172,6 +200,10 @@ func (e Env) Install(ctx context.Context, t Tool) error {
 		err = e.installPython(ctx, t)
 	case Download:
 		err = e.installDownload(ctx, t)
+	case Rustup:
+		err = e.installRustup(ctx, t)
+	case System:
+		err = &ManualInstallError{Tool: t.Name, Hint: t.Hint}
 	default:
 		err = fmt.Errorf("unknown kind of tool %q", t.Name)
 	}
@@ -238,4 +270,19 @@ func (e Env) installDownload(ctx context.Context, t Tool) error {
 		return e.installGroovy(ctx, t)
 	}
 	return fmt.Errorf("%s: %w", t.Name, errNoTool)
+}
+
+// installRustup installs a component of the Rust toolchain; without a toolchain the stable one is installed first.
+func (e Env) installRustup(ctx context.Context, t Tool) error {
+	if _, err := e.need(t, "rustup (the Rust toolchain)", "rustup"); err != nil {
+		return err
+	}
+	add := append([]string{"component", "add"}, t.Packages...)
+	if err := e.Run(ctx, nil, "rustup", add...); err != nil {
+		if toolchainErr := e.Run(ctx, nil, "rustup", "default", "stable"); toolchainErr != nil {
+			return err
+		}
+		return e.Run(ctx, nil, "rustup", add...)
+	}
+	return nil
 }

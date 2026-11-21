@@ -9,7 +9,7 @@
 #   JD_DEPS              dependency groups to handle, comma separated (default basics,terminal,runtimes,lsp)
 #   JD_DRY_RUN=1         print what would be installed instead of installing it
 #   JD_LANGS=<ids>       languages to install language servers and formatters for, comma separated: python html css json yaml docker compose
-#                        javascript angular go java groovy, all, or none (default: all; jd asks on its first start)
+#                        javascript angular go rust c cpp java groovy, all, or none (default: all; jd asks on its first start)
 #   JD_BIN=<path>        jd is already installed there (pip, jd runs this script itself on its first start): do not download
 #                        jd and do not change the PATH, only install the dependencies and configure git
 set -eu
@@ -96,6 +96,12 @@ pkg_for() {
         python:pacman) echo python python-pip python-pipx ;;
         python:apk) echo python3 py3-pip pipx ;;
         python:brew) echo python pipx ;;
+        clangd:apt-get) echo clangd ;;
+        clangd:dnf | clangd:zypper) echo clang-tools-extra ;;
+        clangd:pacman) echo clang ;;
+        clangd:apk) echo clang-extra-tools ;;
+        clangd:brew) echo llvm ;;
+        rustup:*) echo rustup ;;
         jdk:apt-get) echo default-jdk-headless ;;
         jdk:dnf | jdk:zypper) echo java-17-openjdk-devel ;;
         jdk:pacman) echo jdk-openjdk ;;
@@ -191,7 +197,10 @@ deps_runtimes() {
     any_lang python html css json yaml docker compose javascript angular && { ensure_tool node "Node.js and npm" npm || true; }
     any_lang java groovy && { ensure_tool jdk "Java JDK" javac || true; }
     # Python runs black and starts the Java server
-    any_lang python java && { ensure_tool python "Python 3 and pip" python3 || true; }
+    # Python runs black and clang-format and starts the Java server
+    any_lang python java c cpp && { ensure_tool python "Python 3 and pip" python3 || true; }
+    lang_enabled rust && { ensure_tool rustup "Rust toolchain (rustup)" rustup || true; }
+    any_lang c cpp && { ensure_tool clangd "clangd (C and C++ language server)" clangd || true; }
     return 0
 }
 
@@ -290,6 +299,19 @@ lsp_groovy() {
     fi
 }
 
+# lsp_rust adds the language server and the formatter to the Rust toolchain; without a toolchain the stable one is installed.
+# rust_component tells whether the toolchain has a component: rustup keeps a proxy for it in ~/.cargo/bin either way.
+rust_component() { have rustup && rustup which "$1" >/dev/null 2>&1; }
+
+lsp_rust() {
+    if rust_component rust-analyzer && rust_component rustfmt; then log "ok       rust-analyzer and rustfmt (rustup)"; return 0; fi
+    have rustup || { problem "rust-analyzer and rustfmt need rustup, which is missing"; return 0; }
+    log "install  rust-analyzer and rustfmt (rustup)"
+    run rustup component add rust-analyzer rustfmt ||
+        { run rustup default stable && run rustup component add rust-analyzer rustfmt; } ||
+        problem "rust-analyzer and rustfmt could not be installed (rustup component add rust-analyzer rustfmt)"
+}
+
 deps_lsp() {
     lang_enabled go && lsp_gopls
     lang_enabled python && npm_tool "pyright (Python)" pyright-langserver pyright
@@ -303,6 +325,8 @@ deps_lsp() {
     lang_enabled groovy && lsp_groovy
     any_lang html css json yaml javascript angular && npm_tool "prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)" prettier prettier
     lang_enabled python && python_tool "black (Python formatter)" black black
+    any_lang c cpp && python_tool "clang-format (C and C++ formatter)" clang-format clang-format
+    lang_enabled rust && lsp_rust
     return 0
 }
 

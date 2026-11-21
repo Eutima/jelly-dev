@@ -5,7 +5,7 @@
 #              JD_SKIP_DEPS=1 (do not check or install dependencies),
 #              JD_DEPS (groups to handle, comma separated; default basics,terminal,runtimes,lsp),
 #              JD_LANGS (languages to install language servers and formatters for: python, html, css, json, yaml, docker, compose, javascript, angular,
-#              go, java, groovy, all or none; default all),
+#              go, rust, c, cpp, java, groovy, all or none; default all),
 #              JD_DRY_RUN=1 (print what would be installed),
 #              JD_BIN (path of an installed jd.exe, for the pip package that runs this script itself on its first start:
 #              jd is not downloaded and the PATH stays as it is, only the dependencies and git are handled).
@@ -126,6 +126,12 @@ function Test-Lang([string[]]$ids) {
     return $false
 }
 
+# Test-RustComponent tells whether the toolchain has a component: rustup keeps a proxy for it in .cargo\bin either way.
+function Test-RustComponent([string]$name) {
+    if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) { return $false }
+    try { & rustup which $name 2>$null | Out-Null; return ($LASTEXITCODE -eq 0) } catch { return $false }
+}
+
 function Install-Dependencies {
     Write-Host ''
     Write-Host 'Checking the tools the IDE needs (skip with JD_SKIP_DEPS=1, choose groups with JD_DEPS)'
@@ -136,6 +142,8 @@ function Install-Dependencies {
         if (Test-Lang @('go')) { Ensure-Winget 'Go' 'GoLang.Go' @('go') }
         if (Test-Lang @('python', 'html', 'css', 'json', 'yaml', 'docker', 'compose', 'javascript', 'angular')) { Ensure-Winget 'Node.js and npm' 'OpenJS.NodeJS.LTS' @('npm') }
         if (Test-Lang @('java', 'groovy')) { Ensure-Winget 'Java JDK' 'EclipseAdoptium.Temurin.21.JDK' @('javac') }
+        if (Test-Lang @('c', 'cpp')) { Ensure-Winget 'LLVM (clangd and clang-format for C and C++)' 'LLVM.LLVM' @('clangd') }
+        if (Test-Lang @('rust')) { Ensure-Winget 'Rustup (the Rust toolchain)' 'Rustlang.Rustup' @('rustup') }
         if (Test-Lang @('python', 'java')) { Ensure-Winget 'Python (runs black and starts the Java language server)' 'Python.Python.3.12' @('python', 'py') }
     }
     if (Test-Group 'lsp') {
@@ -157,6 +165,14 @@ function Install-Dependencies {
         if (Test-Lang @('compose')) { Install-Npm 'Docker Compose language server' 'docker-compose-langserver' @('@microsoft/compose-language-service') }
         if (Test-Lang @('angular')) { Install-Npm 'Angular language server' 'ngserver' @('@angular/language-server', '@angular/language-service', 'typescript') }
         if (Test-Lang @('html', 'css', 'json', 'yaml', 'javascript', 'angular')) { Install-Npm 'prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)' 'prettier' @('prettier') }
+        if (Test-Lang @('rust')) {
+            if ((Test-RustComponent 'rust-analyzer') -and (Test-RustComponent 'rustfmt')) { Write-Host 'ok       rust-analyzer and rustfmt' }
+            elseif (-not (Get-Command rustup -ErrorAction SilentlyContinue)) { Write-Problem 'rust-analyzer and rustfmt need rustup, which is missing' }
+            else {
+                Write-Host 'install  rust-analyzer and rustfmt (rustup)'
+                if (-not (Invoke-Step 'rustup component add rust-analyzer rustfmt' { rustup component add rust-analyzer rustfmt })) { Write-Problem 'rust-analyzer and rustfmt could not be installed (rustup component add rust-analyzer rustfmt)' }
+            }
+        }
         if (Test-Lang @('python')) {
         if (Get-Command black -ErrorAction SilentlyContinue) { Write-Host 'ok       black (Python formatter)' }
         else {

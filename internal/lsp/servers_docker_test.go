@@ -57,3 +57,20 @@ func TestDefaultServers_EveryServerHasAToolThatInstallsIt(t *testing.T) {
 		}
 	}
 }
+
+func TestSpecFor_CCppAndRustFiles(t *testing.T) {
+	servers := DefaultServers()
+	tests := map[string][2]string{
+		"/p/main.c": {"clangd", "c"}, "/p/util.h": {"clangd", "c"}, "/p/app.cpp": {"clangd", "cpp"}, "/p/app.cc": {"clangd", "cpp"},
+		"/p/app.hpp": {"clangd", "cpp"}, "/p/lib.rs": {"rust-analyzer", "rust"}, "/p/MAIN.CPP": {"clangd", "cpp"},
+	}
+	for path, want := range tests {
+		spec, languageID, ok := specFor(servers, path)
+		if !ok || spec.Name != want[0] || languageID != want[1] {
+			t.Errorf("%s: server %q language %q (found %v), want %v", path, spec.Name, languageID, ok, want)
+		}
+		if len(spec.Formatter) == 0 {
+			t.Errorf("%s: the %s server has a formatter", path, spec.Name)
+		}
+	}
+}

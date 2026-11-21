@@ -51,7 +51,7 @@ if [ "$updates" -eq 1 ]; then echo "ok   apt-get update runs once"; else echo "F
 out=$(FAKE_WAYLAND=1 plan apt-get "git xterm go npm java")
 expect "wayland gets wl-clipboard" "$out" "install -y wl-clipboard"
 
-out=$(plan dnf "git xterm go npm javac java python3 pyright-langserver typescript-language-server jdtls groovy-language-server gopls xclip vscode-html-language-server ngserver prettier black")
+out=$(plan dnf "git xterm go npm javac java python3 pyright-langserver typescript-language-server jdtls groovy-language-server gopls xclip vscode-html-language-server ngserver prettier black yaml-language-server docker-langserver docker-compose-langserver clangd clang-format rustup rust-analyzer rustfmt")
 expect "everything present is reported" "$out" "All dependencies are in place."
 expect_not "nothing is installed when everything is there" "$out" "[dry-run] sudo"
 
@@ -118,6 +118,16 @@ expect_not "yaml, docker and compose need no pyright" "$out" "pyright"
 out=$(FAKE_LANGS="docker" plan apt-get "git xclip xterm" "runtimes,lsp")
 expect "docker needs node" "$out" "install -y nodejs npm"
 expect_not "docker alone needs no prettier" "$out" "prettier"
+out=$(FAKE_LANGS="c,cpp" plan apt-get "git xclip xterm python3 pipx" "runtimes,lsp")
+expect "C and C++ get clangd from the package manager" "$out" "install -y clangd"
+expect "C and C++ get clang-format with pipx" "$out" "pipx install clang-format"
+expect_not "C and C++ need no Rust toolchain" "$out" "rustup"
+expect_not "C and C++ need no npm tool" "$out" "npm install"
+out=$(FAKE_LANGS="rust" plan apt-get "git xclip xterm" "runtimes,lsp")
+expect "Rust gets rustup from the package manager" "$out" "install -y rustup"
+expect_not "Rust needs no clangd" "$out" "clangd"
+out=$(FAKE_LANGS="rust" plan apt-get "git xclip xterm rustup" "lsp")
+expect "Rust adds the server and the formatter to the toolchain" "$out" "rustup component add rust-analyzer rustfmt"
 out=$(FAKE_LANGS="go" plan apt-get "git xclip xterm go" "lsp")
 expect "go gets gopls" "$out" "gopls"
 expect_not "go needs no npm tool" "$out" "npm install"

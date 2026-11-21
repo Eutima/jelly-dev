@@ -37,6 +37,9 @@ Taken from the [playground](playground/README.md) examples (`python3 playground/
 ![Search in the files of the project (`ctrl+g`), file names with `ctrl+f`.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide-search.png)
 *Search in the files of the project (`ctrl+g`), file names with `ctrl+f`.*
 
+![`:addlang` adds a language](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/addlang.png)
+*`:addlang` lists all languages: pick one and its language server and formatter are installed.*
+
 ![The first start asks which languages to install language servers and formatters for.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/languages.png)
 *The first start asks which languages to install language servers and formatters for.*
 
@@ -87,7 +90,7 @@ used by the IDE from milestone 2 on). The jdtls and groovy-language-server downl
 HTTPS and are not checksum-verified.
 
 **Languages**: the language servers and formatters are installed per language: `python`, `html`, `css`, `json`, `yaml`, `docker` (Dockerfile), `compose` (Docker Compose), `javascript`
-(JavaScript and TypeScript), `angular`, `go`, `java`, `groovy`. The first time jd starts in a terminal it asks which ones you work
+(JavaScript and TypeScript), `angular`, `go`, `rust`, `c`, `cpp` (C++), `java`, `groovy`. The first time jd starts in a terminal it asks which ones you work
 with (python, html, css, json, yaml, docker and compose are checked; `space` toggles, `a` all, `n` none, `enter` installs, `esc` chooses no language, `ctrl+c` means "not now" and it asks again
 at the next start) and remembers the answer in `languages.json` in the config folder. Only the tools of those languages (and the runtimes they need) are installed, by the
 installer script, and later by the IDE when it starts (`:tools` installs what is missing). Change it any time from the command line,
@@ -100,7 +103,10 @@ jd install-lsp                        # install what is missing for the chosen l
 jd install-lsp --all                  # every language
 ```
 
-A missing runtime (Node.js, Python, Go, a JDK) is reported; `jd setup` installs those. The installer script takes the same
+In the IDE `:addlang` (also `:language`) opens a searchable list of all languages: pick one and its language server **and** its
+formatter are installed (and the language is added to the chosen ones). Rust uses `rustup` (`rustup component add rust-analyzer
+rustfmt`), C and C++ use `clangd` from your package manager and `clang-format` (pipx). A missing runtime (Node.js, Python, Go, a JDK,
+rustup) is reported; `jd setup` installs those. The installer script takes the same
 choice as `JD_LANGS=python,html,css,json,yaml,docker,compose` (also `all` or `none`).
 
 Options (environment variables): `JELLY_DEV_VERSION` (for example `v0.2.0`) picks a release, `INSTALL_DIR` changes
