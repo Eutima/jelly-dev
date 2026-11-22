@@ -184,7 +184,8 @@ typescript-language-server, pyright, the HTML/CSS/JSON servers, the Angular lang
 prettier, black) and **installs what is missing in the background**, one after the other, with the language's own tool (`go
 install`, `npm install -g --prefix ~/.local`, `pipx` or `pip --user`, or a download); the progress shows in the status line
 and the result when it is done. A runtime that is missing (Go, Node.js, Python, Java) is reported, not installed: jd never
-asks for root rights, the installer installs runtimes. A tool that failed is tried again after a day; `:tools` tries all missing
+asks for root rights; the installer (`jd setup`) installs runtimes, below your home folder when you have no root rights. A tool
+that failed is tried again after a day; `:tools` tries all missing
 ones now and `:tools status` lists what is missing. `JD_NO_AUTO_INSTALL=1` turns the start-up installation off. Tools end up in
 `~/.local/bin` (and Go's bin folder), which jd adds to its own PATH. Angular templates (`*.component.html`) use the Angular
 language server (it finds `typescript` and `@angular/language-service` in the project's `node_modules` or the global ones).
@@ -337,7 +338,8 @@ local changes and with a merge stopped on conflicts: see `playground/README.md`.
 The wheel carries the same static binary as the release (no download at install time). A wheel cannot run code when it is
 installed, so jd runs the installer script itself the first time it starts interactively (`jd` or `jd <folder>`): the script
 that is part of the release, the same as `curl ... | sh`, without downloading jd again. It installs the tools the IDE needs
-(the groups below, through your package manager and `sudo` unless you are root) and makes jd git's diff and merge tool
+(the groups below, through your package manager and `sudo` when there are root rights, else in your home folder, see
+"Without root") and makes jd git's diff and merge tool
 (overwriting existing values). It says so before it starts and runs only once; `jd setup` runs it again. `JD_SKIP_SETUP=1` skips
 it, `JD_SKIP_DEPS=1`, `JD_SKIP_GIT_CONFIG=1`, `JD_DEPS` and `JD_DRY_RUN=1` work as for the installer.
 Releases are published by the workflow `pypi` (`.github/workflows/pypi.yml`).
@@ -345,8 +347,10 @@ Releases are published by the workflow `pypi` (`.github/workflows/pypi.yml`).
 The installer:
 
 - puts `jd` in `~/.local/bin` (Windows: `%LOCALAPPDATA%\Programs\jelly-dev`) and removes an old `jelly-dev` binary there;
-- adds that directory to your PATH (Linux/macOS: your shell profile; Windows: the user PATH). Reload the shell
-  (`exec "$SHELL" -l`, or open a new terminal) so `jd` is found and tab-completes;
+- adds that directory, and every other folder it put tools in (`~/.cargo/bin`, on Windows `%APPDATA%\npm` and `%USERPROFILE%\go\bin`),
+  to your PATH (Linux/macOS: `~/.profile` and the bash or zsh profile; Windows: the user PATH), also after `pip install`. Reload the shell
+  (`exec "$SHELL" -l`, or open a new terminal) so `jd` is found and tab-completes; the installer prints the `export PATH=...` line for
+  the current shell;
 - checks the tools the IDE needs and **installs what is missing, without asking** (see below);
 - runs `jd install-git --apply`, making `jd` the global `diff.tool` and `merge.tool` of git (overwrites existing values).
 
@@ -360,11 +364,23 @@ preview with `JD_DRY_RUN=1`):
 | `runtimes` | Go, Node.js + npm, Python (pip, pipx), a JDK (also installed when `lsp` is chosen: the servers need them) | Go, Node.js, JDK 21, Python |
 | `lsp` | gopls (`go install`), pyright, typescript-language-server (JavaScript and TypeScript), vscode-langservers-extracted (HTML, CSS, JSON), the Angular language server and the formatter prettier (`npm -g`, into `~/.local`), the formatter black (pipx or `pip --user`), jdtls (download) | the same |
 
-System packages are installed with apt, dnf, pacman, zypper, apk or brew (through `sudo` unless you are root) and winget on
+System packages are installed with apt, dnf, pacman, zypper, apk or brew (as root, or through a `sudo` that needs no password) and winget on
 Windows. A tool that cannot be installed is reported at the end; jd itself works without them (the language servers are
 used by the IDE from milestone 2 on). jdtls is downloaded from download.eclipse.org over
 HTTPS as one pinned milestone (1.63.0) and verified against its SHA-256 before it is unpacked; a download that differs is
 refused.
+
+**Without root**: the installer never asks for a password and never waits for one. When it is not root and `sudo -n` does not work
+(and there is no Homebrew), it installs **Go, Node.js (with npm), a JDK 21 and Rust** below your home folder instead of through the
+package manager: pinned official builds (Go from go.dev, Node.js from nodejs.org or, on Alpine, the musl builds of
+unofficial-builds.nodejs.org, Temurin from Adoptium), each verified against its SHA-256 before it is unpacked, in
+`~/.local/share/jd/runtimes/<name>` with the commands linked into `~/.local/bin`; Rust comes from rustup (`~/.cargo`, `~/.rustup`), checked
+against the checksum rustup publishes next to it (an integrity check, not a pinned value). The language servers that follow (gopls, the npm servers, jdtls, rust-analyzer) install as always,
+into `~/.local`. What needs root has no such build: git, the clipboard tool, a terminal emulator, Python and clangd are skipped with one
+line that tells an administrator what to install, and jd works without them. `JD_USER_RUNTIMES=1` does the same for a user who could
+use the package manager. Without `curl` and `wget` (plain Debian and Ubuntu images) the downloads use `python3`. On Windows `winget` runs
+with `--scope user` when the shell is not elevated (a tool whose installer needs administrator rights is reported with the command to
+run from an elevated PowerShell).
 
 **Languages**: the language servers and formatters are installed per language: `python`, `html`, `css`, `json`, `yaml`, `docker` (Dockerfile), `compose` (Docker Compose), `javascript`
 (JavaScript and TypeScript), `angular`, `go`, `rust`, `c`, `cpp` (C++), `java`. The first time jd starts in a terminal it asks which ones you work

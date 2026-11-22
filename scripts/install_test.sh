@@ -24,7 +24,9 @@ plan() {
         detect_pm() { pm=$fake_pm; }
         is_wsl() { return 1; }
         uname() { echo Linux; }
-        id() { echo 1000; }
+        id() { echo "${FAKE_UID:-1000}"; }
+        can_sudo() { [ -z "${FAKE_NO_SUDO:-}" ]; }
+        runtime_platform() { rt_os=${FAKE_OS:-linux} rt_arch=${FAKE_ARCH:-amd64} rt_libc=${FAKE_LIBC:-gnu}; }
         install_dependencies 2>&1
     )
 }
@@ -37,8 +39,8 @@ expect_not() { # expect_not <name> <output> <pattern>
 }
 
 out=$(plan apt-get "")
-expect "apt updates once" "$out" "[dry-run] sudo apt-get update"
-expect "apt installs git" "$out" "[dry-run] sudo apt-get install -y git"
+expect "apt updates once" "$out" "[dry-run] sudo -n apt-get update"
+expect "apt installs git" "$out" "[dry-run] sudo -n apt-get install -y git"
 expect "apt installs a clipboard tool" "$out" "install -y xclip"
 expect "apt installs a terminal" "$out" "install -y xterm"
 expect "apt installs go" "$out" "install -y golang-go"
@@ -142,8 +144,8 @@ out=$(FAKE_LANGS="java" plan apt-get "git xclip xterm java python3" "lsp")
 expect "java gets its server" "$out" "jdtls"
 expect_not "java needs no node tool" "$out" "npm install"
 
-# main with JD_BIN (the pip package runs the script on jd's first start): no download of jd, no PATH change, git is
-# configured with the jd that is installed. The steps are replaced by fakes that record the calls.
+# main with JD_BIN (the pip package runs the script on jd's first start): no download of jd, git is configured with the jd that
+# is installed, and the PATH of new shells still gets the tool folders. The steps are replaced by fakes that record the calls.
 # shellcheck disable=SC1091,SC2329,SC2034 # install.sh is sourced; the fakes replace functions of install.sh
 main_calls() {
     (
@@ -165,7 +167,7 @@ expect "the installer downloads jd, marks the setup done and sets the PATH" "$ou
 out=$(JD_BIN=/opt/jd main_calls)
 expect "with JD_BIN the dependencies and git are handled" "$out" "deps git:/opt/jd"
 expect_not "with JD_BIN jd is not downloaded" "$out" "install_jd"
-expect_not "with JD_BIN the PATH stays" "$out" "path"
+expect "with JD_BIN the tool folders still go on the PATH" "$out" "deps git:/opt/jd path"
 expect_not "with JD_BIN jd marks the setup itself" "$out" "mark"
 
 # mark_setup_done calls the installed jd, leaves nothing on a dry run and never fails the installation.
@@ -193,6 +195,107 @@ if [ -s "$log_file" ]; then echo "FAIL a dry run must not mark: $(cat "$log_file
 out=$(mark_run "exit 3")
 expect "a failing jd does not fail the installation" "$out" "returned 0"
 rm -f "$log_file"
+
+# ---- no root rights: the runtimes go below ~/.local, nothing asks for a password ------------------------------------------------
+lsp_langs="go,javascript,java,rust,c"
+out=$(FAKE_NO_SUDO=1 FAKE_LANGS=$lsp_langs plan apt-get "git xclip xterm python3 pipx" "basics,runtimes,lsp")
+expect "no root: Go is downloaded" "$out" "download https://go.dev/dl/go1.27.4.linux-amd64.tar.gz"
+expect "no root: Node.js is downloaded" "$out" "download https://nodejs.org/dist/v26.13.1/node-v26.13.1-linux-x64.tar.gz"
+expect "no root: the JDK is downloaded" "$out" "OpenJDK21U-jdk_x64_linux_hotspot"
+expect "no root: rustup is downloaded" "$out" "download https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init"
+expect "no root: the runtimes go below the home folder" "$out" "$HOME/.local/share/jd/runtimes/go"
+expect "no root: the tools that follow find the runtimes" "$out" "go install golang.org/x/tools/gopls@latest"
+expect "no root: npm tools are installed" "$out" "npm install -g --prefix $HOME/.local typescript@5 typescript-language-server"
+expect "no root: jdtls is planned" "$out" "download https://download.eclipse.org/jdtls"
+expect "no root: the skipped system packages are listed" "$out" "needs root rights: clangd"
+expect "no root: the administrator gets the command" "$out" "an administrator installs them with: sudo apt-get update && sudo apt-get install -y"
+expect_not "no root: sudo is never run" "$out" "[dry-run] sudo"
+expect_not "no root: the package manager is never run" "$out" "[dry-run] apt-get"
+expect_not "no root: no problem is reported for the runtimes" "$out" "is missing"
+
+out=$(FAKE_UID=0 FAKE_NO_SUDO=1 FAKE_LANGS="go,javascript" plan apt-get "git xclip xterm" "runtimes")
+expect "root installs Go with the package manager" "$out" "[dry-run] apt-get install -y golang-go"
+expect_not "root downloads no Go" "$out" "go.dev/dl"
+out=$(FAKE_UID=0 JD_USER_RUNTIMES=1 FAKE_LANGS="go" plan apt-get "git xclip xterm" "runtimes")
+expect "JD_USER_RUNTIMES makes root download Go too" "$out" "download https://go.dev/dl/go1.27.4.linux-amd64.tar.gz"
+out=$(FAKE_LANGS="go" plan apt-get "git xclip xterm" "runtimes")
+expect "with passwordless sudo the package manager is used" "$out" "[dry-run] sudo -n apt-get install -y golang-go"
+out=$(FAKE_NO_SUDO=1 FAKE_LANGS="go" plan brew "git" "runtimes")
+expect "Homebrew is a user's tool: no download" "$out" "[dry-run] brew install go"
+expect_not "Homebrew: nothing is skipped for root" "$out" "needs root rights"
+out=$(FAKE_NO_SUDO=1 FAKE_LANGS="javascript,java" FAKE_LIBC=musl FAKE_ARCH=arm64 plan apk "git" "runtimes")
+expect "musl: Node.js comes from the musl builds" "$out" "unofficial-builds.nodejs.org/download/release/v26.13.1/node-v26.13.1-linux-arm64-musl.tar.gz"
+expect "musl: the JDK is the Alpine build" "$out" "OpenJDK21U-jdk_aarch64_alpine-linux_hotspot"
+out=$(FAKE_NO_SUDO=1 FAKE_LANGS="go,java" FAKE_OS=darwin FAKE_ARCH=arm64 plan apt-get "git" "runtimes")
+expect "macOS: the Go archive" "$out" "go1.27.4.darwin-arm64.tar.gz"
+expect "macOS: the JDK archive" "$out" "OpenJDK21U-jdk_aarch64_mac_hotspot"
+
+# a machine without a pinned build is told so, nothing is downloaded
+out=$(FAKE_NO_SUDO=1 FAKE_LANGS="go,rust" FAKE_ARCH=armv7l plan apt-get "git xclip xterm" "runtimes")
+expect "an unknown CPU gets no build" "$out" "there is no build of it for linux/armv7l"
+expect "an unknown CPU gets no rustup" "$out" "no installer for linux/armv7l"
+expect_not "an unknown CPU downloads nothing" "$out" "download https"
+
+# every pinned runtime has a well formed checksum and a URL for its platform
+# shellcheck disable=SC1091,SC2329,SC2034
+pinned() {
+    (
+        JD_INSTALL_NO_MAIN=1
+        export JD_INSTALL_NO_MAIN
+        . "$here/install.sh"
+        for name in go node jdk; do
+            for combo in linux:amd64:gnu linux:arm64:gnu linux:amd64:musl linux:arm64:musl darwin:amd64:gnu darwin:arm64:gnu; do
+                rt_os=${combo%%:*} rest=${combo#*:}
+                rt_arch=${rest%%:*} rt_libc=${rest#*:}
+                [ "$name" = go ] && [ "$rt_libc" = musl ] && continue # Go's archive is static: the same for both
+                [ "$rt_os" = darwin ] && [ "$rt_libc" = musl ] && continue
+                if ! runtime_asset "$name"; then echo "NOPIN $name $combo"; continue; fi
+                case $asset_sha in *[!0-9a-f]* | "") echo "BADSHA $name $combo" ;; esac
+                [ ${#asset_sha} -eq 64 ] || echo "BADSHA $name $combo"
+                case $asset_url in https://*) ;; *) echo "BADURL $name $combo" ;; esac
+            done
+        done
+        echo done
+    )
+}
+out=$(pinned)
+expect "every runtime is pinned for every platform" "$out" "done"
+expect_not "no pin is missing" "$out" "NOPIN"
+expect_not "every pinned checksum is 64 hex digits" "$out" "BADSHA"
+expect_not "every pinned URL is https" "$out" "BADURL"
+
+# HOME unset: a clear error instead of an unbound variable
+out=$(env -u HOME -u INSTALL_DIR JD_INSTALL_NO_MAIN=1 sh -c ". '$here/install.sh'" 2>&1 || true)
+expect "HOME unset is reported" "$out" "HOME is not set"
+
+# add_to_path (also for the pip case): folders the shell lacks are added to the profiles, once, and the export line is printed
+# shellcheck disable=SC1091,SC2329,SC2034
+path_run() { # path_run <PATH> [JD_BIN]
+    (
+        tmp=$(mktemp -d)
+        HOME=$tmp SHELL=/bin/bash PATH=$1
+        [ -n "${2:-}" ] && JD_BIN=$2 && export JD_BIN
+        export HOME SHELL
+        JD_INSTALL_NO_MAIN=1
+        export JD_INSTALL_NO_MAIN
+        . "$here/install.sh"
+        add_to_path
+        add_to_path
+        echo "profile: $(cat "$HOME/.profile" 2>/dev/null)"
+        echo "bashrc-lines: $(grep -c "added by the jd installer" "$HOME/.bashrc" 2>/dev/null)"
+        echo "count: $(grep -c "export PATH" "$HOME/.profile")"
+        rm -rf "$tmp"
+    )
+}
+out=$(path_run "/usr/bin:/bin" /usr/local/bin/jd)
+expect "the profile gets the install folder" "$out" ".local/bin:\$PATH\""
+expect "bash gets it in .bashrc too" "$out" "bashrc-lines: 2"
+expect "the pip case adds the folder of jd when it is not on the PATH" "$out" "/usr/local/bin:\$PATH\""
+expect "the export line is printed for the current shell" "$out" "Use it in this shell now"
+out=$(path_run "/usr/bin:/bin" | grep "^count:")
+expect "a second run adds nothing twice" "$out" "count: 1"
+out=$(tmp=$(mktemp -d); HOME=$tmp PATH="$tmp/.local/bin:/usr/bin" JD_INSTALL_NO_MAIN=1 JD_BIN=$tmp/.local/bin/jd sh -c ". '$here/install.sh'; add_to_path; ls -A '$tmp' | grep -c profile; rm -rf '$tmp'" 2>&1)
+expect "nothing is written when the folder is on the PATH already" "$out" "0"
 
 if [ "$failures" -gt 0 ]; then echo "$failures failure(s)"; exit 1; fi
 echo "all install tests passed"

@@ -140,8 +140,8 @@ func TestRun_SetupRunsTheInstallerAlways(t *testing.T) {
 	}
 }
 
-// The real embedded script, started the way jd starts it: it must configure git with the installed jd, and neither download
-// jd nor touch the PATH settings of the shell.
+// The real embedded script, started the way jd starts it (the pip case): it must configure git with the installed jd, not
+// download jd, and put the folder of the tools on the PATH of new shells (pip does not, and the tools go to ~/.local/bin).
 func TestRunInstallerScript_ConfiguresGitWithTheInstalledJdOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("covers install.sh")
@@ -171,8 +171,15 @@ func TestRunInstallerScript_ConfiguresGitWithTheInstalledJdOnly(t *testing.T) {
 	if strings.Contains(stdout.String(), "Downloading") {
 		t.Fatalf("jd is installed already, nothing is downloaded:\n%s", stdout.String())
 	}
-	if entries, _ := os.ReadDir(home); len(entries) != 0 {
-		t.Fatalf("the installer must not write shell profiles or tools here: %v", entries)
+	want := "export PATH=\"" + filepath.Join(home, ".local", "bin") + ":$PATH\""
+	for _, profile := range []string{".profile", ".zshrc"} {
+		text, err := os.ReadFile(filepath.Join(home, profile))
+		if err != nil || !strings.Contains(string(text), want) {
+			t.Errorf("%s must put %s on the PATH: %q %v", profile, filepath.Join(home, ".local", "bin"), text, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, ".local")); err == nil {
+		t.Errorf("no tools were installed (JD_SKIP_DEPS), nothing may be created in ~/.local")
 	}
 }
 

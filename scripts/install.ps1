@@ -8,13 +8,35 @@
 #              go, rust, c, cpp, java, all or none; default all),
 #              JD_DRY_RUN=1 (print what would be installed),
 #              JD_BIN (path of an installed jd.exe, for the pip package that runs this script itself on its first start:
-#              jd is not downloaded and the PATH stays as it is, only the dependencies and git are handled).
+#              jd is not downloaded; the dependencies and git are handled and the user PATH gets the tool folders).
+# Without administrator rights nothing asks for them: winget installs for the current user (--scope user); a tool whose installer needs
+# administrator rights is reported with the command to run from an elevated shell.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $ProgressPreference = 'SilentlyContinue'
 
 $repo = 'Eutima/jelly-dev'
+
+# Add-ToUserPath puts a folder on the user PATH (and on the PATH of this session) unless it is there already.
+function Add-ToUserPath([string]$dir) {
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $known = @($userPath -split ';' | ForEach-Object { $_.TrimEnd('\') })
+    if ($known -notcontains $dir.TrimEnd('\')) {
+        if ($env:JD_DRY_RUN) { Write-Host "[dry-run] add $dir to your user PATH"; return }
+        $newPath = (@($userPath -split ';') + $dir | Where-Object { $_ }) -join ';'
+        [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+        Write-Host "Added $dir to your user PATH."
+    }
+    if (@($env:Path -split ';' | ForEach-Object { $_.TrimEnd('\') }) -notcontains $dir.TrimEnd('\')) { $env:Path = "$env:Path;$dir" }
+}
+
+# Test-Admin tells whether this PowerShell runs with administrator rights.
+function Test-Admin {
+    $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 $installDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\jelly-dev' }
 
 if (-not $env:JD_BIN) {
@@ -59,12 +81,7 @@ finally {
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-if (@($userPath -split ';') -notcontains $installDir) {
-    $newPath = (@($userPath -split ';') + $installDir | Where-Object { $_ }) -join ';'
-    [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-    Write-Host "Added $installDir to your user PATH."
-}
+Add-ToUserPath $installDir
 }
 # ---- dependencies: git, Windows Terminal, runtimes and language servers for the IDE ----------------------------
 $script:problems = @()
@@ -98,9 +115,14 @@ function Ensure-Winget([string]$label, [string]$id, [string[]]$commands) {
         Write-Problem "$label is missing and winget was not found (install the 'App Installer' from the Microsoft Store)"
         return
     }
-    Write-Host "install  $label (winget $id)"
-    $done = Invoke-Step "winget install --id $id" { winget install --id $id -e --silent --accept-package-agreements --accept-source-agreements }
-    if (-not $done) { Write-Problem "$label could not be installed (winget install --id $id)" } else { Update-SessionPath }
+    # without administrator rights the package goes to the user's folders; nothing asks for elevation
+    $scope = if (Test-Admin) { @() } else { @('--scope', 'user') }
+    Write-Host "install  $label (winget $id$(if ($scope) { ' --scope user' }))"
+    $done = Invoke-Step "winget install --id $id $scope" { winget install --id $id -e --silent @scope --accept-package-agreements --accept-source-agreements }
+    if (-not $done) {
+        $hint = if ($scope) { "; its installer may need administrator rights: run from an elevated PowerShell: winget install --id $id -e" } else { '' }
+        Write-Problem "$label could not be installed (winget install --id $id)$hint"
+    } else { Update-SessionPath }
 }
 
 function Install-Npm([string]$label, [string]$command, [string[]]$packages) {
@@ -215,6 +237,12 @@ function Install-Dependencies {
 
 if (-not $env:JD_SKIP_DEPS) { Install-Dependencies }
 
+# The folders the tools were installed into: npm and go install put the language servers there, rustup its toolchain; with the pip
+# package the folder of jd.exe as well. They go on the user PATH in every case (new terminals pick them up).
+$toolFolders = @((Join-Path $env:APPDATA 'npm'), (Join-Path $env:USERPROFILE 'go\bin'), (Join-Path $env:USERPROFILE '.cargo\bin'))
+if ($env:JD_BIN) { $toolFolders += (Split-Path -Parent $env:JD_BIN) }
+foreach ($folder in $toolFolders) { if (Test-Path $folder) { Add-ToUserPath $folder } }
+
 # Make jd the global default diff and merge tool of git (opt out with JD_SKIP_GIT_CONFIG=1).
 if (-not $env:JD_SKIP_GIT_CONFIG) {
     if (Get-Command git -ErrorAction SilentlyContinue) {
@@ -230,7 +258,5 @@ if (-not $env:JD_BIN) {
     # jd must not run this script again on its first start (the pip package does that); a dry run leaves no mark
     # (a failed mark only means a second setup run on the first start, never a failed install)
     if (-not $env:JD_DRY_RUN) { try { & (Join-Path $installDir 'jd.exe') setup --mark-done 2>&1 | Out-Null } catch { } }
-    # Make jd available in this session right away (other open terminals need a restart).
-    if (@($env:Path -split ';') -notcontains $installDir) { $env:Path = "$env:Path;$installDir" }
     Write-Host "Installed $installDir\jd.exe (open new terminals to pick up PATH; run: jd --version)"
 }

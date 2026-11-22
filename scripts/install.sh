@@ -11,12 +11,18 @@
 #   JD_LANGS=<ids>       languages to install language servers and formatters for, comma separated: python html css json yaml docker compose
 #                        javascript angular go rust c cpp java, all, or none (default: all; jd asks on its first start)
 #   JD_BIN=<path>        jd is already installed there (pip, jd runs this script itself on its first start): do not download
-#                        jd and do not change the PATH, only install the dependencies and configure git
+#                        jd; the dependencies are installed, git is configured and the PATH of new shells gets the tool folders
+#   JD_USER_RUNTIMES=1   install Go, Node.js, a JDK and Rust below ~/.local even when system packages could be installed (without
+#                        root rights, sudo that needs a password and no Homebrew, this is what happens anyway: the installer
+#                        never waits for a password)
 set -eu
 
 repo="Eutima/jelly-dev"
+[ -n "${HOME:-}" ] || { echo "error: HOME is not set (the installer puts tools and shell settings there)" >&2; exit 1; }
 install_dir=${INSTALL_DIR:-$HOME/.local/bin}
+original_path=$PATH # what the user's shell has: add_to_path compares with this, not with the PATH the installer extends
 failed=""
+root_needed="" # system packages that were skipped because there are no root rights
 
 fail() { echo "error: $*" >&2; exit 1; }
 log() { printf '%s\n' "$*"; }
@@ -50,15 +56,33 @@ detect_pm() {
     pm=""
 }
 
+is_root() { [ "$(id -u)" -eq 0 ]; }
+
+# can_sudo tells whether sudo works without asking for a password: the installer never waits for one.
+can_sudo() { have sudo && sudo -n true >/dev/null 2>&1; }
+
+# can_root tells whether system packages can be installed: as root, with a passwordless sudo, or with Homebrew (a user's tool).
+can_root() { [ "$pm" = brew ] || is_root || can_sudo; }
+
 as_root() {
-    if [ "$(id -u)" -eq 0 ]; then
+    if is_root; then
         run "$@"
-    elif have sudo; then
-        run sudo "$@"
     else
-        warn "root rights are needed for: $* (install sudo or run the installer as root)"
-        return 1
+        run sudo -n "$@"
     fi
+}
+
+# root_command prints the command an administrator runs to install the system packages that were skipped.
+root_command() {
+    packages=$(printf '%s\n' $root_needed | sort -u | tr '\n' ' ')
+    case $pm in
+        apt-get) echo "sudo apt-get update && sudo apt-get install -y $packages" ;;
+        dnf) echo "sudo dnf install -y $packages" ;;
+        pacman) echo "sudo pacman -S --noconfirm --needed $packages" ;;
+        zypper) echo "sudo zypper --non-interactive install $packages" ;;
+        apk) echo "apk add $packages (as root)" ;;
+        *) echo "install: $packages" ;;
+    esac
 }
 
 # pm_install installs system packages with the package manager that was found.
@@ -127,6 +151,11 @@ ensure_tool() {
         return 1
     fi
     packages=$(pkg_for "$tool") || { problem "$label is missing and has no package for $pm"; return 1; }
+    if ! can_root; then
+        log "skip     $label (needs root rights: $packages)"
+        root_needed="$root_needed $packages"
+        return 1
+    fi
     log "install  $label ($packages)"
     # shellcheck disable=SC2086 # the package list is meant to be split into words
     if pm_install $packages; then
@@ -191,25 +220,200 @@ any_lang() {
     return 1
 }
 
+# ---- runtimes in the home folder (no root rights) -------------------------------------------------------------
+
+# user_runtimes tells whether Go, Node.js, the JDK and Rust are installed below ~/.local: when there are no root rights to install
+# system packages (Homebrew, which works for a normal user, counts as having them), or when JD_USER_RUNTIMES asks for it.
+user_runtimes() { [ -n "${JD_USER_RUNTIMES:-}" ] || ! can_root; }
+
+runtimes_dir() { echo "${XDG_DATA_HOME:-$HOME/.local/share}/jd/runtimes"; }
+
+# runtime_platform sets rt_os (linux, darwin), rt_arch (amd64, arm64, or the machine name when there is no build) and rt_libc (gnu, musl).
+runtime_platform() {
+    case $(uname -s) in
+        Darwin) rt_os=darwin ;;
+        *) rt_os=linux ;;
+    esac
+    case $(uname -m) in
+        x86_64 | amd64) rt_arch=amd64 ;;
+        aarch64 | arm64) rt_arch=arm64 ;;
+        *) rt_arch=$(uname -m) ;; # no pinned build: runtime_asset and runtime_rust say so
+    esac
+    rt_libc=gnu
+    if [ "$rt_os" = linux ] && { ls /lib/ld-musl-* >/dev/null 2>&1 || ldd --version 2>&1 | grep -qi musl; }; then
+        rt_libc=musl
+    fi
+}
+
+# The runtimes are pinned like jdtls: raise the version, the file names and the checksums together. The checksums come from
+# go.dev/dl, nodejs.org (unofficial-builds.nodejs.org for musl) and api.adoptium.net.
+GO_VERSION=1.27.4
+NODE_VERSION=v26.13.1
+JDK_VERSION=21.0.13.1_2 # the release folder and the file names carry the same number
+JDK_URL=https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13.1%2B2
+
+# runtime_asset sets asset_url and asset_sha for a runtime (go, node, jdk) on rt_os, rt_arch and rt_libc; it fails when there is none.
+runtime_asset() {
+    asset_url="" asset_sha=""
+    case "$1:$rt_os:$rt_arch:$rt_libc" in
+        go:linux:amd64:*) asset_sha=7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840 ;;
+        go:linux:arm64:*) asset_sha=3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92 ;;
+        go:darwin:amd64:*) asset_sha=2b799377704ef12db39bd254995d5c348c9cc8d86562ca817724390e56c38f43 ;;
+        go:darwin:arm64:*) asset_sha=91a44a2b8a716600ad94a4f143e156116620db8828086a6e3602291be9bd0bb4 ;;
+        node:linux:amd64:gnu) asset_sha=518674de2b621728a5e4486f5fb3b7d2900bb3cc4aa97969edaa463db99f9778 ;;
+        node:linux:arm64:gnu) asset_sha=80a330b35415382878df18d41afbd106ea89bfb3be0087d6608e289a14c5cc7d ;;
+        node:linux:amd64:musl) asset_sha=04bf9ed3e32ea139c9af52f6dd06879ff6f8880555a0aa1183ef2d156c0e02d3 ;;
+        node:linux:arm64:musl) asset_sha=42684e7f1830ef9eaadd040672cba41bbaff9549d834600699f92ee1ee5b1fb1 ;;
+        node:darwin:amd64:*) asset_sha=82bb96078a24ca50b9c9a38f2379e6be6d87171fcd400fc14c8934b3bce96e2f ;;
+        node:darwin:arm64:*) asset_sha=aec2514ea1ceb2ba52455e9ec65986f6749a06dd759e5db2a72e6889668c9735 ;;
+        jdk:linux:amd64:gnu) asset_sha=bb8a93f9ae6e7a693b2b721e85dbeff26ae1a77447985a8d7afcdd9c7cf6222e ;;
+        jdk:linux:arm64:gnu) asset_sha=8c72816a6b308842d5ed1f13e5826b69c567da4784f7238d7e800efa71fe54b1 ;;
+        jdk:linux:amd64:musl) asset_sha=87af8e1557222db2a29c9d055c34a317916b4ddbdb91474d04b35229d337193e ;;
+        jdk:linux:arm64:musl) asset_sha=8e3ef290b2c182fed0f4318dfb928cde1f5b95bf5c28ff4bb236d38b0b177a74 ;;
+        jdk:darwin:amd64:*) asset_sha=1b5eff1741bb83d32e2e19aade71452bb42e40f047c01d3e178d438304c9a26d ;;
+        jdk:darwin:arm64:*) asset_sha=48067f2b7c958ed104a9d8a5749be7d25220b0a356b4d2d1bcfaab3e16ad0b14 ;;
+        *) return 1 ;;
+    esac
+    case $1 in
+        go) asset_url=https://go.dev/dl/go$GO_VERSION.$rt_os-$rt_arch.tar.gz ;;
+        node)
+            node_arch=x64
+            [ "$rt_arch" = arm64 ] && node_arch=arm64
+            if [ "$rt_libc" = musl ]; then
+                asset_url=https://unofficial-builds.nodejs.org/download/release/$NODE_VERSION/node-$NODE_VERSION-linux-$node_arch-musl.tar.gz
+            else
+                asset_url=https://nodejs.org/dist/$NODE_VERSION/node-$NODE_VERSION-$rt_os-$node_arch.tar.gz
+            fi ;;
+        jdk)
+            jdk_arch=x64
+            [ "$rt_arch" = arm64 ] && jdk_arch=aarch64
+            jdk_os=linux
+            [ "$rt_os" = darwin ] && jdk_os=mac
+            [ "$rt_libc" = musl ] && jdk_os=alpine-linux
+            asset_url=$JDK_URL/OpenJDK21U-jdk_${jdk_arch}_${jdk_os}_hotspot_$JDK_VERSION.tar.gz ;;
+    esac
+}
+
+# planned is the list of runtimes a dry run would have installed, so that the steps after them do not report them as missing.
+planned=""
+# usable tells whether a command is there (or, in a dry run, would be after the planned installs).
+usable() { have "$1" || case " $planned " in *" $1 "*) [ -n "${JD_DRY_RUN:-}" ] ;; *) false ;; esac; }
+
+# link_commands links commands of an unpacked runtime into the install folder.
+#   link_commands <bin folder> <command>...
+link_commands() {
+    folder=$1
+    shift
+    mkdir_p "$install_dir"
+    for cmd in "$@"; do
+        run ln -sf "$folder/$cmd" "$install_dir/$cmd"
+    done
+}
+
+# user_runtime downloads a runtime, checks its SHA-256 and unpacks it below ~/.local/share/jd/runtimes.
+#   user_runtime <name> <label> <command> <bin folder in the archive> <command to link>...
+user_runtime() {
+    name=$1 label=$2 command=$3 bindir=$4
+    shift 4
+    if have "$command"; then log "ok       $label ($command)"; return 0; fi
+    runtime_platform
+    if ! runtime_asset "$name"; then
+        problem "$label is missing and there is no build of it for $rt_os/$rt_arch ($rt_libc)"
+        return 1
+    fi
+    dest=$(runtimes_dir)/$name
+    log "install  $label (download to $dest)"
+    if [ -n "${JD_DRY_RUN:-}" ]; then
+        log "[dry-run] download $asset_url (sha256 $asset_sha) to $dest and link $* into $install_dir"
+        planned="$planned $*"
+        return 0
+    fi
+    archive=$(mktemp)
+    if fetch "$asset_url" "$archive" &&
+        [ "$(sha256_of "$archive")" = "$asset_sha" ] &&
+        rm -rf "$dest.new" && mkdir -p "$dest.new" && tar -xzf "$archive" -C "$dest.new" --strip-components=1 &&
+        [ -x "$dest.new/$bindir/$command" ] &&
+        rm -rf "$dest" && mv "$dest.new" "$dest"; then
+        link_commands "$dest/$bindir" "$@"
+    else
+        rm -rf "$dest.new"
+        problem "$label could not be installed from $asset_url (or its checksum differs from the pinned one)"
+        rm -f "$archive"
+        return 1
+    fi
+    rm -f "$archive"
+}
+
+runtime_go() { user_runtime go "Go" go bin go gofmt; }
+runtime_node() { user_runtime node "Node.js and npm" npm bin node npm npx; }
+runtime_jdk() {
+    runtime_platform
+    jdk_bin=bin
+    [ "$rt_os" = darwin ] && jdk_bin=Contents/Home/bin
+    user_runtime jdk "Java JDK" javac "$jdk_bin" java javac jar
+}
+
+# runtime_rust installs rustup (the Rust toolchain manager, which lives in ~/.cargo and ~/.rustup by design) with its own installer.
+# The checksum is the one rustup publishes next to the installer (static.rust-lang.org): an integrity check, not a pin.
+runtime_rust() {
+    if have rustup || [ -x "$HOME/.cargo/bin/rustup" ]; then log "ok       Rust toolchain (rustup)"; return 0; fi
+    runtime_platform
+    case "$rt_os:$rt_arch:$rt_libc" in
+        linux:amd64:gnu) triple=x86_64-unknown-linux-gnu ;;
+        linux:amd64:musl) triple=x86_64-unknown-linux-musl ;;
+        linux:arm64:gnu) triple=aarch64-unknown-linux-gnu ;;
+        linux:arm64:musl) triple=aarch64-unknown-linux-musl ;;
+        darwin:amd64:*) triple=x86_64-apple-darwin ;;
+        darwin:arm64:*) triple=aarch64-apple-darwin ;;
+        *) problem "Rust (rustup) has no installer for $rt_os/$rt_arch ($rt_libc)"; return 1 ;;
+    esac
+    url=https://static.rust-lang.org/rustup/dist/$triple/rustup-init
+    log "install  Rust toolchain (rustup, download $url)"
+    if [ -n "${JD_DRY_RUN:-}" ]; then
+        log "[dry-run] download $url, check it against $url.sha256 and run it with -y --profile minimal --no-modify-path"
+        planned="$planned rustup"
+        return 0
+    fi
+    init=$(mktemp)
+    expected=$(mktemp)
+    if fetch "$url" "$init" && fetch "$url.sha256" "$expected" &&
+        [ "$(sha256_of "$init")" = "$(cut -d' ' -f1 "$expected")" ] &&
+        chmod +x "$init" && "$init" -y --profile minimal --no-modify-path; then
+        PATH="$HOME/.cargo/bin:$PATH"
+    else
+        problem "Rust (rustup) could not be installed from $url"
+    fi
+    rm -f "$init" "$expected"
+}
+
 deps_runtimes() {
-    lang_enabled go && { ensure_tool go "Go" go || true; }
-    # Node.js also runs the Python server (pyright)
-    any_lang python html css json yaml docker compose javascript angular && { ensure_tool node "Node.js and npm" npm || true; }
-    any_lang java && { ensure_tool jdk "Java JDK" javac || true; }
-    # Python runs black and starts the Java server
-    # Python runs black and clang-format and starts the Java server
+    if user_runtimes; then
+        lang_enabled go && { runtime_go || true; }
+        # Node.js also runs the Python server (pyright)
+        any_lang python html css json yaml docker compose javascript angular && { runtime_node || true; }
+        any_lang java && { runtime_jdk || true; }
+        lang_enabled rust && { runtime_rust || true; }
+    else
+        lang_enabled go && { ensure_tool go "Go" go || true; }
+        any_lang python html css json yaml docker compose javascript angular && { ensure_tool node "Node.js and npm" npm || true; }
+        any_lang java && { ensure_tool jdk "Java JDK" javac || true; }
+        lang_enabled rust && { ensure_tool rustup "Rust toolchain (rustup)" rustup || true; }
+    fi
+    # Python runs black and clang-format and starts the Java server; there is no build of it (or of clangd) that needs no root
     any_lang python java c cpp && { ensure_tool python "Python 3 and pip" python3 || true; }
-    lang_enabled rust && { ensure_tool rustup "Rust toolchain (rustup)" rustup || true; }
     any_lang c cpp && { ensure_tool clangd "clangd (C and C++ language server)" clangd || true; }
     return 0
 }
 
-# fetch downloads a URL to a file.
+# fetch downloads a URL to a file. Python is the last resort: it is there when jd came with pip, and plain Debian and Ubuntu images
+# have neither curl nor wget.
 fetch() {
     if have curl; then
         curl -fsSL "$1" -o "$2"
     elif have wget; then
         wget -q "$1" -O "$2"
+    elif have python3; then
+        python3 -c 'import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])' "$1" "$2"
     else
         return 1
     fi
@@ -217,7 +421,7 @@ fetch() {
 
 lsp_gopls() {
     if have gopls; then log "ok       gopls (Go)"; return 0; fi
-    have go || { problem "gopls needs Go, which is missing"; return 0; }
+    usable go || { problem "gopls needs Go, which is missing"; return 0; }
     log "install  gopls (go install)"
     mkdir_p "$install_dir"
     GOBIN=$install_dir run go install golang.org/x/tools/gopls@latest || problem "gopls could not be installed (go install golang.org/x/tools/gopls@latest)"
@@ -231,7 +435,7 @@ npm_tool() {
     label=$1 cmd=$2
     shift 2
     if have "$cmd"; then log "ok       $label (npm)"; return 0; fi
-    have npm || { problem "$label needs npm, which is missing"; return 0; }
+    usable npm || { problem "$label needs npm, which is missing"; return 0; }
     log "install  $label (npm)"
     run npm install -g --prefix "$HOME/.local" "$@" || problem "$label could not be installed (npm install -g --prefix ~/.local $*)"
 }
@@ -272,7 +476,7 @@ lsp_jdtls() {
         run brew install jdtls || problem "jdtls could not be installed (brew install jdtls)"
         return 0
     fi
-    have java || { problem "jdtls (Java language server) needs a JDK, which is missing"; return 0; }
+    usable java || { problem "jdtls (Java language server) needs a JDK, which is missing"; return 0; }
     have python3 || { problem "jdtls needs python3 to start, which is missing"; return 0; }
     target=${XDG_DATA_HOME:-$HOME/.local/share}/jdtls
     log "install  jdtls (download to $target)"
@@ -298,7 +502,7 @@ rust_component() { have rustup && rustup which "$1" >/dev/null 2>&1; }
 
 lsp_rust() {
     if rust_component rust-analyzer && rust_component rustfmt; then log "ok       rust-analyzer and rustfmt (rustup)"; return 0; fi
-    have rustup || { problem "rust-analyzer and rustfmt need rustup, which is missing"; return 0; }
+    usable rustup || { problem "rust-analyzer and rustfmt need rustup, which is missing"; return 0; }
     log "install  rust-analyzer and rustfmt (rustup)"
     run rustup component add rust-analyzer rustfmt ||
         { run rustup default stable && run rustup component add rust-analyzer rustfmt; } ||
@@ -324,6 +528,8 @@ deps_lsp() {
 
 install_dependencies() {
     detect_pm
+    PATH="$install_dir:$HOME/.cargo/bin:$PATH" # what the installer puts there is found by the steps that follow
+    export PATH
     log ""
     log "Checking the tools the IDE needs (skip with JD_SKIP_DEPS=1, choose groups with JD_DEPS)"
     group_enabled basics && deps_basics
@@ -335,8 +541,12 @@ install_dependencies() {
     group_enabled lsp && deps_lsp
     if [ -n "$failed" ]; then
         warn "some tools are missing, jd itself works without them:$failed"
-    else
+    elif [ -z "$root_needed" ]; then
         log "All dependencies are in place."
+    fi
+    if [ -n "$root_needed" ]; then
+        warn "no root rights: these system packages were skipped (jd works without them, the language servers need some):$root_needed"
+        warn "an administrator installs them with: $(root_command)"
     fi
 }
 
@@ -413,24 +623,56 @@ configure_git() {
     fi
 }
 
-# add_to_path puts the install directory on the PATH of new shells.
+# profile_files prints the files that set the PATH of the user's new shells, one per line: ~/.profile (login shells, also in
+# containers), and the files of bash and zsh, where an interactive shell that is not a login shell does not read ~/.profile.
+profile_files() {
+    echo "$HOME/.profile"
+    case ${SHELL:-} in
+        */bash) echo "$HOME/.bashrc" ;;
+        */zsh) echo "$HOME/.zshrc" ;;
+    esac
+    for file in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
+        [ ! -f "$file" ] || echo "$file"
+    done
+}
+
+# add_to_path puts the folders the installer filled on the PATH of new shells: the install folder (jd, the language servers, Go,
+# Node.js and the JDK in user space), ~/.cargo/bin, and the folder of jd when pip put it somewhere that is not on the PATH. It
+# runs for the pip case too (JD_BIN): there the tools go to ~/.local/bin just the same. Folders the user's shell has already are
+# skipped, and a line is never added twice.
 add_to_path() {
-    case ":$PATH:" in
-        *":$install_dir:"*) echo "Run: jd --version" ;;
-        *)
-            case ${SHELL##*/} in
-                zsh) profile=$HOME/.zshrc ;;
-                bash) if [ -f "$HOME/.bashrc" ]; then profile=$HOME/.bashrc; else profile=$HOME/.bash_profile; fi ;;
-                *) profile=$HOME/.profile ;;
-            esac
-            line="export PATH=\"$install_dir:\$PATH\""
+    set -- "$install_dir"
+    [ ! -d "$HOME/.cargo/bin" ] || set -- "$@" "$HOME/.cargo/bin"
+    [ -z "${JD_BIN:-}" ] || set -- "$@" "$(dirname "$JD_BIN")"
+    missing=""
+    for dir in "$@"; do
+        case ":$original_path:$missing:" in *":$dir:"*) ;; *) missing="${missing:+$missing:}$dir" ;; esac
+    done
+    if [ -z "$missing" ]; then
+        [ -n "${JD_BIN:-}" ] || echo "Run: jd --version"
+        return 0
+    fi
+    if [ -n "${JD_DRY_RUN:-}" ]; then
+        echo "[dry-run] add $missing to the PATH in the shell profiles"
+        return 0
+    fi
+    written=""
+    profiles=$(profile_files | sort -u)
+    while IFS= read -r profile; do
+        old_ifs=$IFS IFS=:
+        for dir in $missing; do
+            line="export PATH=\"$dir:\$PATH\""
             if ! grep -qsF "$line" "$profile"; then
                 printf '\n# added by the jd installer\n%s\n' "$line" >>"$profile"
-                echo "Added $install_dir to PATH in $profile"
+                case " $written " in *" $profile "*) ;; *) written="$written $profile" ;; esac
             fi
-            echo "Reload your shell to use jd (and tab completion for it):  exec \"\$SHELL\" -l"
-            ;;
-    esac
+        done
+        IFS=$old_ifs
+    done <<EOF
+$profiles
+EOF
+    [ -z "$written" ] || echo "Added $missing to PATH in:$written"
+    echo "Use it in this shell now (new shells have it):  export PATH=\"$missing:\$PATH\""
 }
 
 # mark_setup_done tells jd that this script did the setup, so jd does not run it again on its first start (the pip package
@@ -450,8 +692,8 @@ main() {
     configure_git # after the dependencies: git may have been installed just now
     if [ -z "${JD_BIN:-}" ]; then
         mark_setup_done
-        add_to_path
     fi
+    add_to_path
 }
 
 # Tests source this file without running it.
