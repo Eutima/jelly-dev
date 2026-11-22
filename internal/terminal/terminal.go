@@ -3,7 +3,7 @@ package terminal
 
 import (
 	"errors"
-	"os"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -14,20 +14,29 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
-	"github.com/creack/pty"
 )
 
 // writeWait is how long a write to the input pipe of the screen may take (see bounded).
 const writeWait = 500 * time.Millisecond
 
-// ErrUnsupported is returned where no pseudo terminal can be created (Windows).
+// ErrUnsupported is returned where no pseudo terminal can be created (a Windows older than 10 version 1809 has no ConPTY).
 var ErrUnsupported = errors.New("embedded terminals are not supported on this system")
+
+// process is a shell running in a pseudo terminal: a unix pty, or a ConPTY on Windows.
+type process interface {
+	io.ReadWriter
+	// Resize changes the size of the pseudo terminal.
+	Resize(width, height int) error
+	// Wait blocks until the shell has ended and everything of it is released. It is called after Read has failed.
+	Wait() error
+	// Close ends the shell and the programs it started. done is closed when the shell has ended.
+	Close(done <-chan struct{})
+}
 
 // Session is a running shell and the screen it draws on.
 type Session struct {
 	screen *vt.SafeEmulator
-	pty    *os.File
-	cmd    *exec.Cmd
+	proc   process
 	name   string
 
 	updates chan struct{} // receives a signal after the screen changed (at most one pending)
@@ -44,16 +53,12 @@ type Session struct {
 // Start runs command in dir inside a pseudo terminal of width x height cells.
 func Start(command *exec.Cmd, dir string, width, height int) (*Session, error) {
 	width, height = max(width, 1), max(height, 1)
-	command.Dir = dir
-	command.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
-	file, err := pty.StartWithSize(command, &pty.Winsize{Rows: uint16(height), Cols: uint16(width)})
+	proc, err := startProcess(command, dir, width, height)
 	if err != nil {
-		if errors.Is(err, pty.ErrUnsupported) {
-			return nil, ErrUnsupported
-		}
 		return nil, err
 	}
-	s := &Session{screen: vt.NewSafeEmulator(width, height), pty: file, cmd: command, name: filepath.Base(command.Path), updates: make(chan struct{}, 1), done: make(chan struct{}), answerDone: make(chan struct{})}
+	name := strings.TrimSuffix(filepath.Base(command.Path), ".exe")
+	s := &Session{screen: vt.NewSafeEmulator(width, height), proc: proc, name: name, updates: make(chan struct{}, 1), done: make(chan struct{}), answerDone: make(chan struct{})}
 	go s.pump()
 	go s.answer()
 	return s, nil
@@ -63,7 +68,7 @@ func Start(command *exec.Cmd, dir string, width, height int) (*Session, error) {
 func (s *Session) pump() {
 	buf := make([]byte, 32*1024)
 	for {
-		n, err := s.pty.Read(buf)
+		n, err := s.proc.Read(buf)
 		if n > 0 {
 			s.screenMu.Lock()
 			_, _ = s.screen.Write(buf[:n])
@@ -77,7 +82,7 @@ func (s *Session) pump() {
 			break
 		}
 	}
-	_ = s.cmd.Wait()
+	_ = s.proc.Wait()
 	close(s.done)
 	go func() { _, _ = s.screen.InputPipe().Write([]byte{0}) }() // wakes answer, which ends now; it is always still reading
 	select {
@@ -105,7 +110,7 @@ func (s *Session) answer() {
 		default:
 		}
 		if n > 0 && !s.stopping.Load() {
-			_, _ = s.pty.Write(buf[:n])
+			_, _ = s.proc.Write(buf[:n])
 		}
 	}
 }
@@ -128,7 +133,7 @@ func (s *Session) Done() bool {
 
 // Write sends typed bytes to the shell.
 func (s *Session) Write(data []byte) {
-	_, _ = s.pty.Write(data)
+	_, _ = s.proc.Write(data)
 }
 
 // Paste sends text to the shell the way a terminal does (bracketed when the shell asked for it).
@@ -169,14 +174,13 @@ func (s *Session) Resize(width, height int) {
 	s.screenMu.Lock()
 	s.bounded(func() { s.screen.Resize(width, height) })
 	s.screenMu.Unlock()
-	_ = pty.Setsize(s.pty, &pty.Winsize{Rows: uint16(height), Cols: uint16(width)})
+	_ = s.proc.Resize(width, height)
 }
 
 // Close ends the shell.
 func (s *Session) Close() {
 	s.closeOnce.Do(func() {
-		_ = s.pty.Close()
-		endProcesses(s.cmd, s.done)
+		s.proc.Close(s.done)
 		s.stopping.Store(true) // the answers of the screen are not sent to a closed shell any more (answer drains them)
 	})
 }
