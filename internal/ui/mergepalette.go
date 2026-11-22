@@ -42,7 +42,6 @@ func (m MergeModel) paletteActions() []mergePaletteAction {
 		{"Insert a line", keymap.MergeInsert, len(m.rows) > 0},
 		{"Delete the line", keymap.MergeDelete, len(m.rows) > 0},
 		{"Undo", keymap.MergeUndo, len(m.history) > 0},
-		{"Wrap long lines", keymap.MergeWrap, true},
 		{"Switch the pane", keymap.MergePane, m.width < threePaneWidth},
 	}
 	// both assistants are always listed: one that cannot run says why when it is chosen (see runCommand)

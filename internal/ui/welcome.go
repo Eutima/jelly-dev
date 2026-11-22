@@ -103,17 +103,17 @@ const welcomeTop = 3 // title, blank line, list header
 func (m WelcomeModel) messageRows() []*bar {
 	switch {
 	case m.question != nil:
-		return textRows(m.questionText(), m.width, footerMax, m.theme.Equal.Bold(true))
+		return textRows(m.questionText(), m.width, messageCap(m.height), m.theme.Equal.Bold(true))
 	case m.typing:
 		text := "Open folder: " + sanitize(string(m.input)) + "█"
 		if m.status != "" {
 			text += "   ! " + sanitize(m.status)
 		}
-		return textRows(text, m.width, footerMax, m.theme.Equal)
+		return textRows(text, m.width, messageCap(m.height), m.theme.Equal)
 	case m.status != "" && m.warn:
-		return textRows(sanitize(m.status), m.width, footerMax, m.theme.Warning)
+		return textRows(sanitize(m.status), m.width, messageCap(m.height), m.theme.Warning)
 	case m.status != "":
-		return textRows(sanitize(m.status), m.width, footerMax, m.theme.Equal)
+		return textRows(sanitize(m.status), m.width, messageCap(m.height), m.theme.Equal)
 	}
 	return []*bar{{}}
 }
@@ -161,13 +161,7 @@ func (m WelcomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *WelcomeModel) keepVisible() {
 	m.selected = min(max(m.selected, 0), max(len(m.entries)-1, 0))
-	body := m.bodyHeight()
-	if m.selected < m.top {
-		m.top = m.selected
-	}
-	if m.selected >= m.top+body {
-		m.top = m.selected - body + 1
-	}
+	m.top = scrollToShow(m.selected, m.top, m.bodyHeight(), len(m.entries), func(row int) int { return len(m.entryRowLines(row)) })
 }
 
 func (m WelcomeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -405,13 +399,7 @@ func (m *WelcomeModel) moveMatch(step int) {
 	}
 	m.matchSel = (m.matchSel + step + len(m.matches)) % len(m.matches)
 	m.input = []rune(m.matches[m.matchSel])
-	body := m.bodyHeight()
-	if m.matchSel < m.top {
-		m.top = m.matchSel
-	}
-	if m.matchSel >= m.top+body {
-		m.top = m.matchSel - body + 1
-	}
+	m.top = scrollToShow(m.matchSel, m.top, m.bodyHeight(), len(m.matches), func(row int) int { return len(m.matchRowLines(row)) })
 }
 
 func expandHome(path string) string {
@@ -439,8 +427,8 @@ func (m WelcomeModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.question != nil {
 			return m, nil
 		}
-		if row := m.top + msg.Y - welcomeTop; msg.Y >= welcomeTop && msg.Y < welcomeTop+m.bodyHeight() && row < len(m.entries) {
-			m.selected = row
+		if _, rowOf := m.entryLines(); msg.Y >= welcomeTop && msg.Y-welcomeTop < len(rowOf) {
+			m.selected = rowOf[msg.Y-welcomeTop]
 			return m.choose()
 		}
 	}
@@ -479,39 +467,27 @@ func (m WelcomeModel) View() string {
 		return m.promptView(lines)
 	}
 	lines = append(lines, m.theme.Header.Render(padRight(m.heading(), m.width)))
-	for y := 0; y < m.bodyHeight(); y++ {
-		i := m.top + y
-		switch {
-		case i < len(m.entries):
-			lines = append(lines, m.entryRow(i))
-		case i == 0 && len(m.entries) == 0:
-			lines = append(lines, m.theme.Equal.Faint(true).Render(padRight(" No projects yet: press o and type a folder, or run jd <folder>", m.width)))
-		default:
-			lines = append(lines, strings.Repeat(" ", m.width))
-		}
+	shown, _ := m.entryLines()
+	if len(m.entries) == 0 {
+		shown = []string{m.theme.Equal.Faint(true).Render(padRight(" No projects yet: press o and type a folder, or run jd <folder>", m.width))}
 	}
-	return m.withBottom(lines)
+	for len(shown) < m.bodyHeight() {
+		shown = append(shown, strings.Repeat(" ", m.width))
+	}
+	return m.withBottom(append(lines, shown...))
 }
 
 // promptView is the screen while a folder is typed: the matching folders replace the list of projects.
 func (m WelcomeModel) promptView(lines []string) string {
 	lines = append(lines, m.theme.Header.Render(padRight(" Folders ("+fmt.Sprint(len(m.matches))+")", m.width)))
-	for y := 0; y < m.bodyHeight(); y++ {
-		i := m.top + y
-		switch {
-		case i < len(m.matches):
-			style := m.theme.Equal
-			if i == m.matchSel {
-				style = m.theme.Selected
-			}
-			lines = append(lines, style.Render(padRight(" "+sanitize(m.matches[i]), m.width)))
-		case i == 0:
-			lines = append(lines, m.theme.Equal.Faint(true).Render(padRight(" No folder matches", m.width)))
-		default:
-			lines = append(lines, strings.Repeat(" ", m.width))
-		}
+	shown, _ := drawRows(m.top, len(m.matches), m.bodyHeight(), m.matchRowLines)
+	if len(m.matches) == 0 {
+		shown = []string{m.theme.Equal.Faint(true).Render(padRight(" No folder matches", m.width))}
 	}
-	return m.withBottom(lines)
+	for len(shown) < m.bodyHeight() {
+		shown = append(shown, strings.Repeat(" ", m.width))
+	}
+	return m.withBottom(append(lines, shown...))
 }
 
 // withBottom adds the message lines and the hints under the list.
@@ -521,19 +497,47 @@ func (m WelcomeModel) withBottom(lines []string) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m WelcomeModel) entryRow(i int) string {
+// entryLines draws the rows of the project list from the top of the view, and tells for each line the entry it belongs to.
+func (m WelcomeModel) entryLines() (lines []string, rowOf []int) {
+	return drawRows(m.top, len(m.entries), m.bodyHeight(), m.entryRowLines)
+}
+
+// matchRowLines draws a folder of the list that is shown while a folder is typed: a long path continues on further lines.
+func (m WelcomeModel) matchRowLines(i int) []string {
+	style := m.theme.Equal
+	if i == m.matchSel {
+		style = m.theme.Selected
+	}
+	parts := splitRowLines(" "+sanitize(m.matches[i]), m.width)
+	lines := make([]string, len(parts))
+	for n, part := range parts {
+		lines[n] = style.Render(padRight(part, m.width))
+	}
+	return lines
+}
+
+// entryRowLines draws a project of the list: name and folder, and when it was opened at the end of the first line. A long folder continues
+// on further lines.
+func (m WelcomeModel) entryRowLines(i int) []string {
 	entry := m.entries[i]
 	style := m.theme.Equal
 	if i == m.selected {
 		style = m.theme.Selected
 	}
-	name := sanitize(filepath.Base(entry.Path))
 	age := relativeTime(entry.LastOpened)
-	room := max(m.width-runewidth.StringWidth(name)-runewidth.StringWidth(age)-6, 4)
-	path := runewidth.Truncate(sanitize(entry.Path), room, "…")
-	left := fmt.Sprintf(" %s  %s", name, path)
-	gap := max(m.width-runewidth.StringWidth(left)-runewidth.StringWidth(age)-1, 1)
-	return style.Render(padRight(left+strings.Repeat(" ", gap)+age+" ", m.width))
+	left := fmt.Sprintf(" %s  %s", sanitize(filepath.Base(entry.Path)), sanitize(entry.Path))
+	parts := splitRowLines(left, max(m.width-runewidth.StringWidth(age)-2, 1))
+	lines := make([]string, len(parts))
+	for n, part := range parts {
+		text := padRight(part, max(m.width-runewidth.StringWidth(age)-2, 0)) + " "
+		if n == 0 {
+			text += age + " "
+		} else {
+			text += strings.Repeat(" ", runewidth.StringWidth(age)+1)
+		}
+		lines[n] = style.Render(padRight(text, m.width))
+	}
+	return lines
 }
 
 // relativeTime says how long ago a project was opened.

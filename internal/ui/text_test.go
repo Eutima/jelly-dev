@@ -10,46 +10,41 @@ import (
 	"github.com/eutima/jelly-dev/internal/diff"
 )
 
-func TestLayoutText_MarksHighlightedSegments_WhenSpansGiven(t *testing.T) {
-	got := layoutText("let foo = 1", []diff.Span{{Start: 4, End: 7}}, nil, nil, 40)
+func TestSegments_MarkHighlight_WhenSpansGiven(t *testing.T) {
+	got := groupSegments(displayCells("let foo = 1", []diff.Span{{Start: 4, End: 7}}, nil, nil))
 	want := []segment{{text: "let "}, {text: "foo", highlight: true}, {text: " = 1"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }
 
-func TestLayoutText_KeepsHighlightOnRightRunes_WhenTabPrecedesSpan(t *testing.T) {
-	got := layoutText("\tfoo", []diff.Span{{Start: 1, End: 4}}, nil, nil, 40)
+func TestSegments_KeepHighlightOnRightRunes_WhenTabPrecedesSpan(t *testing.T) {
+	got := groupSegments(displayCells("\tfoo", []diff.Span{{Start: 1, End: 4}}, nil, nil))
 	want := []segment{{text: "    "}, {text: "foo", highlight: true}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }
 
-func TestLayoutText_AddsEllipsis_WhenTextTooLong(t *testing.T) {
-	got := layoutText("abcdefghij", nil, nil, nil, 5)
-	if len(got) != 2 || got[0].text != "abcd" || got[1].text != "…" {
-		t.Fatalf("got %+v", got)
-	}
-}
-
-func TestLayoutText_ReturnsNothing_WhenWidthIsZero(t *testing.T) {
-	if got := layoutText("abc", nil, nil, nil, 0); got != nil {
-		t.Fatalf("got %+v", got)
-	}
-}
-
-func TestRenderText_PadsToWidth_WhenTextShort(t *testing.T) {
+func TestRenderSyntaxLines_WrapsWithoutCutting_WhenTextTooLong(t *testing.T) {
 	base := lipgloss.NewStyle()
-	if got := lipgloss.Width(renderText("ab", nil, 10, base, base)); got != 10 {
-		t.Fatalf("width %d", got)
+	lines := renderSyntaxLines("abcdefghij", nil, nil, nil, 5, base, base)
+	if len(lines) != 2 {
+		t.Fatalf("got %d lines, want 2", len(lines))
+	}
+	for _, line := range lines {
+		if lipgloss.Width(line) != 5 || strings.Contains(line, "…") {
+			t.Errorf("line %q is cut or not 5 wide", line)
+		}
 	}
 }
 
-func TestRenderText_FitsWidth_WhenWideRunesDoNotFitExactly(t *testing.T) {
+func TestRenderSyntaxLines_FitsWidth_WhenWideRunesDoNotFitExactly(t *testing.T) {
 	base := lipgloss.NewStyle()
-	if got := lipgloss.Width(renderText("日本語日本語", nil, 6, base, base)); got != 6 {
-		t.Fatalf("width %d", got)
+	for _, line := range renderSyntaxLines("日本語日本語", nil, nil, nil, 5, base, base) {
+		if got := lipgloss.Width(line); got != 5 {
+			t.Fatalf("width %d", got)
+		}
 	}
 }
 

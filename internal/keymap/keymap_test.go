@@ -14,13 +14,13 @@ func parse(t *testing.T, text string) ([]Assignment, []Problem) {
 }
 
 func TestParse_ReadsCommandsKeysCommentsAndNone(t *testing.T) {
-	got, problems := parse(t, "# comment\n\ntabs = ctrl+J   # inline\nterminal = alt+x, F4\ndiff = none\nmerge.ours = Alt+o\nmerge.wrap = space\n")
+	got, problems := parse(t, "# comment\n\ntabs = ctrl+J   # inline\nterminal = alt+x, F4\ndiff = none\nmerge.ours = Alt+o\nmerge.both = space\n")
 	if len(problems) != 0 {
 		t.Fatalf("problems: %v", problems)
 	}
 	want := []Assignment{
 		{Tabs, []Sequence{{"ctrl+j"}}, 3}, {Terminal, []Sequence{{"alt+x"}, {"f4"}}, 4}, {Diff, nil, 5},
-		{MergeOurs, []Sequence{{"alt+o"}}, 6}, {MergeWrap, []Sequence{{" "}}, 7},
+		{MergeOurs, []Sequence{{"alt+o"}}, 6}, {MergeBoth, []Sequence{{" "}}, 7},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v\nwant %+v", got, want)
@@ -179,7 +179,7 @@ func TestLoad_ReadsHomeThenConfigDirThenProjectAndReportsProblems(t *testing.T) 
 }
 
 func TestRender_ListsEveryCommandWithItsSourceAndParsesBackToTheSameMapping(t *testing.T) {
-	a, _ := parse(t, "tabs = ctrl+j, alt+j\ndiff = none\nmerge.wrap = comma\nmerge.pane = hash\nvim.top = - t, ctrl+home\nvim.definition = space d\nvim.right = l, right\ninsert.complete = ctrl+space, f3\n")
+	a, _ := parse(t, "tabs = ctrl+j, alt+j\ndiff = none\nmerge.both = comma\nmerge.pane = hash\nvim.top = - t, ctrl+home\nvim.definition = space d\nvim.right = l, right\ninsert.complete = ctrl+space, f3\n")
 	m, _ := Default().Apply(a, "~/.jdrc")
 	text := m.Render()
 	for _, want := range []string{"# ide:", "# merge:", "# diff:", "tabs", "= ctrl+j, alt+j", "# ~/.jdrc:1: switch tab", "diff", "= none", "= comma", "= hash", "= - t, ctrl+home", "= space d", "= ctrl+space, f3", "# default: show the command palette"} {

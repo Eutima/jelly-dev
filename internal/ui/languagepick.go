@@ -112,7 +112,7 @@ func (m ProjectModel) languageAdded(msg languageAddedMsg) (tea.Model, tea.Cmd) {
 		var missing *tools.MissingRuntimeError
 		switch {
 		case r.Err != nil:
-			failed = append(failed, r.Tool+" ("+shorten(r.Err.Error(), 60)+")")
+			failed = append(failed, r.Tool+" ("+oneLine(r.Err.Error())+")")
 			if errors.As(r.Err, &missing) {
 				runtimeMissing = true
 			}

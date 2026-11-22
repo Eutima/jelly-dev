@@ -142,14 +142,7 @@ func (m *DirMergeModel) openSelected() {
 }
 
 func (m *DirMergeModel) ensureVisible() {
-	body := m.bodyHeight()
-	if m.selected < m.listTop {
-		m.listTop = m.selected
-	}
-	if m.selected >= m.listTop+body {
-		m.listTop = m.selected - body + 1
-	}
-	m.listTop = max(m.listTop, 0)
+	m.listTop = scrollToShow(m.selected, m.listTop, m.bodyHeight(), len(m.files), func(row int) int { return len(m.fileRowLines(row)) })
 }
 
 // View implements tea.Model.
@@ -163,18 +156,20 @@ func (m DirMergeModel) View() string {
 	title := fmt.Sprintf(" Merge %s ← %s   %d files, %d merged", sanitize(m.leftLabel), sanitize(m.rightLabel),
 		len(m.files), m.MergedCount())
 	lines := []string{m.theme.Header.Render(padRight(title, m.width))}
-	for row := 0; row < m.bodyHeight(); row++ {
-		if index := m.listTop + row; index < len(m.files) {
-			lines = append(lines, m.fileRow(index))
-		} else {
-			lines = append(lines, strings.Repeat(" ", m.width))
-		}
+	body := m.bodyHeight()
+	for index := m.listTop; index < len(m.files) && len(lines) <= body; index++ {
+		lines = append(lines, m.fileRowLines(index)...)
+	}
+	lines = lines[:min(len(lines), body+1)]
+	for len(lines) <= body {
+		lines = append(lines, strings.Repeat(" ", m.width))
 	}
 	lines = append(lines, m.footerLines()...)
 	return strings.Join(lines, "\n")
 }
 
-func (m DirMergeModel) fileRow(index int) string {
+// fileRowLines draws the row of a file: a long name continues on further lines.
+func (m DirMergeModel) fileRowLines(index int) []string {
 	file := m.files[index]
 	style := m.theme.Equal
 	if index == m.selected {
@@ -193,15 +188,25 @@ func (m DirMergeModel) fileRow(index int) string {
 	}
 	status := m.theme.statusStyle(file.Status).Inherit(style).Render(" " + string(rune(file.Status)) + " ")
 	const statusWidth, markWidth = 3, 2
-	text := renderText(label, nil, max(m.width-statusWidth-markWidth, 0), style, style)
-	return status + text + style.Render(mark)
+	parts := splitRowLines(label, max(m.width-statusWidth-markWidth, 1))
+	lines := make([]string, len(parts))
+	for i, part := range parts {
+		text := style.Render(padRight(part, max(m.width-statusWidth-markWidth, 0)))
+		switch {
+		case i == 0:
+			lines[i] = status + text + style.Render(mark)
+		default:
+			lines[i] = style.Render(strings.Repeat(" ", statusWidth)) + text + style.Render(strings.Repeat(" ", markWidth))
+		}
+	}
+	return lines
 }
 
 // footerLines are the lines at the bottom: the message of the last action, or the keys; both wrap instead of being cut off.
 func (m DirMergeModel) footerLines() []string {
 	if m.status != "" {
 		// the status can contain file names and error texts: sanitize strips control characters
-		return messageLines(sanitize(m.status), m.width, footerMax, m.theme.Footer)
+		return messageLines(sanitize(m.status), m.width, messageCap(m.height), m.theme.Footer)
 	}
 	return renderRowLines(m.footerRows(), m.width, m.theme.Footer)
 }

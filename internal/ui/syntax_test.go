@@ -171,12 +171,12 @@ func TestHighlightLines_KeepsLaterLinesAligned_WhenLineContainsLoneCarriageRetur
 	}
 }
 
-func TestRenderSyntaxText_KeepsWordStyle_WhenChangedWordIsAlsoKeyword(t *testing.T) {
+func TestRenderSyntaxLines_KeepsWordStyle_WhenChangedWordIsAlsoKeyword(t *testing.T) {
 	t.Parallel()
 	theme := trueColorTheme(t, config.ThemeDark)
 	spans := highlightLines([]string{"a.go"}, []string{"func f() {}"})
 	word := theme.ModifiedWord
-	out := renderSyntaxText("func f() {}", []diff.Span{{Start: 0, End: 4}}, spans[0], theme.painter, 20, theme.Modified, word)
+	out := renderSyntaxLines("func f() {}", []diff.Span{{Start: 0, End: 4}}, spans[0], theme.painter, 20, theme.Modified, word)[0]
 	if !strings.Contains(out, "48;2;63;103;165") {
 		t.Fatalf("changed word must keep its background: %q", out)
 	}

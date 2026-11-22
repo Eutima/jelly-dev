@@ -37,7 +37,6 @@ merge.edit       = e, enter               # default: edit the change under the c
 merge.insert     = i                      # default: insert a line below the cursor
 merge.delete     = d                      # default: delete the line under the cursor
 merge.undo       = u                      # default: undo
-merge.wrap       = w                      # default: wrap or cut long lines
 merge.pane       = v                      # default: switch the shown pane on a narrow terminal
 merge.save       = ctrl+s, s              # default: save the result
 merge.quit       = q, esc, ctrl+c, ctrl+d # default: quit

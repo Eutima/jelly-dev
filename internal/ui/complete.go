@@ -234,12 +234,8 @@ func bufferWords(lines []string, typed string) []lsp.CompletionItem {
 func (m *EditorModel) moveCompletion(step int) {
 	state := m.completion
 	state.sel = (state.sel + step + len(state.items)) % len(state.items)
-	if state.sel < state.top {
-		state.top = state.sel
-	}
-	if state.sel >= state.top+maxCompletionRows {
-		state.top = state.sel - maxCompletionRows + 1
-	}
+	width := m.completionWidth(m.textWidth())
+	state.top = scrollToShow(state.sel, state.top, maxCompletionRows, len(state.items), func(row int) int { return len(m.completionItemLines(row, width)) })
 }
 
 // acceptCompletion puts the selected suggestion into the text.
@@ -281,24 +277,33 @@ func (m EditorModel) completionKey(key string) (EditorModel, bool) {
 	return m, true
 }
 
-// completionLines draws the popup: one string of exactly width columns per row.
+// completionLines draws the popup: one string of exactly width columns per row. A suggestion that is longer than the popup continues on
+// further rows.
 func (m EditorModel) completionLines(width int) []string {
 	state := m.completion
-	shown := state.items[state.top:min(len(state.items), state.top+maxCompletionRows)]
+	lines, _ := drawRows(state.top, len(state.items), maxCompletionRows, func(row int) []string { return m.completionItemLines(row, width) })
+	return lines
+}
+
+// completionItemLines draws one suggestion: the label, then what the server says about it (or the kind), wrapped at the width of the popup.
+func (m EditorModel) completionItemLines(index, width int) []string {
+	state := m.completion
+	item := state.items[index]
 	labelWidth := 0
-	for _, item := range shown {
-		labelWidth = max(labelWidth, runewidth.StringWidth(sanitize(item.Label)))
+	for _, shown := range state.items[state.top:min(len(state.items), state.top+maxCompletionRows)] {
+		labelWidth = max(labelWidth, runewidth.StringWidth(sanitize(shown.Label)))
 	}
-	lines := make([]string, 0, len(shown))
-	for i, item := range shown {
-		style := m.completionRowStyle(state.top+i == state.sel)
-		label := sanitize(item.Label)
-		extra := sanitize(item.Detail)
-		if extra == "" {
-			extra = lsp.KindName(item.Kind)
-		}
-		text := " " + label + strings.Repeat(" ", labelWidth-runewidth.StringWidth(label)) + "  " + extra
-		lines = append(lines, style.Render(padRight(runewidth.Truncate(text, width, "…"), width)))
+	label := sanitize(item.Label)
+	extra := sanitize(item.Detail)
+	if extra == "" {
+		extra = lsp.KindName(item.Kind)
+	}
+	text := " " + label + strings.Repeat(" ", max(labelWidth-runewidth.StringWidth(label), 0)) + "  " + extra
+	style := m.completionRowStyle(index == state.sel)
+	parts := splitRowLines(text, width)
+	lines := make([]string, len(parts))
+	for i, part := range parts {
+		lines[i] = style.Render(padRight(part, width))
 	}
 	return lines
 }

@@ -404,16 +404,16 @@ func TestMergeView_WrapsLongLines_WhenWrapOn(t *testing.T) {
 	}
 }
 
-func TestMergeView_CutsLongLines_WhenWrapToggledOff(t *testing.T) {
+func TestMergeView_WrapsLongLinesAndNeverCutsThem(t *testing.T) {
 	long := strings.Repeat("0123456789", 12)
 	model, _, _ := editModel(t, "a\n"+long+"\n", "a\n"+long+"\n", "a\n"+long+"\n")
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
-	model = mergePress(updated.(MergeModel), "w")
-	if view := plainView(model); !strings.Contains(view, "…") {
-		t.Fatalf("lines must be cut with w off:\n%s", view)
+	view := plainView(mergePress(updated.(MergeModel), "w")) // the old key to cut lines does nothing
+	if strings.Contains(view, "…") {
+		t.Fatalf("a line is cut:\n%s", view)
 	}
-	if view := plainView(mergePress(model, "w")); strings.Contains(view, "…") {
-		t.Fatalf("w must switch wrapping on again:\n%s", view)
+	if got := strings.Count(strings.ReplaceAll(view, "\n", ""), "9"); got < 12*3 {
+		t.Fatalf("part of the long line is missing (%d nines of %d):\n%s", got, 12*3, view)
 	}
 }
 

@@ -210,7 +210,7 @@ func (m MergeModel) View() string {
 			if pane == paneResult && i == m.cursor && cell.Kind != CellFiller {
 				cell.Kind = CellCursor
 			}
-			cells[pane] = m.theme.renderCellLines(cell, numWidth, widths[pane], height, !m.noWrap)
+			cells[pane] = m.theme.renderCellLines(cell, numWidth, widths[pane], height)
 		}
 		for line := 0; line < height && drawn < body; line++ {
 			out.WriteString(m.marker(i, row, line > 0))
@@ -243,9 +243,6 @@ func (m MergeModel) numWidth() int { return len(fmt.Sprint(max(len(m.rows), 1)))
 
 // rowHeight is the number of screen lines a row takes: one, or with wrapping the most lines any shown pane needs.
 func (m MergeModel) rowHeight(i int, panes []int, widths [mergePanes]int, numWidth int) int {
-	if m.noWrap {
-		return 1
-	}
 	height := 1
 	for _, pane := range panes {
 		cell := m.rows[i].cells[pane]
@@ -450,7 +447,9 @@ func (m MergeModel) footerMaxLines() int {
 func (m MergeModel) actionRows() []*bar {
 	footer := m.theme.Footer
 	maxLines := m.footerMaxLines()
-	text := func(text string, style lipgloss.Style) []*bar { return textRows(text, m.width, maxLines, style) }
+	text := func(text string, style lipgloss.Style) []*bar {
+		return textRows(text, m.width, messageCap(m.height), style)
+	}
 	switch {
 	case m.editing && m.status == "":
 		return text(m.editingStatus(), m.theme.Header)

@@ -28,7 +28,6 @@ const (
 	minProjectWidth  = 50 // narrower terminals show only the focused pane
 	treeHeaderLines  = 1  // the folder name above the tree
 	treeFooterBars   = 2  // the hint line wraps to at most this many lines
-	treeMessageMax   = 3  // a long message wraps to at most this many lines
 	topBarHeight     = 1  // the bar with the project, terminal and diff buttons
 	focusTree        = 0
 	focusProjectEdit = 1
@@ -277,7 +276,7 @@ func (m ProjectModel) treeFooterWidth() int {
 // off), else the hints, wrapped onto a second line when they do not fit.
 func (m ProjectModel) treeFooterRows(width int) []string {
 	wrapped := func(text string, style lipgloss.Style) []string {
-		lines := wrapWords(sanitize(text), max(width-1, 1), treeMessageMax)
+		lines := wrapWords(sanitize(text), max(width-1, 1), messageCap(m.height))
 		rows := make([]string, len(lines))
 		for i, line := range lines {
 			rows[i] = style.Render(padRight(" "+line, width))
@@ -835,7 +834,7 @@ func (m ProjectModel) newWindow(dir string) (tea.Model, tea.Cmd) {
 		// no terminal to open a window in (a container, an ssh session): this window shows the project instead
 		next, cmd := m.switchProject(dir, false)
 		if got, ok := next.(ProjectModel); ok && got.root != m.root {
-			got.status, got.warn = "No new window possible ("+shorten(err.Error(), 60)+"): opened here", false
+			got.status, got.warn = "No new window possible ("+oneLine(err.Error())+"): opened here", false
 			return got, cmd
 		}
 		return next, cmd

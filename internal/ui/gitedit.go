@@ -272,13 +272,16 @@ func (m *GitModel) saveEditor() bool {
 
 func (m GitModel) editorFooterRows() []*bar {
 	status := m.editorStatus()
-	rows := textRows(status, m.width, 1, m.theme.Header)
+	rows := textRows(status, m.width, messageCap(m.height), m.theme.Header)
 	return append(rows, m.editorBar().wrap(m.width, footerMax)...)
 }
 
-// editorBodyHeight is the number of text lines of the editor: the status line is always one line high.
+// editorBodyHeight is the number of text lines of the editor: the status wraps onto more lines when it is long.
 func (m GitModel) editorBodyHeight() int {
-	return max(m.height-headerLines-1-len(m.editorBar().wrap(m.width, footerMax)), 1)
+	if m.editor == nil { // the editor is about to open: its status takes one line
+		return max(m.height-headerLines-1-len(m.editorBar().wrap(m.width, footerMax)), 1)
+	}
+	return max(m.height-headerLines-len(m.editorFooterRows()), 1)
 }
 
 func (m GitModel) editorStatus() string {

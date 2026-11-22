@@ -20,7 +20,6 @@ import (
 const (
 	editorTabLines   = 1 // the tab line
 	editorFooterRows = 2 // the status line wraps to at most this many lines
-	editorMessageMax = 3 // a long message wraps to at most this many lines
 	editorScrollOff  = 3
 )
 
@@ -717,16 +716,16 @@ func (m EditorModel) popupPlacement() (lines []string, firstRow, x, width int) {
 func (m EditorModel) messageRows() []string {
 	width := max(m.width, 1)
 	wrapped := func(text string, style lipgloss.Style) []string {
-		return messageLines(text, width, editorMessageMax, style)
+		return messageLines(text, width, messageCap(m.height), style)
 	}
 	if m.nano != nil {
 		if row, open := nanoPromptRow(m.nano); open {
-			return []string{renderText(row, nil, width, m.theme.Equal, m.theme.Equal)}
+			return m.wrappedPromptRows(row, width)
 		}
 	}
 	switch {
 	case m.vim.Mode() == vimbuf.Command:
-		return []string{renderText(m.vim.CommandPrefix()+m.vim.CommandLine(), nil, width, m.theme.Equal, m.theme.Equal)}
+		return m.wrappedPromptRows(m.vim.CommandPrefix()+m.vim.CommandLine(), width)
 	case m.hover != "":
 		return m.hoverRows(width)
 	case m.ambient != "" && m.status == "" && m.completion == nil:
@@ -741,4 +740,18 @@ func (m EditorModel) messageRows() []string {
 		return []string{m.theme.Equal.Render(padRight(" "+m.vim.Pending()+m.resolver.Pending(), width))}
 	}
 	return []string{lipgloss.NewStyle().Render(strings.Repeat(" ", width))}
+}
+
+// wrappedPromptRows draws the command line or a question: a long text continues on the next rows (the last ones, up to messageCap, when it is
+// longer than that) instead of being cut off.
+func (m EditorModel) wrappedPromptRows(text string, width int) []string {
+	parts := splitRowLines(sanitize(text), max(width, 1))
+	if limit := messageCap(m.height); len(parts) > limit {
+		parts = parts[len(parts)-limit:] // the end is where the cursor is
+	}
+	rows := make([]string, len(parts))
+	for i, part := range parts {
+		rows[i] = m.theme.Equal.Render(padRight(part, width))
+	}
+	return rows
 }

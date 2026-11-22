@@ -12,9 +12,6 @@ import (
 	"github.com/eutima/jelly-dev/internal/vimbuf"
 )
 
-// hoverMaxLines is how many lines the documentation of a symbol takes above the status line.
-const hoverMaxLines = 10
-
 // hoverDelay is how long the mouse pointer rests on a symbol before its documentation is asked for.
 const hoverDelay = 500 * time.Millisecond
 
@@ -103,31 +100,23 @@ func (m EditorModel) handleHoverResult(msg hoverResultMsg) EditorModel {
 	return m
 }
 
-// hoverRows are the lines of the documentation, wrapped at the spaces, at most hoverMaxLines; what does not fit ends with "…".
+// hoverCap is the most lines the documentation takes: two thirds of the window, so that some of the text stays in view.
+func hoverCap(height int) int { return max(height*2/3, 3) }
+
+// hoverRows are the lines of the documentation, wrapped at the spaces; a text longer than hoverCap lines stops there (without a marker).
 func (m EditorModel) hoverRows(width int) []string {
+	limit := hoverCap(m.height)
 	var lines []string
-	truncated := false
 	for _, source := range strings.Split(m.hover, "\n") {
-		source = sanitize(source)
-		if len(lines) >= hoverMaxLines {
-			truncated = true
+		if len(lines) >= limit {
 			break
 		}
+		source = sanitize(source)
 		if strings.TrimSpace(source) == "" {
 			lines = append(lines, "")
 			continue
 		}
-		wrapped := wrapWords(source, max(width, 2)-1, hoverMaxLines-len(lines))
-		lines = append(lines, wrapped...)
-		if len(lines) >= hoverMaxLines && strings.HasSuffix(wrapped[len(wrapped)-1], "…") {
-			truncated = true
-		}
-	}
-	if len(lines) > hoverMaxLines {
-		lines, truncated = lines[:hoverMaxLines], true
-	}
-	if truncated && !strings.HasSuffix(lines[len(lines)-1], "…") {
-		lines[len(lines)-1] += "…"
+		lines = append(lines, wrapWords(source, max(width, 2)-1, limit-len(lines))...)
 	}
 	rows := make([]string, len(lines))
 	for i, line := range lines {

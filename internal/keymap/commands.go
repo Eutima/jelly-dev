@@ -79,7 +79,6 @@ const (
 	MergeInsert     Command = "merge.insert"
 	MergeDelete     Command = "merge.delete"
 	MergeUndo       Command = "merge.undo"
-	MergeWrap       Command = "merge.wrap"
 	MergePane       Command = "merge.pane"
 	MergeSave       Command = "merge.save"
 	MergeQuit       Command = "merge.quit"
@@ -244,7 +243,6 @@ var definitions = []definition{
 	{MergeInsert, ScopeMerge, "insert a line below the cursor", []string{"i"}},
 	{MergeDelete, ScopeMerge, "delete the line under the cursor", []string{"d"}},
 	{MergeUndo, ScopeMerge, "undo", []string{"u"}},
-	{MergeWrap, ScopeMerge, "wrap or cut long lines", []string{"w"}},
 	{MergePane, ScopeMerge, "switch the shown pane on a narrow terminal", []string{"v"}},
 	{MergeSave, ScopeMerge, "save the result", []string{"ctrl+s", "s"}},
 	{MergeQuit, ScopeMerge, "quit", []string{"q", "esc", "ctrl+c", "ctrl+d"}},

@@ -107,7 +107,7 @@ func (m SearchModel) Files() []string {
 }
 
 func (m SearchModel) bodyHeight() int {
-	return max(m.height-searchTop-searchAir-len(m.footerRows()), 1)
+	return max(m.height-searchTop-(len(m.inputRows())-1)-searchAir-len(m.footerRows()), 1)
 }
 
 // footerRows are the hints as wrapped bars.
@@ -331,14 +331,7 @@ func (m SearchModel) choose() (SearchModel, tea.Cmd) {
 }
 
 func (m *SearchModel) keepVisible() {
-	body := m.bodyHeight()
-	if m.sel < m.top {
-		m.top = m.sel
-	}
-	if m.sel >= m.top+body {
-		m.top = m.sel - body + 1
-	}
-	m.top = max(m.top, 0)
+	m.top = scrollToShow(m.sel, m.top, m.bodyHeight(), m.resultCount(), func(row int) int { return len(m.resultRowLines(row)) })
 }
 
 func (m SearchModel) handleMouse(msg tea.MouseMsg) (SearchModel, tea.Cmd) {
@@ -361,8 +354,9 @@ func (m SearchModel) handleMouse(msg tea.MouseMsg) (SearchModel, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if row := m.top + msg.Y - 2; msg.Y >= 2 && msg.Y < 2+m.bodyHeight() && row < m.resultCount() {
-			m.sel = row
+		first := 1 + len(m.inputRows()) // the title and the input
+		if _, rowOf := drawRows(m.top, m.resultCount(), m.bodyHeight(), m.resultRowLines); msg.Y >= first && msg.Y-first < len(rowOf) {
+			m.sel = rowOf[msg.Y-first]
 			return m.choose()
 		}
 	}
@@ -411,20 +405,16 @@ func (m SearchModel) View() string {
 		return m.theme.Header.Render(" " + label + " ")
 	}
 	title := tab("Files", m.mode == searchFiles) + tab("Text", m.mode == searchText) + m.theme.Header.Render(padRight("  search the project", max(m.width-14, 0)))
-	lines := []string{title, m.inputLine()}
+	lines := append([]string{title}, m.inputRows()...)
 	body := m.bodyHeight()
-	for y := 0; y < body; y++ {
-		i := m.top + y
-		if i < m.resultCount() {
-			lines = append(lines, m.resultRow(i))
-			continue
-		}
-		if i == 0 {
-			lines = append(lines, m.theme.Equal.Faint(true).Render(padRight(" "+m.emptyMessage(), m.width)))
-			continue
-		}
-		lines = append(lines, strings.Repeat(" ", m.width))
+	shown, _ := drawRows(m.top, m.resultCount(), body, m.resultRowLines)
+	if m.resultCount() == 0 {
+		shown = []string{m.theme.Equal.Faint(true).Render(padRight(" "+m.emptyMessage(), m.width))}
 	}
+	for len(shown) < body {
+		shown = append(shown, strings.Repeat(" ", m.width))
+	}
+	lines = append(lines, shown...)
 	lines = append(lines, strings.Repeat(" ", m.width))
 	lines = append(lines, renderRowLines(m.footerRows(), m.width, m.theme.Footer)...)
 	return strings.Join(lines[:min(len(lines), m.height)], "\n")
@@ -444,7 +434,8 @@ func (m SearchModel) emptyMessage() string {
 	return "No match"
 }
 
-func (m SearchModel) inputLine() string {
+// inputRows draws the input line: the status stays at the end of the first row, a long query continues on further rows.
+func (m SearchModel) inputRows() []string {
 	status := ""
 	switch {
 	case m.mode == searchFiles && m.filesLoaded:
@@ -468,12 +459,21 @@ func (m SearchModel) inputLine() string {
 	}
 	left := " > " + string(m.input) + "█"
 	room := max(m.width-runewidth.StringWidth(status)-2, 4)
-	left = runewidth.Truncate(sanitize(left), room, "…")
-	gap := max(m.width-runewidth.StringWidth(left)-runewidth.StringWidth(status)-1, 1)
-	return m.theme.Equal.Render(padRight(left+strings.Repeat(" ", gap)+status+" ", m.width))
+	parts := splitRowLines(sanitize(left), room)
+	rows := make([]string, len(parts))
+	for i, part := range parts {
+		text := part
+		if i == 0 {
+			gap := max(m.width-runewidth.StringWidth(part)-runewidth.StringWidth(status)-1, 1)
+			text += strings.Repeat(" ", gap) + status + " "
+		}
+		rows[i] = m.theme.Equal.Render(padRight(text, m.width))
+	}
+	return rows
 }
 
-func (m SearchModel) resultRow(i int) string {
+// resultRowLines draws a result: a long name or line continues on further rows, nothing is cut off.
+func (m SearchModel) resultRowLines(i int) []string {
 	style := m.theme.Equal
 	if i == m.sel {
 		style = m.theme.Selected
@@ -484,52 +484,77 @@ func (m SearchModel) resultRow(i int) string {
 		if cut := strings.LastIndexByte(path, '/'); cut >= 0 {
 			dir, name = path[:cut+1], path[cut+1:]
 		}
-		text := " " + sanitize(name) + "  " + sanitize(dir)
-		return style.Render(padRight(text, m.width))
+		parts := splitRowLines(" "+sanitize(name)+"  "+sanitize(dir), m.width)
+		lines := make([]string, len(parts))
+		for n, part := range parts {
+			lines[n] = style.Render(padRight(part, m.width))
+		}
+		return lines
 	}
 	match := m.textResults[i]
 	prefix := fmt.Sprintf(" %s:%d  ", sanitize(match.Path), match.Row+1)
-	room := max(m.width-runewidth.StringWidth(prefix), 1)
 	line := []rune(strings.ReplaceAll(match.Text, "\t", "    "))
-	start := match.Col - match.Offset
-	if !strings.Contains(match.Text, "\t") {
-		// show the match even when it is far to the right: drop the start of the line
-		if skip := start + match.Length - room + 4; skip > 0 && skip < len(line) {
-			line, start = append([]rune("…"), line[skip:]...), start-skip+1
-		}
-	}
-	return m.renderMatchRow(prefix, line, start, match.Length, room, style, i == m.sel)
+	return m.matchRowLines(prefix, line, match.Col-match.Offset, match.Length, style, i == m.sel)
 }
 
-func (m SearchModel) renderMatchRow(prefix string, line []rune, start, length, room int, style lipgloss.Style, selected bool) string {
-	before, hit, after := "", "", ""
-	if start >= 0 && start <= len(line) {
-		end := min(start+length, len(line))
-		before, hit, after = string(line[:start]), string(line[start:end]), string(line[end:])
-	} else {
-		before = string(line)
-	}
-	text := runewidth.Truncate(sanitize(before)+sanitize(hit)+sanitize(after), room, "")
-	// the match keeps its own look, the rest of the row the row's
+// matchRowLines draws a matching line after its prefix, wrapped to the width of the window; the match keeps its own look, the rest of the
+// row the row's. The continuation rows start under the text.
+func (m SearchModel) matchRowLines(prefix string, line []rune, start, length int, style lipgloss.Style, selected bool) []string {
 	hitStyle := m.theme.ModifiedWord.Bold(true)
 	if selected {
 		hitStyle = style.Bold(true).Underline(true)
 	}
-	b, h := sanitize(before), sanitize(hit)
-	used := 0
+	prefixWidth := runewidth.StringWidth(prefix)
+	room := max(m.width-prefixWidth, 1)
+	hitFrom, hitTo := -1, -1
+	if start >= 0 && start <= len(line) {
+		hitFrom, hitTo = start, min(start+length, len(line))
+	}
+	var lines []string
 	var out strings.Builder
-	out.WriteString(style.Faint(!selected).Render(prefix))
-	for _, part := range []struct {
-		text  string
-		style lipgloss.Style
-	}{{b, style}, {h, hitStyle}, {sanitize(after), style}} {
-		piece := runewidth.Truncate(part.text, max(room-used, 0), "")
-		out.WriteString(part.style.Render(piece))
-		used += runewidth.StringWidth(piece)
+	used := 0
+	flush := func() {
+		lead := strings.Repeat(" ", prefixWidth)
+		rendered := style.Render(lead)
+		if len(lines) == 0 {
+			rendered = style.Faint(!selected).Render(prefix)
+		}
+		if pad := room - used; pad > 0 {
+			out.WriteString(style.Render(strings.Repeat(" ", pad)))
+		}
+		lines = append(lines, rendered+out.String())
+		out.Reset()
+		used = 0
 	}
-	_ = text
-	if pad := room - used; pad > 0 {
-		out.WriteString(style.Render(strings.Repeat(" ", pad)))
+	var piece strings.Builder
+	pieceStyle, pieceHit := style, false
+	endPiece := func() {
+		if piece.Len() > 0 {
+			out.WriteString(pieceStyle.Render(piece.String()))
+			piece.Reset()
+		}
 	}
-	return out.String()
+	for index, r := range line {
+		current, inHit := style, index >= hitFrom && index < hitTo
+		if inHit {
+			current = hitStyle
+		}
+		cell := sanitize(string(r))
+		width := runewidth.StringWidth(cell)
+		if used+width > room && used > 0 {
+			endPiece()
+			flush()
+		}
+		if piece.Len() > 0 && inHit != pieceHit {
+			endPiece()
+		}
+		pieceStyle, pieceHit = current, inHit
+		piece.WriteString(cell)
+		used += width
+	}
+	endPiece()
+	if used > 0 || len(lines) == 0 {
+		flush()
+	}
+	return lines
 }

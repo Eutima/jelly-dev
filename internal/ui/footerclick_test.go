@@ -295,7 +295,7 @@ func TestEditor_ClickOnTheSecondFooterLineRunsTheCommand(t *testing.T) {
 	}
 }
 
-func TestWrapWords_BreaksAtSpacesAndCutsLongWordsAndEndsWithEllipsis(t *testing.T) {
+func TestWrapWords_BreaksAtSpacesAndCutsLongWordsIntoPiecesWithoutEllipsis(t *testing.T) {
 	tests := []struct {
 		text       string
 		width, max int
@@ -304,13 +304,13 @@ func TestWrapWords_BreaksAtSpacesAndCutsLongWordsAndEndsWithEllipsis(t *testing.
 		{"hello world", 20, 3, []string{"hello world"}},
 		{"hello big world", 9, 3, []string{"hello big", "world"}},
 		{"abcdefghij", 4, 5, []string{"abcd", "efgh", "ij"}},
-		{"one two three four five six", 8, 2, []string{"one two", "three…"}},
+		{"one two three four five six", 8, 2, []string{"one two", "three"}}, // the limit is a safety cap: no marker
 		{"", 10, 3, []string{""}},
 		{"日本語の テスト", 6, 3, []string{"日本語", "の", "テスト"}},
 		{"日本", 1, 3, []string{"日", "本"}}, // a rune wider than the line is taken whole: the cut makes progress
-		{"日本語", 1, 2, []string{"日", "…"}},
-		{"a b c d e f g", 1, 3, []string{"a", "b", "…"}},
-		{"abc", 1, 1, []string{"…"}},
+		{"日本語", 1, 2, []string{"日", "本"}},
+		{"a b c d e f g", 1, 3, []string{"a", "b", "c"}},
+		{"abc", 1, 1, []string{"a"}},
 	}
 	for _, tt := range tests {
 		if got := wrapWords(tt.text, tt.width, tt.max); !reflect.DeepEqual(got, tt.want) {

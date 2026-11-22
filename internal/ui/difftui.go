@@ -205,8 +205,49 @@ func (m DiffModel) footerRows() []*bar {
 }
 
 func (m *DiffModel) clamp() {
-	maxOffset := max(m.rowCount()-m.bodyHeight(), 0)
-	m.offset = min(max(m.offset, 0), maxOffset)
+	m.offset = min(max(m.offset, 0), m.lastOffset())
+}
+
+// lastOffset is the first row of the last full screen: the rows from there to the end fit in the body (a row takes more than one line
+// when its text is wrapped).
+func (m DiffModel) lastOffset() int {
+	paneWidth, rightWidth, numWidth := m.paneWidths()
+	used := 0
+	for i := m.rowCount() - 1; i >= 0; i-- {
+		used += len(m.rowLines(i, numWidth, paneWidth, rightWidth))
+		if used > m.bodyHeight() {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// paneWidths are the widths of the left and the right pane and of the line number column.
+func (m DiffModel) paneWidths() (paneWidth, rightWidth, numWidth int) {
+	paneWidth = max((m.width-gutterWidth)/2, 0)
+	rightWidth = max(m.width-paneWidth-gutterWidth, 0)
+	numWidth = len(fmt.Sprint(max(len(m.rows), len(m.unified), 1))) + 1
+	return paneWidth, rightWidth, numWidth
+}
+
+// rowLines draws one row as the lines it takes: a long text continues on further lines (only the first carries the line number), nothing is
+// cut off.
+func (m DiffModel) rowLines(i, numWidth, paneWidth, rightWidth int) []string {
+	if m.showUnified {
+		return m.unifiedRowLines(m.unified[i], numWidth)
+	}
+	row := m.rows[i]
+	left := m.theme.renderCellLines(row.Left, numWidth, paneWidth, 1)
+	right := m.theme.renderCellLines(row.Right, numWidth, rightWidth, 1)
+	height := max(len(left), len(right))
+	left = m.theme.padCellLines(row.Left, left, paneWidth, height)
+	right = m.theme.padCellLines(row.Right, right, rightWidth, height)
+	gutter := m.renderGutter(row)
+	lines := make([]string, height)
+	for line := range lines {
+		lines[line] = left[line] + gutter + right[line]
+	}
+	return lines
 }
 
 // View implements tea.Model.
@@ -214,26 +255,23 @@ func (m DiffModel) View() string {
 	if m.width == 0 {
 		return ""
 	}
-	paneWidth := max((m.width-gutterWidth)/2, 0)
-	rightWidth := max(m.width-paneWidth-gutterWidth, 0)
-	numWidth := len(fmt.Sprint(max(len(m.rows), len(m.unified), 1))) + 1
+	paneWidth, rightWidth, numWidth := m.paneWidths()
 
 	var out strings.Builder
 	out.WriteString(m.header(paneWidth, rightWidth))
 	out.WriteByte('\n')
-	end := min(m.offset+m.bodyHeight(), m.rowCount())
-	for i := m.offset; i < end; i++ {
-		if m.showUnified {
-			out.WriteString(m.renderUnifiedRow(m.unified[i], numWidth))
-		} else {
-			row := m.rows[i]
-			out.WriteString(m.theme.renderCell(row.Left, numWidth, paneWidth))
-			out.WriteString(m.renderGutter(row))
-			out.WriteString(m.theme.renderCell(row.Right, numWidth, rightWidth))
+	shown := 0
+	for i := m.offset; i < m.rowCount() && shown < m.bodyHeight(); i++ {
+		for _, line := range m.rowLines(i, numWidth, paneWidth, rightWidth) {
+			if shown == m.bodyHeight() {
+				break
+			}
+			out.WriteString(line)
+			out.WriteByte('\n')
+			shown++
 		}
-		out.WriteByte('\n')
 	}
-	for i := end - m.offset; i < m.bodyHeight(); i++ {
+	for ; shown < m.bodyHeight(); shown++ {
 		out.WriteByte('\n')
 	}
 	out.WriteString(m.footer())
@@ -309,8 +347,8 @@ func (m DiffModel) renderGutter(row Row) string {
 	}
 }
 
-// renderUnifiedRow draws one full-width line of the unified view.
-func (m DiffModel) renderUnifiedRow(row UnifiedRow, numWidth int) string {
+// unifiedRowLines draws one full-width row of the unified view as the lines it takes: the text continues on further lines.
+func (m DiffModel) unifiedRowLines(row UnifiedRow, numWidth int) []string {
 	style := m.theme.styleFor(row.Kind)
 	sign := "  "
 	switch row.Kind {
@@ -326,11 +364,19 @@ func (m DiffModel) renderUnifiedRow(row UnifiedRow, numWidth int) string {
 	}
 	prefixWidth := lipgloss.Width(prefix)
 	if prefixWidth >= m.width {
-		return style.Render(strings.Repeat(" ", m.width))
+		return []string{style.Render(strings.Repeat(" ", m.width))}
 	}
-	text := renderSyntaxText(row.Text, row.Spans, row.Syntax, m.theme.painter, m.width-prefixWidth, style,
+	wrapped := renderSyntaxLines(row.Text, row.Spans, row.Syntax, m.theme.painter, m.width-prefixWidth, style,
 		m.theme.wordStyleFor(row.Kind))
-	return prefixStyle.Background(style.GetBackground()).Render(prefix) + text
+	lines := make([]string, len(wrapped))
+	for i, text := range wrapped {
+		shown := strings.Repeat(" ", prefixWidth)
+		if i == 0 {
+			shown = prefix
+		}
+		lines[i] = prefixStyle.Background(style.GetBackground()).Render(shown) + text
+	}
+	return lines
 }
 
 // number formats a one-based line number into numWidth columns (blank for 0).

@@ -37,53 +37,35 @@ type Theme struct {
 	painter        *syntaxPainter // syntax colors, nil for themes without them
 }
 
-// renderCell draws one pane cell exactly cellWidth columns wide.
-func (t Theme) renderCell(cell Cell, numWidth, cellWidth int) string {
+// renderCellLines draws a pane cell as at least height lines of cellWidth columns. The text continues on further lines when it is longer than
+// the cell (only the first one carries the line number); nothing is cut off.
+func (t Theme) renderCellLines(cell Cell, numWidth, cellWidth, height int) []string {
 	style := t.styleFor(cell.Kind)
-	if cell.Kind == CellFiller {
-		return style.Render(strings.Repeat(" ", cellWidth))
-	}
-	// A pane narrower than the number column drops the number instead of showing a cut-off one.
-	num := numWidth
-	if cellWidth < numWidth {
-		num = 0
-	}
-	textWidth := cellWidth - num
-	number := ""
-	if num > 0 {
-		number = fmt.Sprintf("%*d ", num-1, cell.No)
-	}
-	text := renderSyntaxText(cell.Text, cell.Spans, cell.Syntax, t.painter, textWidth, style, t.wordStyleFor(cell.Kind))
-	return t.LineNumber.Background(style.GetBackground()).Render(number) + text
-}
-
-// renderCellLines draws a pane cell as exactly height lines of cellWidth columns. With wrap the text continues on
-// further lines (only the first one carries the line number); without it the text is cut with "…".
-func (t Theme) renderCellLines(cell Cell, numWidth, cellWidth, height int, wrap bool) []string {
-	style := t.styleFor(cell.Kind)
-	blank := style.Render(strings.Repeat(" ", cellWidth))
 	var lines []string
-	switch {
-	case cell.Kind == CellFiller:
-	case !wrap:
-		lines = []string{t.renderCell(cell, numWidth, cellWidth)}
-	default:
+	if cell.Kind != CellFiller {
 		num := numWidth
 		if cellWidth < numWidth {
-			num = 0
-		}
-		wrapped := renderSyntaxLines(cell.Text, cell.Spans, cell.Syntax, t.painter, cellWidth-num, style, t.wordStyleFor(cell.Kind))
-		for i, text := range wrapped {
-			number := strings.Repeat(" ", num)
-			if i == 0 && num > 0 {
-				number = fmt.Sprintf("%*d ", num-1, cell.No)
-			}
-			lines = append(lines, t.LineNumber.Background(style.GetBackground()).Render(number)+text)
+			num = 0 // a pane narrower than the number column drops the number
 		}
 		if cellWidth-num <= 0 {
-			lines = []string{t.renderCell(cell, numWidth, cellWidth)}
+			lines = []string{strings.Repeat(" ", cellWidth)}
+		} else {
+			wrapped := renderSyntaxLines(cell.Text, cell.Spans, cell.Syntax, t.painter, cellWidth-num, style, t.wordStyleFor(cell.Kind))
+			for i, text := range wrapped {
+				number := strings.Repeat(" ", num)
+				if i == 0 && num > 0 {
+					number = fmt.Sprintf("%*d ", num-1, cell.No)
+				}
+				lines = append(lines, t.LineNumber.Background(style.GetBackground()).Render(number)+text)
+			}
 		}
 	}
+	return t.padCellLines(cell, lines, cellWidth, height)
+}
+
+// padCellLines adds blank lines in the look of the cell until there are height of them.
+func (t Theme) padCellLines(cell Cell, lines []string, cellWidth, height int) []string {
+	blank := t.styleFor(cell.Kind).Render(strings.Repeat(" ", cellWidth))
 	for len(lines) < height {
 		lines = append(lines, blank)
 	}

@@ -275,14 +275,8 @@ func (m GitModel) sizedDiff(d DiffModel) DiffModel {
 }
 
 func (m *GitModel) ensureVisible() {
-	body := m.listBodyHeight()
-	if m.selected < m.listTop {
-		m.listTop = m.selected
-	}
-	if m.selected >= m.listTop+body {
-		m.listTop = m.selected - body + 1
-	}
-	m.listTop = max(m.listTop, 0)
+	width := m.listWidth()
+	m.listTop = scrollToShow(m.selected, m.listTop, m.listBodyHeight(), len(m.files), func(row int) int { return len(m.fileRowLines(row, width)) })
 }
 
 // Update implements tea.Model.
@@ -445,13 +439,18 @@ func (m GitModel) listView() string {
 	lines := make([]string, 0, m.height)
 	lines = append(lines, m.theme.Header.Render(padRight(fmt.Sprintf(" Changes (%d)", len(m.files)), width)))
 	body := m.listBodyHeight()
-	for row := 0; row < body; row++ {
-		index := m.listTop + row
-		if index >= len(m.files) {
-			lines = append(lines, strings.Repeat(" ", width))
-			continue
+	shown := 0
+	for index := m.listTop; index < len(m.files) && shown < body; index++ {
+		for _, line := range m.fileRowLines(index, width) {
+			if shown == body {
+				break
+			}
+			lines = append(lines, line)
+			shown++
 		}
-		lines = append(lines, m.fileRow(index, width))
+	}
+	for ; shown < body; shown++ {
+		lines = append(lines, strings.Repeat(" ", width))
 	}
 	lines = append(lines, renderRowLines(m.listFooterRows(), width, m.theme.Footer)...)
 	return strings.Join(lines, "\n")
@@ -482,7 +481,8 @@ func (m GitModel) footerKeys(x, y int) []string {
 	return nil
 }
 
-func (m GitModel) fileRow(index, width int) string {
+// fileRowLines draws the row of a file: a long name continues on further lines.
+func (m GitModel) fileRowLines(index, width int) []string {
 	file := m.files[index]
 	label := sanitize(file.Path)
 	if file.OldPath != "" {
@@ -496,7 +496,17 @@ func (m GitModel) fileRow(index, width int) string {
 		}
 	}
 	status := m.theme.statusStyle(file.Status).Inherit(style).Render(" " + string(rune(file.Status)) + " ")
-	return status + renderText(label, nil, max(width-3, 0), style, style)
+	parts := splitRowLines(label, max(width-3, 1))
+	lines := make([]string, len(parts))
+	for i, part := range parts {
+		text := style.Render(padRight(part, max(width-3, 0)))
+		if i == 0 {
+			lines[i] = status + text
+		} else {
+			lines[i] = style.Render("   ") + text
+		}
+	}
+	return lines
 }
 
 // isLoadingHint reports whether the right pane currently shows the loading animation.
@@ -519,29 +529,35 @@ func (m GitModel) paneMessage() string {
 func (m GitModel) messageView(message string) string {
 	width := m.diffWidth()
 	lines := make([]string, 0, m.height)
-	lines = append(lines, m.theme.Header.Render(padRight(" "+sanitize(m.files[m.selected].Path), width)))
-	plain := m.theme.Equal.UnsetBackground()
-	body := m.listBodyHeight()
-	animate := m.isLoadingHint() && body >= minJellyBody
-	messageRow := 1
-	if animate {
-		messageRow = jellyHeight + 2
+	for _, part := range splitRowLines(" "+sanitize(m.files[m.selected].Path), width) {
+		lines = append(lines, m.theme.Header.Render(padRight(part, width)))
 	}
-	for row := 0; row < body; row++ {
-		switch {
-		case animate && row >= 1 && row <= jellyHeight:
-			jelly := centered(JellyFrame(m.frame)[row-1], width)
-			lines = append(lines, renderText(jelly, nil, width, m.theme.Jelly.UnsetBackground(), plain))
-		case row == messageRow:
-			// renderText sanitizes control characters and cuts to the width
-			text := "  " + message
-			if animate {
-				text = centered(message, width)
-			}
-			lines = append(lines, renderText(text, nil, width, plain, plain))
-		default:
-			lines = append(lines, renderText("", nil, width, plain, plain))
+	plain := m.theme.Equal.UnsetBackground()
+	body := m.listBodyHeight() - (len(lines) - 1) // a long path takes more than one header line
+	animate := m.isLoadingHint() && body >= minJellyBody
+	row := 0
+	blank := func() { lines = append(lines, plain.Render(strings.Repeat(" ", width))); row++ }
+	if animate {
+		blank()
+		for _, frame := range JellyFrame(m.frame) {
+			lines = append(lines, m.theme.Jelly.UnsetBackground().Render(padRight(centered(sanitize(frame), width), width)))
+			row++
 		}
+		blank()
+	} else {
+		blank()
+	}
+	// the message wraps at the spaces (a word longer than a line is cut into pieces); sanitize strips control characters
+	text := "  " + message
+	if animate {
+		text = centered(message, width)
+	}
+	for _, part := range wrapWords(sanitize(text), max(width, 1), max(body-row, 1)) {
+		lines = append(lines, plain.Render(padRight(part, width)))
+		row++
+	}
+	for ; row < body; row++ {
+		blank()
 	}
 	for i := 0; i < m.footerHeight(); i++ {
 		lines = append(lines, m.theme.Footer.Render(padRight("", width)))

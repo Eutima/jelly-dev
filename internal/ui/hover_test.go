@@ -68,15 +68,24 @@ func TestHoverSaysSoWhenThereIsNoDocumentation(t *testing.T) {
 	}
 }
 
-func TestHoverCutsLongDocumentation(t *testing.T) {
-	nav := &fakeNav{hoverText: strings.Repeat("line\n", 40)}
+func TestHoverWrapsLongDocumentationWithoutCuttingMarks(t *testing.T) {
+	nav := &fakeNav{hoverText: strings.Repeat("word ", 60) + "\n" + strings.Repeat("line\n", 40)}
 	model, _ := newEditorForTest(t, "x\n")
 	model = model.WithNavigator(nav, "")
 
 	model = askDoc(model)
 
-	if rows := model.hoverRows(80); len(rows) != hoverMaxLines || !strings.Contains(rows[len(rows)-1], "…") {
-		t.Errorf("hoverRows = %d rows, last %q", len(rows), rows[len(rows)-1])
+	rows := model.hoverRows(40)
+	if len(rows) > hoverCap(model.height) {
+		t.Errorf("%d rows, more than the cap %d", len(rows), hoverCap(model.height))
+	}
+	for _, row := range rows {
+		if strings.Contains(row, "…") {
+			t.Errorf("a row is cut with an ellipsis: %q", row)
+		}
+	}
+	if !strings.Contains(strings.Join(rows, " "), strings.TrimSpace(strings.Repeat("word ", 60))[:30]) {
+		t.Error("the first line of the documentation was lost")
 	}
 }
 

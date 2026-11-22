@@ -200,20 +200,24 @@ func TestSanitize_ReplacesBidiOverrides_WhenTextContainsThem(t *testing.T) {
 	}
 }
 
-func TestRenderCell_NeverExceedsCellWidth_WhenPaneNarrowerThanNumberColumn(t *testing.T) {
+func TestRenderCellLines_NeverExceedCellWidth_WhenPaneNarrowerThanNumberColumn(t *testing.T) {
 	model := NewDiffModel("a", "b", []string{"x"}, []string{"y"})
 	cell := Cell{Kind: CellModified, No: 12345, Text: "some long text"}
 	for cellWidth := 0; cellWidth <= 12; cellWidth++ {
-		if got := lipgloss.Width(model.theme.renderCell(cell, 6, cellWidth)); got != cellWidth {
-			t.Fatalf("cell width %d rendered %d wide", cellWidth, got)
+		for _, line := range model.theme.renderCellLines(cell, 6, cellWidth, 1) {
+			if got := lipgloss.Width(line); got != cellWidth {
+				t.Fatalf("cell width %d rendered %d wide", cellWidth, got)
+			}
 		}
 	}
 }
 
-func TestRenderCell_NeverExceedsCellWidth_WhenCellIsFiller(t *testing.T) {
+func TestRenderCellLines_NeverExceedCellWidth_WhenCellIsFiller(t *testing.T) {
 	model := NewDiffModel("a", "b", []string{"x"}, []string{"y"})
-	if got := lipgloss.Width(model.theme.renderCell(Cell{Kind: CellFiller}, 3, 5)); got != 5 {
-		t.Fatalf("rendered %d wide", got)
+	for _, line := range model.theme.renderCellLines(Cell{Kind: CellFiller}, 3, 5, 1) {
+		if got := lipgloss.Width(line); got != 5 {
+			t.Fatalf("rendered %d wide", got)
+		}
 	}
 }
 

@@ -180,8 +180,9 @@ opened it closes it. `ctrl+t` shows or hides the terminal panel.
 
 **Narrow terminals**: in every view (project window, diff, git, merge, welcome and search) the footer wraps onto a second line when
 the commands do not fit (labels shrink to the `[key]` and then the last commands drop out only when two lines are not enough), and
-long messages (a file path, an error) wrap at the spaces over up to three lines (two in the other views) instead of ending in "…". The
-merge view has one footer line and a compact one below 10 lines.
+long messages (a file path, an error) wrap at the spaces over as many lines as they need (at most half the window) instead of ending in "…".
+Nothing is ever shortened with "…": long lines of code in the editor, the diff and the merge view, file names in the lists, search results,
+completion suggestions and messages continue on the next row. The merge view has one footer line and a compact one below 10 lines.
 
 **Unsaved changes**: closing a tab or switching project asks *Save / Discard / Cancel* (`s`, `d`, `c`,
 `←/→` and `enter`, or a click).
@@ -353,7 +354,6 @@ Keys in the merge view (conflicts; the defaults, see "Shortcuts and .jdrc"):
 | `m` | auto-resolve conflicts that are none in fact (whitespace, different words) |
 | `a` / `c` | let Claude / Codex resolve all open conflicts (if the CLI is installed) |
 | `e` / `enter`, `i`, `d` | open the vim-style editor on the change under the cursor (`i`: on a new line below), delete the line |
-| `w` | wrap long lines (default) or cut them with `…` |
 | `u` | undo |
 | `ctrl+s` (or `s`) | save (when every conflict is resolved) |
 | `q` | quit |

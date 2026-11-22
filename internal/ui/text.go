@@ -14,7 +14,6 @@ import (
 const (
 	tabWidth    = 4
 	replacement = '·'
-	ellipsis    = "…"
 )
 
 // segment is a run of display text that is either plain or highlighted (a changed word).
@@ -84,56 +83,6 @@ func sanitize(text string) string {
 		out.WriteRune(cell.r)
 	}
 	return out.String()
-}
-
-// layoutText fits text into width columns (adding "…" when it is cut) and groups it into segments.
-func layoutText(text string, spans []diff.Span, syntax []SyntaxSpan, painter *syntaxPainter, width int) []segment {
-	if width <= 0 {
-		return nil
-	}
-	cells := displayCells(text, spans, syntax, painter)
-	total := 0
-	for _, cell := range cells {
-		total += cell.width
-	}
-	limit := width
-	cut := total > width
-	if cut {
-		limit = width - runewidth.StringWidth(ellipsis)
-	}
-	var (
-		segments []segment
-		used     int
-	)
-	for _, cell := range cells {
-		if used+cell.width > limit {
-			break
-		}
-		used += cell.width
-		if last := len(segments) - 1; last >= 0 && segments[last].highlight == cell.highlight &&
-			segments[last].paint == cell.paint {
-			segments[last].text += string(cell.r)
-			continue
-		}
-		segments = append(segments, segment{text: string(cell.r), highlight: cell.highlight, paint: cell.paint})
-	}
-	if cut {
-		segments = append(segments, segment{text: ellipsis})
-	}
-	return segments
-}
-
-// renderText draws text exactly width columns wide using base style, and word style for highlights.
-func renderText(text string, spans []diff.Span, width int, base, word lipgloss.Style) string {
-	return renderSyntaxText(text, spans, nil, nil, width, base, word)
-}
-
-// renderSyntaxText is renderText with syntax colors: plain segments get the token foreground on top of
-// base; changed words keep the word style so they stay readable.
-func renderSyntaxText(
-	text string, spans []diff.Span, syntax []SyntaxSpan, painter *syntaxPainter, width int, base, word lipgloss.Style,
-) string {
-	return renderSegmentLine(layoutText(text, spans, syntax, painter, width), width, base, word)
 }
 
 // renderSegmentLine draws segments exactly width columns wide.
@@ -239,7 +188,7 @@ func sanitizeEditable(text string) string {
 }
 
 // wrapWords breaks text into lines of at most width columns at the spaces (a word longer than a line is cut), and into at most
-// maxLines lines: what does not fit ends the last line with "…". Every step uses up a piece of the text or completes a line, and it
+// maxLines lines, a safety limit for texts longer than the window (callers pass messageCap). Every step uses up a piece of the text or completes a line, and it
 // stops when maxLines lines are complete, so the work does not grow with the length of the text.
 func wrapWords(text string, width, maxLines int) []string {
 	if width <= 0 || maxLines < 1 {
@@ -249,13 +198,13 @@ func wrapWords(text string, width, maxLines int) []string {
 	var lines []string
 	var current strings.Builder
 	currentWidth := 0
-	truncated := false
+	done := false
 	endLine := func() { // true when the line limit is reached
 		lines = append(lines, current.String())
 		current.Reset()
 		currentWidth = 0
 	}
-	for w := 0; w < len(words) && !truncated; w++ {
+	for w := 0; w < len(words) && !done; w++ {
 		word := words[w]
 		for word != "" {
 			space := 0
@@ -273,7 +222,7 @@ func wrapWords(text string, width, maxLines int) []string {
 			if currentWidth > 0 { // the word starts a new line
 				endLine()
 				if len(lines) >= maxLines {
-					truncated = true
+					done = true
 					break
 				}
 				continue
@@ -284,7 +233,7 @@ func wrapWords(text string, width, maxLines int) []string {
 			word = word[len(head):]
 			endLine()
 			if len(lines) >= maxLines {
-				truncated = word != "" || w < len(words)-1
+				done = word != "" || w < len(words)-1
 				break
 			}
 		}
@@ -297,10 +246,6 @@ func wrapWords(text string, width, maxLines int) []string {
 	}
 	if len(lines) == 0 {
 		lines = []string{""}
-	}
-	if truncated {
-		last := lines[len(lines)-1]
-		lines[len(lines)-1] = runewidth.Truncate(last, max(width-1, 0), "") + "…"
 	}
 	return lines
 }
@@ -321,3 +266,6 @@ func fitPrefix(s string, width int) string {
 	}
 	return s
 }
+
+// messageCap is the most lines a message may take: half the window, so that a very long text cannot push the screen out of shape.
+func messageCap(height int) int { return max(height/2, 3) }

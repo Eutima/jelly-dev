@@ -92,7 +92,6 @@ type MergeModel struct {
 	current  int   // index into changed, -1 when none selected
 	cursor   int   // row of the line cursor in the result pane
 
-	noWrap       bool              // long lines are cut with "…" instead of wrapped (toggled with w)
 	editing      bool              // the vim-style editor is open on one chunk of the result
 	vim          *vimbuf.Buffer    // the editor's text and state while editing
 	nano         *nanokeys.Session // the key handler when the editor is in the nano style, nil in the vim style
@@ -420,11 +419,6 @@ func (m MergeModel) runCommand(command keymap.Command) (tea.Model, tea.Cmd) {
 		m.undo()
 	case keymap.MergePane:
 		m.cycleView()
-	case keymap.MergeWrap:
-		m.noWrap = !m.noWrap
-		m.offset = m.firstRowFor(m.offset)
-		wrap := keyLabel(keymap.MergeWrap)
-		m.notice(map[bool]string{true: "Long lines are cut (" + wrap + " wraps them)", false: "Long lines are wrapped (" + wrap + " cuts them)"}[m.noWrap], false)
 	case keymap.MergeSave:
 		m.saveResult()
 	}
@@ -573,15 +567,6 @@ func (m MergeModel) bodyHeight() int { return max(m.height-m.chrome(), 1) }
 
 func (m *MergeModel) clamp() {
 	m.offset = min(max(m.offset, 0), m.lastOffset())
-}
-
-// resultCell draws the result pane cell of row i: the cursor line or a normal cell.
-func (m MergeModel) resultCell(i int, row mergeRow, numWidth, width int) string {
-	cell := row.cells[paneResult]
-	if i == m.cursor && cell.Kind != CellFiller {
-		cell.Kind = CellCursor
-	}
-	return m.theme.renderCell(cell, numWidth, width)
 }
 
 // gutter draws the strip between two panes: an arrow on the first row of a change that the

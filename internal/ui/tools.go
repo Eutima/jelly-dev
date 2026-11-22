@@ -119,7 +119,7 @@ func toolSummary(run *toolRun) (string, bool) {
 			runtimes[missing.Needs] = true
 			continue
 		}
-		other = append(other, name+": "+shorten(err.Error(), 60))
+		other = append(other, name+": "+oneLine(err.Error()))
 	}
 	sort.Strings(other)
 	if len(runtimes) > 0 {
@@ -147,12 +147,9 @@ func countMissing(run *toolRun, runtimes map[string]bool) int {
 	return count
 }
 
-func shorten(text string, limit int) string {
-	runes := []rune(strings.Join(strings.Fields(text), " "))
-	if len(runes) <= limit {
-		return string(runes)
-	}
-	return string(runes[:limit-1]) + "…"
+// oneLine puts a text on one line: line breaks and runs of spaces become single spaces. Nothing is cut off; a long text wraps where it is shown.
+func oneLine(text string) string {
+	return strings.Join(strings.Fields(text), " ")
 }
 
 // toolsCommand is the :tools command: without an argument it installs what is missing (also what failed before), with
