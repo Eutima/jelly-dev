@@ -649,6 +649,7 @@ func (m ProjectModel) activate(node *filetree.Node, toggle bool) (tea.Model, tea
 }
 
 func (m ProjectModel) toggleFocus() ProjectModel {
+	m.editor.resolver.Reset() // a half typed key sequence does not follow to the other pane
 	if m.focus == focusTree {
 		m.focus = focusProjectEdit
 	} else {

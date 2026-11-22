@@ -139,9 +139,10 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 	if len(args) > 0 && args[0] == "rc" {
 		return runRC(args[1:], stdout, stderr, env)
 	}
-	mapping, problems := loadKeys(args, env) // the shortcuts of every view; a bad line is reported and the defaults stay
-	for _, problem := range problems {
-		fmt.Fprintf(stderr, "jd: %s\n", problem)
+	mapping, problems := loadKeys(args, env)
+	if len(problems) > 0 && !isHelp(args) { // the validator: jd does not start with a key mapping that has problems (jd rc shows them)
+		fmt.Fprint(stderr, keyProblemsMessage(problems))
+		return exitUsage
 	}
 	ui.UseKeys(mapping)
 	cfg, err := config.Load(env.getenv)

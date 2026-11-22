@@ -53,7 +53,9 @@ func (m *ProjectModel) selectTab(i int) {
 	if i < 0 || i >= len(all) {
 		return
 	}
+	m.editor.resolver.Reset() // a half typed key sequence does not follow to another tab
 	m.files, m.tab, m.editor = all, i, all[i]
+	m.editor.resolver.Reset()
 	*m = m.resizeEditor()
 }
 

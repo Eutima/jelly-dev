@@ -13,7 +13,7 @@ const None = "none"
 // Assignment is one valid line of a .jdrc file: the keys of a command (none for an unbound command).
 type Assignment struct {
 	Command Command
-	Keys    []string // normalized, in the order written
+	Keys    []Sequence // normalized, in the order written; nil unbinds the command
 	Line    int
 }
 
@@ -79,26 +79,58 @@ func stripComment(line string) string {
 	return line
 }
 
-func parseKeys(value string, scope Scope) ([]string, error) {
+func parseKeys(value string, scope Scope) ([]Sequence, error) {
 	value = strings.TrimSpace(value)
 	if strings.EqualFold(value, None) {
 		return nil, nil
 	}
-	var keys []string
-	seen := map[string]bool{}
+	var out []Sequence
 	for _, part := range strings.Split(value, ",") {
-		key, err := Normalize(part)
+		seq, err := ParseSequence(part)
 		if err != nil {
 			return nil, err
 		}
-		if scope == ScopeIDE && !hasModifier(key) {
-			return nil, fmt.Errorf("%s needs ctrl, alt, shift or a function key in the project window (a bare key would be typed into the editor or the shell)", Written(key))
+		if err := checkSequence(seq, scope); err != nil {
+			return nil, err
 		}
-		if seen[key] {
-			return nil, fmt.Errorf("%s is listed twice", Written(key))
+		for _, other := range out {
+			switch {
+			case seq.equal(other):
+				return nil, fmt.Errorf("%s is listed twice", seq)
+			case overlaps(seq, other):
+				return nil, fmt.Errorf("%s and %s overlap: a key sequence may not be the start of another one", seq, other)
+			}
 		}
-		seen[key] = true
-		keys = append(keys, key)
+		out = append(out, seq)
 	}
-	return keys, nil
+	return out, nil
+}
+
+// reservedFirst are the keys a key sequence of the editor may not start with: the editor needs them for itself.
+var reservedFirst = map[string]bool{"esc": true, "ctrl+c": true, "ctrl+d": true}
+
+// checkSequence applies the rules of a scope to one sequence.
+func checkSequence(seq Sequence, scope Scope) error {
+	if len(seq) > 1 && scope != ScopeVim {
+		return fmt.Errorf("a key sequence (%s) is only for the vim.* commands", seq)
+	}
+	switch scope {
+	case ScopeIDE:
+		if !hasModifier(seq[0]) {
+			return fmt.Errorf("%s needs ctrl, alt, shift or a function key in the project window (a bare key would be typed into the editor or the shell)", seq)
+		}
+	case ScopeInsert:
+		if single(seq[0]) || seq[0] == " " {
+			return fmt.Errorf("%s is typed text in insert mode; use ctrl, alt, a named key or a function key", seq)
+		}
+	case ScopeVim:
+		first := seq[0]
+		if len(first) == 1 && first[0] >= '0' && first[0] <= '9' {
+			return fmt.Errorf("%s: a count digit cannot start a key sequence", seq)
+		}
+		if reservedFirst[first] {
+			return fmt.Errorf("%s cannot be rebound: the editor keeps it for itself", Written(first))
+		}
+	}
+	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/eutima/jelly-dev/internal/editor"
 	"github.com/eutima/jelly-dev/internal/lsp"
 	"github.com/eutima/jelly-dev/internal/vimbuf"
+	"github.com/eutima/jelly-dev/internal/vimkeys"
 )
 
 const (
@@ -51,6 +52,8 @@ type EditorModel struct {
 	forwardEx bool // commands the editor does not know are sent up as ExCommandMsg
 	quitting  bool // the user asked to leave
 	quitArmed bool // ctrl+d warned about unsaved changes; the next one quits
+
+	resolver *vimkeys.Resolver // turns the keys pressed into the keys of the engine (the .jdrc bindings)
 }
 
 // CloseRequestMsg tells the project window that ctrl+d was pressed in the editor's normal mode: the window decides
@@ -64,7 +67,7 @@ type ExCommandMsg struct{ Command string }
 func NewEditorModel(doc editor.Document) EditorModel {
 	buffer := vimbuf.New(doc.Lines, nil)
 	buffer.PassUnknownEx(true)
-	m := EditorModel{theme: DarkTheme(), doc: doc, vim: buffer, showNums: true, syntax: newSyntaxCache()}
+	m := EditorModel{theme: DarkTheme(), doc: doc, vim: buffer, showNums: true, syntax: newSyntaxCache(), resolver: vimkeys.New(keys)}
 	if doc.New && doc.Path != "" {
 		m.notice(fmt.Sprintf("\"%s\" [New]", doc.Path), false)
 	}
@@ -193,70 +196,33 @@ func (m EditorModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.list != nil {
 		return m.handleListKey(msg)
 	}
-	if m.vim.Mode() == vimbuf.Insert {
-		key := msg.String()
-		if m.completion != nil {
-			if model, used := m.completionKey(key); used {
-				return model, nil
-			}
-		}
-		if isCompletionKey(key) {
-			return m.startCompletion()
-		}
-	}
-	if model, cmd, used := m.navigationKey(msg.String()); used {
-		return model, cmd
-	}
-	// After a jump (gd, gr, a search result) ctrl+c and ctrl+d go back to where it started, one step at a time; only without
-	// a jump to undo they close the editor.
-	if key := msg.String(); (key == "ctrl+d" || key == "ctrl+c") && m.vim.Mode() == vimbuf.Normal && m.vim.Pending() == "" && len(m.jumps) > 0 {
-		return m.jumpBack()
-	}
-	// ctrl+d closes the editor from normal mode (ctrl+c never closes: it only returns to normal mode, like in vim). In the project window (forwardEx) the key becomes a
-	// CloseRequestMsg and the window asks before it closes anything. Standing alone the editor closes at once when nothing
-	// changed, otherwise the first press warns and the second one quits without saving. In the other modes ctrl+c still
-	// returns to normal mode and ctrl+d keeps its vim meaning.
-	if msg.String() == "ctrl+d" && m.vim.Mode() == vimbuf.Normal && m.vim.Pending() == "" {
-		if m.forwardEx { // in the project window: it asks before it closes
-			return m, func() tea.Msg { return CloseRequestMsg{} }
-		}
-		if !m.vim.Modified() || m.quitArmed {
-			m.markQuit()
-			return m, tea.Quit
-		}
-		m.quitArmed = true
-		m.notice("Unsaved changes: press ctrl+d again to quit without saving, or :w to save", true)
-		return m, nil
-	}
-	m.quitArmed = false
 	if msg.Paste && msg.Type == tea.KeyRunes { // text pasted by the terminal is text, never commands
+		m.quitArmed = false
 		m.vim.PasteText(string(msg.Runes))
 		m.scrollToCursor()
 		return m, nil
 	}
+	// The keys the user pressed become the keys the engine knows (.jdrc can bind the commands to other keys or to a sequence of keys):
+	// normally one key becomes one, a sequence that is not complete yet becomes none, and a complete one becomes the keys of its command.
 	var cmds []tea.Cmd
-	for _, key := range editorKeys(msg) {
-		if key == "ctrl+d" {
-			key = "ctrl+c" // in insert, visual and command mode, and with a pending command, ctrl+d does what ctrl+c does
+	for _, raw := range pressedKeys(msg, m.resolver) {
+		mode := vimkeys.Normal
+		if m.vim.Mode() == vimbuf.Insert {
+			mode = vimkeys.Insert
 		}
-		switch m.vim.Handle(key) {
-		case vimbuf.Write:
-			m.save("")
-		case vimbuf.WriteQuit:
-			if m.save("") {
-				m.markQuit()
-				return m, tea.Quit
-			}
-		case vimbuf.Quit, vimbuf.ForceQuit:
-			m.markQuit()
-			return m, tea.Quit
-		case vimbuf.Ex:
-			cmd := m.runEx(m.vim.ExCommand())
-			if m.quitting {
-				return m, tea.Quit
-			}
+		out := m.resolver.Feed(raw, mode, m.vim.WantsLiteral())
+		if out.Cancel {
+			m.vim.CancelPending()
+		}
+		for _, key := range out.Keys {
+			var cmd tea.Cmd
+			var done bool
+			m, cmd, done = m.handleResolved(key)
 			if cmd != nil {
 				cmds = append(cmds, cmd)
+			}
+			if done {
+				return m, tea.Batch(cmds...)
 			}
 		}
 	}
@@ -272,6 +238,82 @@ func (m EditorModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	m.scrollToCursor()
 	return m, tea.Batch(cmds...)
+}
+
+// handleResolved handles one key of the engine's vocabulary. done says that the key was a command of the window or the popup, or asked to
+// close: nothing more of the key press is processed, not even the refresh the other keys get.
+func (m EditorModel) handleResolved(key string) (model EditorModel, cmd tea.Cmd, done bool) {
+	if m.vim.Mode() == vimbuf.Insert {
+		if m.completion != nil {
+			if model, used := m.completionKey(key); used {
+				return model, nil, true
+			}
+		}
+		if isCompletionKey(key) {
+			model, cmd := m.startCompletion()
+			return model, cmd, true
+		}
+	}
+	if model, cmd, used := m.navigationKey(key); used {
+		return model, cmd, true
+	}
+	// After a jump (gd, gr, a search result) ctrl+c and ctrl+d go back to where it started, one step at a time; only without
+	// a jump to undo they close the editor.
+	if (key == "ctrl+d" || key == "ctrl+c") && m.vim.Mode() == vimbuf.Normal && m.vim.Pending() == "" && len(m.jumps) > 0 {
+		model, cmd := m.jumpBack()
+		return model, cmd, true
+	}
+	// ctrl+d closes the editor from normal mode (ctrl+c never closes: it only returns to normal mode, like in vim). In the project window (forwardEx) the key becomes a
+	// CloseRequestMsg and the window asks before it closes anything. Standing alone the editor closes at once when nothing
+	// changed, otherwise the first press warns and the second one quits without saving. In the other modes ctrl+c still
+	// returns to normal mode and ctrl+d keeps its vim meaning.
+	if key == "ctrl+d" && m.vim.Mode() == vimbuf.Normal && m.vim.Pending() == "" {
+		if m.forwardEx { // in the project window: it asks before it closes
+			return m, func() tea.Msg { return CloseRequestMsg{} }, true
+		}
+		if !m.vim.Modified() || m.quitArmed {
+			m.markQuit()
+			return m, tea.Quit, true
+		}
+		m.quitArmed = true
+		m.notice("Unsaved changes: press ctrl+d again to quit without saving, or :w to save", true)
+		return m, nil, true
+	}
+	m.quitArmed = false
+	if key == "ctrl+d" {
+		key = "ctrl+c" // in insert, visual and command mode, and with a pending command, ctrl+d does what ctrl+c does
+	}
+	var cmd2 tea.Cmd
+	switch m.vim.Handle(key) {
+	case vimbuf.Write:
+		m.save("")
+	case vimbuf.WriteQuit:
+		if m.save("") {
+			m.markQuit()
+			return m, tea.Quit, true
+		}
+	case vimbuf.Quit, vimbuf.ForceQuit:
+		m.markQuit()
+		return m, tea.Quit, true
+	case vimbuf.Ex:
+		cmd2 = m.runEx(m.vim.ExCommand())
+		if m.quitting {
+			return m, tea.Quit, true
+		}
+	}
+	return m, cmd2, false
+}
+
+// pressedKeys are the keys of a key press as the resolver sees them: the characters typed, and the named keys. An alt key is ignored, as it
+// always was, unless a binding of the editor uses it.
+func pressedKeys(msg tea.KeyMsg, r *vimkeys.Resolver) []string {
+	if msg.Type == tea.KeyRunes && msg.Alt {
+		if r.Wants(msg.String()) {
+			return []string{msg.String()}
+		}
+		return nil
+	}
+	return editorKeys(msg)
 }
 
 // save writes the text to path (the current file when empty) and reports whether it worked.
@@ -345,6 +387,7 @@ func (m *EditorModel) edit(path string, force bool) {
 // opened returns the model showing doc.
 func (m EditorModel) opened(doc editor.Document) EditorModel {
 	m.doc, m.vim = doc, vimbuf.New(doc.Lines, nil)
+	m.resolver.Reset()
 	m.vim.PassUnknownEx(true)
 	if m.clipboard.Read != nil || m.clipboard.Write != nil {
 		m.vim.SetClipboard(m.clipboard)
@@ -458,8 +501,8 @@ func (m EditorModel) footerBar() *bar {
 	}
 	result.command(":w", "save", true, m.theme)
 	result.command(":q", "quit", true, m.theme)
-	result.command("gd", "def", m.nav != nil, m.theme)
-	result.command("gr", "refs", m.nav != nil, m.theme)
+	result.sequenceHint(keymap.VimDefinition, "def", m.nav != nil, m.theme)
+	result.sequenceHint(keymap.VimReferences, "refs", m.nav != nil, m.theme)
 	result.command(":fmt", "format", m.nav != nil, m.theme)
 	return result
 }
@@ -597,8 +640,8 @@ func (m EditorModel) messageRows() []string {
 		return wrapped(sanitize(m.status), m.theme.Warning)
 	case m.status != "":
 		return wrapped(sanitize(m.status), m.theme.Equal)
-	case m.vim.Pending() != "":
-		return []string{m.theme.Equal.Render(padRight(" "+m.vim.Pending(), width))}
+	case m.vim.Pending() != "" || m.resolver.Pending() != "":
+		return []string{m.theme.Equal.Render(padRight(" "+m.vim.Pending()+m.resolver.Pending(), width))}
 	}
 	return []string{lipgloss.NewStyle().Render(strings.Repeat(" ", width))}
 }

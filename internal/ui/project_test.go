@@ -62,6 +62,9 @@ func projectKeys(model ProjectModel, keys ...string) (ProjectModel, tea.Cmd) {
 			msg = tea.KeyMsg{Type: tea.KeyDown}
 		default:
 			msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
+			if len([]rune(key)) > 1 { // a key with a name (ctrl+o, shift+tab): the message the terminal would send
+				msg = keyMsg(key)
+			}
 		}
 		updated, cmd := model.Update(msg)
 		model = updated.(ProjectModel)

@@ -13,6 +13,7 @@ import (
 	"github.com/eutima/jelly-dev/internal/diff"
 	"github.com/eutima/jelly-dev/internal/source"
 	"github.com/eutima/jelly-dev/internal/vimbuf"
+	"github.com/eutima/jelly-dev/internal/vimkeys"
 )
 
 // ChangeWriter is implemented by change sources whose new side is a working tree: the git view can then revert and edit
@@ -28,8 +29,9 @@ var _ ChangeWriter = (*source.GitChanges)(nil) // without it the view would sile
 
 // diffEditor is the full-screen vim-style editor of the new side of the shown file.
 type diffEditor struct {
-	vim *vimbuf.Buffer
-	top int // first visible line
+	vim      *vimbuf.Buffer
+	top      int               // first visible line
+	resolver *vimkeys.Resolver // turns the keys pressed into the keys of the engine (the .jdrc bindings)
 }
 
 // fileEditable reports whether the new side of a file can be changed in this view.
@@ -149,7 +151,7 @@ func (m GitModel) openEditor() (tea.Model, tea.Cmd) {
 	if m.diff.current >= 0 && m.diff.current < len(m.diff.changes) && len(lines) > 0 {
 		buffer.GotoLine(min(m.diff.changes[m.diff.current].NewStart+1, len(lines)))
 	}
-	m.editor = &diffEditor{vim: buffer}
+	m.editor = &diffEditor{vim: buffer, resolver: vimkeys.New(keys)}
 	m.keepEditorVisible()
 	m.say("", false)
 	return m, nil
@@ -171,19 +173,29 @@ func (m GitModel) handleEditorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.editor = nil
 		return m, nil
 	}
-	for _, k := range editorKeys(msg) {
-		switch e.vim.Handle(k) {
-		case vimbuf.Write:
-			m.saveEditor()
-		case vimbuf.WriteQuit:
-			if m.saveEditor() {
+	for _, raw := range pressedKeys(msg, e.resolver) {
+		mode := vimkeys.Normal
+		if e.vim.Mode() == vimbuf.Insert {
+			mode = vimkeys.Insert
+		}
+		out := e.resolver.Feed(raw, mode, e.vim.WantsLiteral())
+		if out.Cancel {
+			e.vim.CancelPending()
+		}
+		for _, k := range out.Keys {
+			switch e.vim.Handle(k) {
+			case vimbuf.Write:
+				m.saveEditor()
+			case vimbuf.WriteQuit:
+				if m.saveEditor() {
+					m.editor = nil
+				}
+			case vimbuf.Quit, vimbuf.ForceQuit:
 				m.editor = nil
 			}
-		case vimbuf.Quit, vimbuf.ForceQuit:
-			m.editor = nil
-		}
-		if m.editor == nil {
-			return m, nil
+			if m.editor == nil {
+				return m, nil
+			}
 		}
 	}
 	if text := e.vim.Message(); text != "" {
@@ -232,7 +244,7 @@ func (m GitModel) editorStatus() string {
 	}
 	row, col := e.vim.Cursor()
 	pending := ""
-	if p := e.vim.Pending(); p != "" {
+	if p := e.vim.Pending() + e.resolver.Pending(); p != "" {
 		pending = "   " + p
 	}
 	modified := ""
@@ -245,8 +257,10 @@ func (m GitModel) editorStatus() string {
 func (m GitModel) editorBar() *bar {
 	result := &bar{}
 	result.add(barPart{" ", m.theme.Footer})
-	for _, h := range [][2]string{{"esc", "normal"}, {"i", "insert"}, {"v/V", "visual"}, {":w", "save"}, {":wq", "save+leave"},
-		{":q", "leave"}, {":q!", "discard"}} {
+	result.command("esc", "normal", true, m.theme)
+	result.sequenceHint(keymap.VimInsert, "insert", true, m.theme)
+	result.pairHint(keymap.VimVisual, keymap.VimVisualLine, "visual", true, m.theme)
+	for _, h := range [][2]string{{":w", "save"}, {":wq", "save+leave"}, {":q", "leave"}, {":q!", "discard"}} {
 		result.command(h[0], h[1], true, m.theme)
 	}
 	return result

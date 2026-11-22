@@ -284,6 +284,13 @@ func (b *Buffer) resetPending() {
 	b.count, b.opCount, b.op, b.prefix = "", 0, 0, 0
 }
 
+// CancelPending drops a typed count, a pending operator and a pending first key (g, r), as a key that is no command does.
+func (b *Buffer) CancelPending() { b.resetPending() }
+
+// WantsLiteral tells whether the next key is text for the buffer and not a command: the character after r, or a key typed into the
+// command line (":", "/", "?").
+func (b *Buffer) WantsLiteral() bool { return b.prefix == 'r' || b.mode == Command }
+
 func firstNonBlank(line []rune) int {
 	for i, r := range line {
 		if r != ' ' && r != '\t' {

@@ -12,6 +12,7 @@ import (
 	"github.com/eutima/jelly-dev/internal/keymap"
 	"github.com/eutima/jelly-dev/internal/merge"
 	"github.com/eutima/jelly-dev/internal/vimbuf"
+	"github.com/eutima/jelly-dev/internal/vimkeys"
 )
 
 const (
@@ -110,9 +111,10 @@ type MergeModel struct {
 	saveFailed    bool // the last save attempt failed and nothing changed since
 	dirty         bool // result differs from what was last saved
 	quitArmed     bool
-	embedded      bool          // shown inside another model: quitting sets done instead of ending the program
-	done          bool          // an embedded viewer was left
-	palette       *mergePalette // the list of all actions, nil when closed
+	embedded      bool              // shown inside another model: quitting sets done instead of ending the program
+	done          bool              // an embedded viewer was left
+	resolver      *vimkeys.Resolver // the .jdrc bindings of the editor, built when it opens
+	palette       *mergePalette     // the list of all actions, nil when closed
 }
 
 // NewMergeModel builds the viewer. save is called with the result lines when the user saves; the

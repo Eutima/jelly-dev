@@ -102,6 +102,40 @@ func (b *bar) stepHint(label string, theme Theme) {
 	b.hintWith(shown, []string{next}, label, true, theme)
 }
 
+// sequenceHint appends the hint of an editor command: the keys it has now (gg, space d), and a click sends them one after the other. A command
+// without keys has no hint.
+func (b *bar) sequenceHint(command keymap.Command, label string, enabled bool, theme Theme) {
+	seq := keys.Sequence(command)
+	if len(seq) == 0 {
+		return
+	}
+	var clicks []string
+	if enabled {
+		clicks = append(clicks, seq...)
+	}
+	b.hintWith(seq.Pretty(), clicks, label, enabled, theme)
+}
+
+// pairHint appends one hint for two editor commands that belong together (visual and visual line: v/V); a click sends the first one.
+func (b *bar) pairHint(first, second keymap.Command, label string, enabled bool, theme Theme) {
+	a, c := keys.Sequence(first), keys.Sequence(second)
+	switch {
+	case len(a) == 0 && len(c) == 0:
+		return
+	case len(c) == 0:
+		b.sequenceHint(first, label, enabled, theme)
+		return
+	case len(a) == 0:
+		b.sequenceHint(second, label, enabled, theme)
+		return
+	}
+	var clicks []string
+	if enabled {
+		clicks = append(clicks, a...)
+	}
+	b.hintWith(a.Pretty()+"/"+c.Pretty(), clicks, label, enabled, theme)
+}
+
 // hintWith is command with the keys a click sends given.
 func (b *bar) hintWith(key string, clicks []string, label string, enabled bool, theme Theme) {
 	keyStyle, labelStyle := theme.Header, theme.Footer

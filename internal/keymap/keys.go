@@ -48,6 +48,9 @@ func Normalize(key string) (string, error) {
 	if base, ok := ambiguous[lower]; ok {
 		return "", fmt.Errorf("%s cannot be told apart from %s in a terminal", lower, base)
 	}
+	if lower == "ctrl+space" || lower == "ctrl+@" { // a terminal sends ctrl+space as NUL, which Bubble Tea names ctrl+@
+		return prefix + "ctrl+@", nil
+	}
 	switch {
 	case named[lower], functionKey(lower):
 		return prefix + lower, nil
@@ -80,7 +83,7 @@ func hasModifier(key string) bool {
 // pretty names for the keys that have a symbol or a shorter name in the footers.
 var pretty = map[string]string{
 	"right": "→", "left": "←", "up": "↑", "down": "↓", "backspace": "⌫", " ": "space", "pgdown": "pgdn", "pgup": "pgup",
-	"ctrl+right": "ctrl+→", "ctrl+left": "ctrl+←", "ctrl+up": "ctrl+↑", "ctrl+down": "ctrl+↓",
+	"ctrl+right": "ctrl+→", "ctrl+left": "ctrl+←", "ctrl+up": "ctrl+↑", "ctrl+down": "ctrl+↓", "ctrl+@": "ctrl+space",
 }
 
 // Pretty returns how a key is shown in the footers and menus.
@@ -97,6 +100,8 @@ func Pretty(key string) string {
 // Written returns how a key is written in a .jdrc file (the inverse of Normalize).
 func Written(key string) string {
 	switch key {
+	case "ctrl+@":
+		return "ctrl+space"
 	case " ":
 		return "space"
 	case ",":
@@ -109,3 +114,58 @@ func Written(key string) string {
 	}
 	return key
 }
+
+// Sequence is the keys of one binding, pressed one after the other: one key for almost every command, several for the editor's
+// (g g). A sequence is written with its keys separated by spaces.
+type Sequence []string
+
+// ParseSequence reads a sequence of key names separated by white space; every key is normalized.
+func ParseSequence(text string) (Sequence, error) {
+	fields := strings.Fields(text)
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("empty key name")
+	}
+	seq := make(Sequence, len(fields))
+	for i, field := range fields {
+		key, err := Normalize(field)
+		if err != nil {
+			return nil, err
+		}
+		seq[i] = key
+	}
+	return seq, nil
+}
+
+// String is the sequence as it is written in a .jdrc file.
+func (s Sequence) String() string {
+	parts := make([]string, len(s))
+	for i, key := range s {
+		parts[i] = Written(key)
+	}
+	return strings.Join(parts, " ")
+}
+
+// Pretty is the sequence as the footers show it: gg for g g, but space d with the name of a longer key.
+func (s Sequence) Pretty() string {
+	parts := make([]string, len(s))
+	joined := ""
+	for i, key := range s {
+		parts[i] = Pretty(key)
+		if len([]rune(parts[i])) > 1 {
+			joined = " "
+		}
+	}
+	return strings.Join(parts, joined)
+}
+
+// overlaps tells whether one sequence is the other or the start of the other: the editor could not tell them apart without waiting.
+func overlaps(a, b Sequence) bool {
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (s Sequence) equal(o Sequence) bool { return len(s) == len(o) && overlaps(s, o) }

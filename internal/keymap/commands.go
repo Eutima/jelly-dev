@@ -7,13 +7,15 @@ type Scope string
 
 // The scopes.
 const (
-	ScopeIDE   Scope = "ide"   // the project window
-	ScopeMerge Scope = "merge" // the three-way merge view
-	ScopeDiff  Scope = "diff"  // the diff, git and directory views
+	ScopeIDE    Scope = "ide"    // the project window
+	ScopeMerge  Scope = "merge"  // the three-way merge view
+	ScopeDiff   Scope = "diff"   // the diff, git and directory views
+	ScopeVim    Scope = "vim"    // the editor's normal and visual mode
+	ScopeInsert Scope = "insert" // the editor's insert mode
 )
 
 // Scopes lists the scopes in the order `jd rc` prints them.
-func Scopes() []Scope { return []Scope{ScopeIDE, ScopeMerge, ScopeDiff} }
+func Scopes() []Scope { return []Scope{ScopeIDE, ScopeMerge, ScopeDiff, ScopeVim, ScopeInsert} }
 
 // Title describes a scope.
 func (s Scope) Title() string {
@@ -24,6 +26,10 @@ func (s Scope) Title() string {
 		return "the three-way merge view"
 	case ScopeDiff:
 		return "the diff, git and directory views"
+	case ScopeVim:
+		return "the editor's normal and visual mode (a key sequence is keys separated by spaces: g g)"
+	case ScopeInsert:
+		return "the editor's insert mode (keys that are not typed text: ctrl, alt, named and function keys)"
 	}
 	return string(s)
 }
@@ -86,12 +92,94 @@ const (
 	DiffQuit   Command = "diff.quit"
 )
 
-// definition is one command: where it is active, what it does and the keys it has when no file says otherwise.
+// The editor's normal and visual mode.
+const (
+	VimLeft         Command = "vim.left"
+	VimRight        Command = "vim.right"
+	VimDown         Command = "vim.down"
+	VimUp           Command = "vim.up"
+	VimLineStart    Command = "vim.linestart"
+	VimFirstChar    Command = "vim.firstchar"
+	VimLineEnd      Command = "vim.lineend"
+	VimWordForward  Command = "vim.wordforward"
+	VimWordBack     Command = "vim.wordback"
+	VimWordEnd      Command = "vim.wordend"
+	VimTop          Command = "vim.top"
+	VimBottom       Command = "vim.bottom"
+	VimHalfUp       Command = "vim.halfup"
+	VimPageDown     Command = "vim.pagedown"
+	VimPageUp       Command = "vim.pageup"
+	VimDelete       Command = "vim.delete"
+	VimChange       Command = "vim.change"
+	VimYank         Command = "vim.yank"
+	VimInsert       Command = "vim.insert"
+	VimAppend       Command = "vim.append"
+	VimInsertStart  Command = "vim.insertstart"
+	VimAppendEnd    Command = "vim.appendend"
+	VimOpenBelow    Command = "vim.openbelow"
+	VimOpenAbove    Command = "vim.openabove"
+	VimDeleteChar   Command = "vim.deletechar"
+	VimDeleteBefore Command = "vim.deletebefore"
+	VimDeleteEnd    Command = "vim.deleteend"
+	VimChangeEnd    Command = "vim.changeend"
+	VimYankLine     Command = "vim.yankline"
+	VimPaste        Command = "vim.paste"
+	VimPasteAbove   Command = "vim.pasteabove"
+	VimJoin         Command = "vim.join"
+	VimTilde        Command = "vim.tilde"
+	VimUndo         Command = "vim.undo"
+	VimRedo         Command = "vim.redo"
+	VimVisual       Command = "vim.visual"
+	VimVisualLine   Command = "vim.visualline"
+	VimReplace      Command = "vim.replace"
+	VimSearch       Command = "vim.search"
+	VimSearchBack   Command = "vim.searchback"
+	VimSearchNext   Command = "vim.searchnext"
+	VimSearchPrev   Command = "vim.searchprev"
+	VimCommandLine  Command = "vim.commandline"
+	VimDefinition   Command = "vim.definition"
+	VimReferences   Command = "vim.references"
+	VimNextTab      Command = "vim.nexttab"
+	VimPrevTab      Command = "vim.prevtab"
+)
+
+// The editor's insert mode.
+const (
+	InsertNewline       Command = "insert.newline"
+	InsertBackspace     Command = "insert.backspace"
+	InsertDelete        Command = "insert.delete"
+	InsertLeft          Command = "insert.left"
+	InsertRight         Command = "insert.right"
+	InsertUp            Command = "insert.up"
+	InsertDown          Command = "insert.down"
+	InsertHome          Command = "insert.home"
+	InsertEnd           Command = "insert.end"
+	InsertTab           Command = "insert.tab"
+	InsertDeleteToStart Command = "insert.deletetostart"
+	InsertDeleteToEnd   Command = "insert.deletetoend"
+	InsertComplete      Command = "insert.complete"
+)
+
+// definition is one command: where it is active, what it does and the keys it has when no file says otherwise. A default is a key or
+// several keys separated by spaces (a sequence); the first one is the command's own name for itself in the editor (see Canonical).
 type definition struct {
 	command Command
 	scope   Scope
 	doc     string
 	keys    []string
+}
+
+// sequences are the default keys of the definition.
+func (d definition) sequences() []Sequence {
+	out := make([]Sequence, len(d.keys))
+	for i, text := range d.keys {
+		seq, err := ParseSequence(text)
+		if err != nil {
+			panic("keymap: the default " + text + " of " + string(d.command) + ": " + err.Error())
+		}
+		out[i] = seq
+	}
+	return out
 }
 
 // definitions lists every command in the order `jd rc` prints them. The default keys are the ones jd always had.
@@ -141,6 +229,68 @@ var definitions = []definition{
 	{DiffEdit, ScopeDiff, "edit the file", []string{"e", "enter"}},
 	{DiffUndo, ScopeDiff, "undo the last revert or edit", []string{"u"}},
 	{DiffQuit, ScopeDiff, "quit", []string{"q", "esc", "ctrl+c", "ctrl+d"}},
+
+	{VimLeft, ScopeVim, "move left", []string{"h", "left", "backspace"}},
+	{VimRight, ScopeVim, "move right", []string{"l", "right", "space"}},
+	{VimDown, ScopeVim, "move down", []string{"j", "down"}},
+	{VimUp, ScopeVim, "move up", []string{"k", "up"}},
+	{VimLineStart, ScopeVim, "to the start of the line (0 always works too)", []string{"home"}},
+	{VimFirstChar, ScopeVim, "to the first character of the line", []string{"^"}},
+	{VimLineEnd, ScopeVim, "to the end of the line", []string{"$", "end"}},
+	{VimWordForward, ScopeVim, "to the next word", []string{"w"}},
+	{VimWordBack, ScopeVim, "to the previous word", []string{"b"}},
+	{VimWordEnd, ScopeVim, "to the end of the word", []string{"e"}},
+	{VimTop, ScopeVim, "to the first line (with a count: to that line)", []string{"g g"}},
+	{VimBottom, ScopeVim, "to the last line (with a count: to that line)", []string{"G"}},
+	{VimHalfUp, ScopeVim, "scroll half a page up", []string{"ctrl+u"}},
+	{VimPageDown, ScopeVim, "scroll a page down", []string{"pgdown"}},
+	{VimPageUp, ScopeVim, "scroll a page up", []string{"pgup"}},
+	{VimDelete, ScopeVim, "delete operator (twice: the line)", []string{"d"}},
+	{VimChange, ScopeVim, "change operator (twice: the line)", []string{"c"}},
+	{VimYank, ScopeVim, "yank operator (twice: the line)", []string{"y"}},
+	{VimInsert, ScopeVim, "insert before the cursor", []string{"i"}},
+	{VimAppend, ScopeVim, "insert after the cursor", []string{"a"}},
+	{VimInsertStart, ScopeVim, "insert at the start of the line", []string{"I"}},
+	{VimAppendEnd, ScopeVim, "insert at the end of the line", []string{"A"}},
+	{VimOpenBelow, ScopeVim, "open a line below (visual: swap the ends of the selection)", []string{"o"}},
+	{VimOpenAbove, ScopeVim, "open a line above", []string{"O"}},
+	{VimDeleteChar, ScopeVim, "delete the character under the cursor", []string{"x"}},
+	{VimDeleteBefore, ScopeVim, "delete the character before the cursor", []string{"X"}},
+	{VimDeleteEnd, ScopeVim, "delete to the end of the line", []string{"D"}},
+	{VimChangeEnd, ScopeVim, "change to the end of the line", []string{"C"}},
+	{VimYankLine, ScopeVim, "yank the line", []string{"Y"}},
+	{VimPaste, ScopeVim, "paste after the cursor", []string{"p"}},
+	{VimPasteAbove, ScopeVim, "paste before the cursor", []string{"P"}},
+	{VimJoin, ScopeVim, "join the next line to this one", []string{"J"}},
+	{VimTilde, ScopeVim, "switch the case of the character", []string{"~"}},
+	{VimUndo, ScopeVim, "undo", []string{"u"}},
+	{VimRedo, ScopeVim, "redo", []string{"ctrl+r"}},
+	{VimVisual, ScopeVim, "visual mode", []string{"v"}},
+	{VimVisualLine, ScopeVim, "visual line mode", []string{"V"}},
+	{VimReplace, ScopeVim, "replace the character (the next key is the new one)", []string{"r"}},
+	{VimSearch, ScopeVim, "search forwards", []string{"/"}},
+	{VimSearchBack, ScopeVim, "search backwards", []string{"?"}},
+	{VimSearchNext, ScopeVim, "next match", []string{"n"}},
+	{VimSearchPrev, ScopeVim, "previous match", []string{"N"}},
+	{VimCommandLine, ScopeVim, "start a : command", []string{":"}},
+	{VimDefinition, ScopeVim, "go to the definition of the symbol", []string{"g d"}},
+	{VimReferences, ScopeVim, "list the references of the symbol", []string{"g r"}},
+	{VimNextTab, ScopeVim, "next file tab (project window)", []string{"g t"}},
+	{VimPrevTab, ScopeVim, "previous file tab (project window)", []string{"g T"}},
+
+	{InsertNewline, ScopeInsert, "break the line", []string{"enter"}},
+	{InsertBackspace, ScopeInsert, "delete the character before the cursor", []string{"backspace"}},
+	{InsertDelete, ScopeInsert, "delete the character under the cursor", []string{"delete"}},
+	{InsertLeft, ScopeInsert, "move left", []string{"left"}},
+	{InsertRight, ScopeInsert, "move right", []string{"right"}},
+	{InsertUp, ScopeInsert, "move up", []string{"up"}},
+	{InsertDown, ScopeInsert, "move down", []string{"down"}},
+	{InsertHome, ScopeInsert, "to the start of the line", []string{"home"}},
+	{InsertEnd, ScopeInsert, "to the end of the line", []string{"end"}},
+	{InsertTab, ScopeInsert, "insert a tab", []string{"tab"}},
+	{InsertDeleteToStart, ScopeInsert, "delete everything before the cursor", []string{"ctrl+u"}},
+	{InsertDeleteToEnd, ScopeInsert, "delete everything after the cursor", []string{"ctrl+k"}},
+	{InsertComplete, ScopeInsert, "open the completion popup", []string{"ctrl+space", "ctrl+n"}},
 }
 
 func find(command Command) (definition, bool) {
@@ -171,4 +321,14 @@ func ScopeOf(command Command) Scope {
 func Doc(command Command) string {
 	d, _ := find(command)
 	return d.doc
+}
+
+// Canonical is the command's name for itself in the editor: its first default key or sequence. The editor's engine is written for these keys
+// (vim.left is h, vim.top is g g), so the resolver turns whatever the user bound into them.
+func Canonical(command Command) Sequence {
+	d, ok := find(command)
+	if !ok {
+		return nil
+	}
+	return d.sequences()[0]
 }

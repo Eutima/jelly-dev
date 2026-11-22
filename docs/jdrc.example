@@ -1,7 +1,7 @@
 # The shortcuts of jd. Save this as ~/.jdrc (or .jdrc in a project) and change what you like.
 # Syntax:  command = key[, key ...]   (none unbinds a command; the first key is the one shown in the UI)
 # Keys:    ctrl+j  alt+x  f4  esc  tab  shift+tab  enter  backspace  delete  up  down  left  right  pgup  pgdown  home  end
-#          space  comma  hash  or a single character. The vim editing keys are not part of this file.
+#          space  comma  hash  or a single character. In the vim.* commands a key sequence is keys separated by spaces (g g).
 
 # ide: the project window (keys need ctrl, alt, shift or a function key: bare letters belong to the editor and the shell)
 palette       = alt+p, f1              # default: show the command palette
@@ -51,3 +51,67 @@ diff.revert = r, backspace, delete   # default: revert the selected change
 diff.edit   = e, enter               # default: edit the file
 diff.undo   = u                      # default: undo the last revert or edit
 diff.quit   = q, esc, ctrl+c, ctrl+d # default: quit
+
+# vim: the editor's normal and visual mode (a key sequence is keys separated by spaces: g g)
+vim.left         = h, left, backspace     # default: move left
+vim.right        = l, right, space        # default: move right
+vim.down         = j, down                # default: move down
+vim.up           = k, up                  # default: move up
+vim.linestart    = home                   # default: to the start of the line (0 always works too)
+vim.firstchar    = ^                      # default: to the first character of the line
+vim.lineend      = $, end                 # default: to the end of the line
+vim.wordforward  = w                      # default: to the next word
+vim.wordback     = b                      # default: to the previous word
+vim.wordend      = e                      # default: to the end of the word
+vim.top          = g g                    # default: to the first line (with a count: to that line)
+vim.bottom       = G                      # default: to the last line (with a count: to that line)
+vim.halfup       = ctrl+u                 # default: scroll half a page up
+vim.pagedown     = pgdown                 # default: scroll a page down
+vim.pageup       = pgup                   # default: scroll a page up
+vim.delete       = d                      # default: delete operator (twice: the line)
+vim.change       = c                      # default: change operator (twice: the line)
+vim.yank         = y                      # default: yank operator (twice: the line)
+vim.insert       = i                      # default: insert before the cursor
+vim.append       = a                      # default: insert after the cursor
+vim.insertstart  = I                      # default: insert at the start of the line
+vim.appendend    = A                      # default: insert at the end of the line
+vim.openbelow    = o                      # default: open a line below (visual: swap the ends of the selection)
+vim.openabove    = O                      # default: open a line above
+vim.deletechar   = x                      # default: delete the character under the cursor
+vim.deletebefore = X                      # default: delete the character before the cursor
+vim.deleteend    = D                      # default: delete to the end of the line
+vim.changeend    = C                      # default: change to the end of the line
+vim.yankline     = Y                      # default: yank the line
+vim.paste        = p                      # default: paste after the cursor
+vim.pasteabove   = P                      # default: paste before the cursor
+vim.join         = J                      # default: join the next line to this one
+vim.tilde        = ~                      # default: switch the case of the character
+vim.undo         = u                      # default: undo
+vim.redo         = ctrl+r                 # default: redo
+vim.visual       = v                      # default: visual mode
+vim.visualline   = V                      # default: visual line mode
+vim.replace      = r                      # default: replace the character (the next key is the new one)
+vim.search       = /                      # default: search forwards
+vim.searchback   = ?                      # default: search backwards
+vim.searchnext   = n                      # default: next match
+vim.searchprev   = N                      # default: previous match
+vim.commandline  = :                      # default: start a : command
+vim.definition   = g d                    # default: go to the definition of the symbol
+vim.references   = g r                    # default: list the references of the symbol
+vim.nexttab      = g t                    # default: next file tab (project window)
+vim.prevtab      = g T                    # default: previous file tab (project window)
+
+# insert: the editor's insert mode (keys that are not typed text: ctrl, alt, named and function keys)
+insert.newline       = enter                  # default: break the line
+insert.backspace     = backspace              # default: delete the character before the cursor
+insert.delete        = delete                 # default: delete the character under the cursor
+insert.left          = left                   # default: move left
+insert.right         = right                  # default: move right
+insert.up            = up                     # default: move up
+insert.down          = down                   # default: move down
+insert.home          = home                   # default: to the start of the line
+insert.end           = end                    # default: to the end of the line
+insert.tab           = tab                    # default: insert a tab
+insert.deletetostart = ctrl+u                 # default: delete everything before the cursor
+insert.deletetoend   = ctrl+k                 # default: delete everything after the cursor
+insert.complete      = ctrl+space, ctrl+n     # default: open the completion popup

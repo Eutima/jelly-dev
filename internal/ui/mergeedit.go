@@ -7,8 +7,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/eutima/jelly-dev/internal/keymap"
 	"github.com/eutima/jelly-dev/internal/merge"
 	"github.com/eutima/jelly-dev/internal/vimbuf"
+	"github.com/eutima/jelly-dev/internal/vimkeys"
 )
 
 // moveCursor moves the line cursor by delta rows and scrolls it into view.
@@ -228,6 +230,7 @@ func (m *MergeModel) startEdit(below bool) {
 		buffer.OpenLineBelow()
 	}
 	m.editing, m.vim, m.editChunk, m.editTop, m.editCtx, m.editGPending = true, buffer, chunk, 0, -1, false
+	m.resolver = vimkeys.New(keys)
 	m.keepEditorVisible()
 	m.notice("", false)
 }
@@ -265,19 +268,32 @@ func (m MergeModel) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.editConfirm = true
 		return m, nil
 	}
-	if m.editNavigate(msg.String()) {
-		m.keepEditorVisible()
-		return m, nil
-	}
-	for _, key := range editorKeys(msg) {
-		switch m.vim.Handle(key) {
-		case vimbuf.Write:
-			m.applyEdit()
-		case vimbuf.WriteQuit:
-			m.applyEdit()
-			m.closeEditor()
-		case vimbuf.Quit, vimbuf.ForceQuit:
-			m.closeEditor()
+	for _, raw := range pressedKeys(msg, m.resolver) {
+		mode := vimkeys.Normal
+		if m.vim.Mode() == vimbuf.Insert {
+			mode = vimkeys.Insert
+		}
+		out := m.resolver.Feed(raw, mode, m.vim.WantsLiteral())
+		if out.Cancel {
+			m.vim.CancelPending()
+		}
+		for _, key := range out.Keys {
+			if m.editNavigate(key) { // the moves over the read-only lines around the change
+				m.keepEditorVisible()
+				continue
+			}
+			switch m.vim.Handle(key) {
+			case vimbuf.Write:
+				m.applyEdit()
+			case vimbuf.WriteQuit:
+				m.applyEdit()
+				m.closeEditor()
+			case vimbuf.Quit, vimbuf.ForceQuit:
+				m.closeEditor()
+			}
+			if !m.editing {
+				break
+			}
 		}
 		if !m.editing {
 			break
@@ -447,7 +463,7 @@ func (m MergeModel) editingStatus() string {
 		return fmt.Sprintf("-- READ-ONLY --   %d   (move into the change to edit · :q leaves · ctrl+d leaves)", m.editFirst-len(m.editBefore)+m.editCtx)
 	}
 	row, col := m.vim.Cursor()
-	pending := m.vim.Pending()
+	pending := m.vim.Pending() + m.resolver.Pending()
 	if pending != "" {
 		pending = "   " + pending
 	}
@@ -517,8 +533,10 @@ func (m MergeModel) editorBody(width int) string {
 func (m MergeModel) editorBar() *bar {
 	result := &bar{}
 	result.add(barPart{" ", m.theme.Footer})
-	for _, h := range [][2]string{{"esc", "normal"}, {"i", "insert"}, {"v/V", "visual"}, {":w", "apply"}, {":wq", "apply+leave"},
-		{":q", "leave"}, {":q!", "discard"}, {"ctrl+d", "leave (asks)"}} {
+	result.command("esc", "normal", !m.editConfirm, m.theme)
+	result.sequenceHint(keymap.VimInsert, "insert", !m.editConfirm, m.theme)
+	result.pairHint(keymap.VimVisual, keymap.VimVisualLine, "visual", !m.editConfirm, m.theme)
+	for _, h := range [][2]string{{":w", "apply"}, {":wq", "apply+leave"}, {":q", "leave"}, {":q!", "discard"}, {"ctrl+d", "leave (asks)"}} {
 		result.command(h[0], h[1], !m.editConfirm, m.theme)
 	}
 	return result

@@ -157,7 +157,7 @@ project folder (the way to the root when the tree has only folders), a name endi
 cannot leave the project. `d` asks first, and the question starts on *No*. `ctrl+e` or `tab` switch to the editor, `q` quit (`ctrl+e` switches back to the tree). Entries of `.git` and the root
 `.gitignore` (names and globs) are hidden. The mouse works in the tree, the editor and the footers.
 
-Editor: normal, insert and visual mode with the keys listed under "Merge" (the same engine), line numbers, syntax highlighting,
+Editor: normal, insert and visual mode with the keys listed under "Merge" (the same engine; all of them are the defaults of the `vim.*` and `insert.*` commands, see "Shortcuts and .jdrc"), line numbers, syntax highlighting,
 scrolling, `:w [file]`, `:wq`, `:x`, `:q`, `:q!`, `:e[!] file`, `:set nu|nonu`, `:{n}`. Files are written atomically with
 their line endings. Not yet: splits, diagnostics and the rest of vim.
 
@@ -320,9 +320,9 @@ the current repository only), then use `git difftool` and `git mergetool`.
 
 ## Shortcuts and .jdrc
 
-Every shortcut of the project window and of the merge, diff, git and directory views can be changed in a `.jdrc` file, and the footers, the
-command palette, the top bar and the messages then show the keys you chose. The vim editing keys, the movement keys of the lists and the answers
-to questions (`y`, `n`, `enter`, `esc`) stay as they are.
+Every shortcut of the project window, of the merge, diff, git and directory views and of the vim editor can be changed in a `.jdrc` file, and the
+footers, the command palette, the top bar and the messages then show the keys you chose. The movement keys of the lists, the answers to questions
+(`y`, `n`, `enter`, `esc`) and the Ex commands (`:w`, `:q`, `:{n}` ...) stay as they are.
 
 `jd rc` prints the shortcuts in force, every command with its keys, in the `.jdrc` syntax. Without a `.jdrc` it prints the defaults
 (also in `docs/jdrc.example`), so `jd rc > ~/.jdrc` gives you a file to start from. Each line ends with a comment that says where the value
@@ -333,6 +333,7 @@ tabs      = ctrl+j           # one key
 terminal  = alt+x, f4        # several keys; the first one is shown in the UI
 diff      = none             # no key: the command is unbound and has no hint
 merge.ours = alt+o
+vim.top    = - t, ctrl+home      # a key sequence: keys separated by spaces (vim.* only)
 ```
 
 - **Files**: `~/.jdrc`, then `jdrc` in `$JD_CONFIG_DIR` (when set), then `.jdrc` in the folder jd starts in (the project folder, else the working
@@ -340,14 +341,25 @@ merge.ours = alt+o
 - **Syntax**: `command = key[, key ...]`, `#` starts a comment. Keys are written as Bubble Tea names them: `ctrl+x`, `alt+x`, `f1`…`f20`, `esc`,
   `tab`, `shift+tab`, `enter`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `pgup`, `pgdown`, `home`, `end`, `ctrl+right`, a single
   character, and `space`, `comma`, `hash` for the characters that cannot stand for themselves. Names are case-insensitive.
-- **Scopes**: a key belongs to one command per scope (`ide`: the project window, `merge`, `diff`: the diff, git and directory views); the same
-  key may do different things in different scopes. Assigning a key that another command has *by default* takes it from that command; a key another
-  line of a file gave away is refused. Swapping two keys therefore works with two lines.
+- **Scopes**: a key belongs to one command per scope (`ide`: the project window, `merge`, `diff`: the diff, git and directory views, `vim`: the editor's normal
+  and visual mode, `insert`: its insert mode); the same key may do different things in different scopes. Swapping two keys takes two lines.
 - **Project window keys** must use `ctrl`, `alt`, `shift` or a function key, because a bare letter would be typed into the editor or the shell. A terminal
   cannot tell `ctrl+i` from `tab`, `ctrl+m` from `enter`, `ctrl+[` from `esc` and (often) `ctrl+h` from `backspace`: those are refused.
-- **Mistakes** never lock you out: a line with an unknown command, an unknown key or a clash is skipped, jd prints
-  `jd: ~/.jdrc line 3: unknown command "tabz"` on stderr, and the default stays. `jd rc` lists the skipped lines at its end. A `.jdrc` contains
-  key names only; nothing in it is ever run.
+- **The vim editor** (`vim.*`, `insert.*`): motions (`vim.left`, `vim.wordforward`, `vim.top` = `g g` ...), the operators (`vim.delete`, `vim.change`, `vim.yank`; `dd`, `cc`, `yy` are the
+  operator pressed twice, in whatever keys it has), commands (`vim.insert`, `vim.append`, `vim.paste`, `vim.undo`, `vim.visual`, `vim.search`, `vim.commandline` ...) and the
+  keys that need the language server or the window: `vim.definition` (`g d`), `vim.references` (`g r`), `vim.nexttab` (`g t`), `vim.prevtab` (`g T`). A binding can be a **sequence**:
+  keys separated by spaces (`vim.top = - t`; `space` is the default key of `vim.right`, so a sequence starting with it needs `vim.right` on other keys first); several alternatives are separated by commas. Sequences must not overlap: no sequence may be the start of another one
+  (that would need a timeout), so `vim.deletechar = g` is refused until the `g` commands have other keys. The key after `r`, the count digits, `0`, `esc`, `ctrl+c`, `ctrl+d`, typing in insert mode
+  and in the `:` and `/` line are fixed, and a sequence cannot start with a digit, `esc`, `ctrl+c`, `ctrl+d` or a key a project window command has (the window handles those first).
+  In the visual mode the same commands act as ever (`vim.openbelow` swaps the ends of the selection). `insert.*` takes keys that are not typed text (`ctrl+x`, `alt+x`, a named key, a
+  function key), no sequences: `jk` as escape would need a timeout. Binding `insert.down` (or `up`, `newline`, `tab`) to other keys also takes the old key away in the completion popup, which uses the same keys. A command that is bound to other keys leaves its old keys without effect; `jd rc` lists them all.
+- **Validation**: before anything runs, jd checks the files, and **does not start** (exit code 2, nothing opens) when it finds a problem: it prints
+  every one with its file and line, for example `jd: ~/.jdrc line 3: unknown command "tabz"`, and `jd rc` shows the mapping together with the same problems
+  so you can fix them (`jd rc`, `jd --version`, `jd --help`, `jd setup` and `jd install-*` do not need a valid file). A problem is an unknown command, an unknown
+  or ambiguous key, a key twice in one command, the same key on two commands of one scope, a command set twice in one file, a key another file line already
+  has, and a key **taken from a command that has it by default** without the files saying what that command gets instead (`merge.ours = n` is refused until
+  `merge.next` has other keys, or `none`, in a file; the order of the lines does not matter, and two commands can swap keys). A `.jdrc` contains key names
+  only; nothing in it is ever run. Move the file away to start without it.
 
 ## Command line
 
