@@ -488,7 +488,7 @@ func (m EditorModel) View() string {
 
 	styles := codeLineStyles{
 		base: m.theme.Equal, selected: m.theme.Selected,
-		cursor: m.theme.Selected.Reverse(!m.theme.Selected.GetReverse()),
+		cursor: m.theme.CursorStyle(),
 		match:  m.theme.Warning.Reverse(true),
 	}
 	numWidth, textWidth := m.numberWidth(), m.textWidth()

@@ -467,7 +467,7 @@ func (m MergeModel) editorBody(width int) string {
 	lastNo := m.editFirst - before + total - 1
 	numWidth := len(fmt.Sprint(lastNo)) + 1
 	textWidth := max(width-numWidth, 0)
-	styles := editLineStyles{base: m.theme.Equal, selected: m.theme.Selected, cursor: m.theme.Selected.Reverse(!m.theme.Selected.GetReverse())}
+	styles := editLineStyles{base: m.theme.Equal, selected: m.theme.Selected, cursor: m.theme.CursorStyle()}
 	context := editLineStyles{base: m.theme.Equal.Faint(true), selected: m.theme.Equal.Faint(true), cursor: m.theme.Equal.Faint(true)}
 	var out strings.Builder
 	for i := m.editTop; i < m.editTop+m.bodyHeight(); i++ {

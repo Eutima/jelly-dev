@@ -275,7 +275,7 @@ func (m GitModel) editorView() string {
 	row, col := e.vim.Cursor()
 	numWidth := len(fmt.Sprint(max(e.vim.LineCount(), 1))) + 1
 	textWidth := max(m.width-numWidth, 0)
-	styles := editLineStyles{base: m.theme.Equal, selected: m.theme.Selected, cursor: m.theme.Selected.Reverse(!m.theme.Selected.GetReverse())}
+	styles := editLineStyles{base: m.theme.Equal, selected: m.theme.Selected, cursor: m.theme.CursorStyle()}
 	for i := e.top; i < e.top+m.editorBodyHeight(); i++ {
 		if i >= e.vim.LineCount() {
 			out.WriteString(m.theme.Equal.Render(strings.Repeat(" ", m.width)))

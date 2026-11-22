@@ -283,3 +283,13 @@ func DetectThemeName(profile termenv.Profile, darkBackground bool) string {
 func DetectedThemeName() string {
 	return DetectThemeName(lipgloss.ColorProfile(), lipgloss.HasDarkBackground())
 }
+
+// CursorStyle is the style of the text cursor cell. Themes that mark the selection with reverse video (mono, ANSI,
+// contrast) cannot invert it again, that would leave the cursor looking like plain text: it is reverse video with
+// bold and underline there, which also tells it apart from the selection.
+func (t Theme) CursorStyle() lipgloss.Style {
+	if t.Selected.GetReverse() {
+		return t.Selected.Bold(true).Underline(true)
+	}
+	return t.Selected.Reverse(true)
+}
