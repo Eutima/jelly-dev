@@ -1,6 +1,8 @@
 // Package tools installs the language servers and formatters the editor uses. jd checks for them when it starts and installs
-// what is missing, with the language's own tool: npm, go, pip or pipx, or a download. It never installs a runtime
-// (Go, Node.js, Python, Java): that needs root rights and is the installer's job; a missing runtime is reported.
+// what is missing, with the language's own tool: npm, go, pip or pipx, or a download. It does not install runtimes (Go, Node.js,
+// Python, Java) itself: that needs root rights or a pinned download and is the installer script's job. The program that uses this
+// package may give Env an InstallRuntime hook that runs the script for Node.js (needed by the npm tools); without it, or for the
+// other runtimes, a missing runtime is reported.
 package tools
 
 import (
@@ -100,6 +102,9 @@ type Env struct {
 	Run func(ctx context.Context, env []string, name string, args ...string) error
 	// Fetch downloads a URL into a file.
 	Fetch func(ctx context.Context, url, dest string) error
+	// InstallRuntime installs a runtime that a tool needs ("node") when it is missing; nil: a missing runtime is only reported. It
+	// returns when the runtime can be found on the PATH of this process.
+	InstallRuntime func(ctx context.Context, runtime string) error
 }
 
 // DefaultEnv is the real machine.
@@ -232,7 +237,16 @@ func (e Env) Install(ctx context.Context, t Tool) error {
 
 func (e Env) installNPM(ctx context.Context, t Tool) error {
 	if _, err := e.need(t, "npm (Node.js)", "npm"); err != nil {
-		return err
+		var missing *MissingRuntimeError
+		if !errors.As(err, &missing) || e.InstallRuntime == nil {
+			return err
+		}
+		if installErr := e.InstallRuntime(ctx, "node"); installErr != nil {
+			return fmt.Errorf("%s needs Node.js, which is missing and could not be installed: %w", t.Name, installErr)
+		}
+		if _, err := e.need(t, "npm (Node.js)", "npm"); err != nil {
+			return err
+		}
 	}
 	args := []string{"install", "-g"}
 	if e.GOOS != "windows" {

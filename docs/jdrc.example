@@ -13,7 +13,7 @@ grep          = ctrl+g                 # default: search text in the project
 diff          = alt+d                  # default: show the git diff
 focus         = ctrl+e                 # default: switch focus between the tree and the editor
 leaveterminal = ctrl+]                 # default: give the focus back from the terminal panel to the editor
-closeterminal = alt+w                  # default: end the shown terminal tab
+closeterminal = ctrl+d                 # default: end the shown terminal tab
 back          = ctrl+b                 # default: go back to where the last jump started
 save          = ctrl+s                 # default: save the file (in every editor mode)
 

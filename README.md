@@ -4,7 +4,12 @@
 
 <p align="center">
   <a href="https://github.com/Eutima/jelly-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/github/check-runs/Eutima/jelly-dev/master?nameFilter=test&label=test" alt="test"></a>
-  <a href="https://github.com/Eutima/jelly-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/github/check-runs/Eutima/jelly-dev/master?nameFilter=build&label=build" alt="build"></a>
+  <a href="https://github.com/Eutima/jelly-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/github/check-runs/Eutima/jelly-dev/master?nameFilter=build%20%28linux%2C%20amd64%29&label=build%20linux%20amd64" alt="build linux amd64"></a>
+  <a href="https://github.com/Eutima/jelly-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/github/check-runs/Eutima/jelly-dev/master?nameFilter=build%20%28linux%2C%20arm64%29&label=build%20linux%20arm64" alt="build linux arm64"></a>
+  <a href="https://github.com/Eutima/jelly-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/github/check-runs/Eutima/jelly-dev/master?nameFilter=build%20%28darwin%2C%20amd64%29&label=build%20macOS%20amd64" alt="build macOS amd64"></a>
+  <a href="https://github.com/Eutima/jelly-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/github/check-runs/Eutima/jelly-dev/master?nameFilter=build%20%28darwin%2C%20arm64%29&label=build%20macOS%20arm64" alt="build macOS arm64"></a>
+  <a href="https://github.com/Eutima/jelly-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/github/check-runs/Eutima/jelly-dev/master?nameFilter=build%20%28windows%2C%20amd64%29&label=build%20windows%20amd64" alt="build windows amd64"></a>
+  <a href="https://github.com/Eutima/jelly-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/github/check-runs/Eutima/jelly-dev/master?nameFilter=build%20%28windows%2C%20arm64%29&label=build%20windows%20arm64" alt="build windows arm64"></a>
   <a href="https://github.com/Eutima/jelly-dev/actions/workflows/release.yml"><img src="https://github.com/Eutima/jelly-dev/actions/workflows/release.yml/badge.svg?branch=master" alt="release"></a>
 </p>
 
@@ -12,7 +17,7 @@
 panel and a command palette, plus side-by-side diffs, a three-pane `git mergetool` and conflict resolution with Claude or Codex.
 One static binary, one command: `jd`.
 
-Linux · macOS · Windows · `pip install jelly-dev`
+Linux · macOS · Windows · Docker · `pip install jelly-dev`
 
 [Install](#install) · [Screenshots](#screenshots) · [The IDE](#the-ide) · [Diff, git and directories](#diff-git-and-directories) · [Merge](#merge) · [Shortcuts and .jdrc](#shortcuts-and-jdrc) · [Command line](#command-line) · [Installer and tools](#installer-and-tools)
 
@@ -44,6 +49,13 @@ irm https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/install.ps
 ```
 pip install jelly-dev      # puts the jd command on the PATH; pipx install jelly-dev works too
 ```
+
+**Docker**: the pip install is also the quickest way to get a nice editor inside a container: `RUN pip install jelly-dev` in a Dockerfile (Alpine, Debian
+or Ubuntu image with Python), then `docker exec -it <container> jd`. The wheel carries the static binary, jd needs no root, no `HOME` and no
+write access to the root file system (CI runs it that way), and it has a project tree, a vim-style editor, diffs and a shell panel, so a
+quick fix or a look at the files of a running container needs no other tools. Node.js and npm, which some language servers need, do not have to be in the
+image: jd installs them below `~/.local` when the first such server is added (`:addlang`, `jd install-lsp javascript`, or when a window opens), so
+`RUN pip install jelly-dev && jd install-lsp javascript` prepares them at build time.
 
 Then reload the shell (`exec "$SHELL" -l`, or open a new terminal) and check it: `jd --version`. Start the IDE with `jd` or
 `jd <folder>`. What the installer does, the tools and the options are under [Installer and tools](#installer-and-tools).
@@ -97,7 +109,7 @@ Taken from the [playground](playground/README.md) examples (`python3 playground/
 ## The IDE
 
 `jd` with no argument opens the **most recent project** (a folder) in the project window: the file tree on the left and a
-vim-style editor on the right; with no history it shows a welcome screen with the recent projects (`enter` open it,
+vim-style editor on the right; with no history it shows a welcome screen with the recent projects (`enter` opens it in this window, without a question,
 `w` open in a new window, `o` type a folder, `d` forget, `q` quit). `jd <folder>` opens that folder, `jd <file>` opens the
 file in its project (the git root, else its folder); a name that does not exist yet starts a new file. The list of recent
 projects, and for each one the file and cursor that were open, is kept in `<user config dir>/jd/projects.json`
@@ -119,6 +131,11 @@ other; `:difffile` compares only the file of the shown tab with a revision; `:di
 the repository (a list of `git worktree list`, or any folder) as a directory diff, the other tree being the old side. A revision that does not
 exist is a message, not an empty screen. As in `jd git`, the new side is the working tree, so changes can be reverted and edited there.
 
+**Which pane has the focus** (tree, editor or terminal): the title of that pane starts with `>` (the project name above the tree, the tab bar, `TERMINAL`),
+the footer of the editor names it (`[tree]`, `[editor]`, `[terminal]`), the divider between tree and editor is a half block pointing at it (`▌` tree,
+`▐` editor), the text of the other panes is drawn faint and the editor shows its cursor only when it has the focus. None of it depends on colours, so it
+also works in terminals with 16 colours or none. `ctrl+e` switches between tree and editor, `ctrl+t` shows the terminal.
+
 **Merge conflicts**: when the project is in a merge with unresolved conflicts, the top bar shows `! N conflicts (:mergetool)`. A click, `:mergetool`
 or the palette entry runs `git mergetool` with jd as the tool (whatever git is configured with): one merge view per conflicting file, the result
 is staged when you save. The window looks again after the merge tool ends and now and then while you type.
@@ -129,7 +146,7 @@ back after `gd`/`gr`). *Terminal* opens a shell in the project in a panel under 
 to the shell; `ctrl+]` (or a click on the editor) gives the focus back, `ctrl+t` (also from the editor and the tree, where it shows the panel) or the
 palette entry hides the panel (the shells keep running). The panel has **tabs**, one shell each: `[+]` (or `:terminal new`, or *New terminal* in the
 tab list) opens another, a click or `alt+1` … `alt+9`
-chooses one, `alt+w` or `[×]` ends the shown one; a shell that exits closes its tab, the last one takes the panel with it. On Windows the panel runs `$SHELL`, else PowerShell 7 (`pwsh`), else Windows PowerShell, else `%ComSpec%` (cmd.exe), in a ConPTY (Windows 10 version 1809 or newer), so the shell is inside the window
+chooses one, `ctrl+d` or `[×]` ends the shown one; a shell that exits closes its tab, the last one takes the panel with it. On Windows the panel runs `$SHELL`, else PowerShell 7 (`pwsh`), else Windows PowerShell, else `%ComSpec%` (cmd.exe), in a ConPTY (Windows 10 version 1809 or newer), so the shell is inside the window
 like on Linux and macOS; on an older Windows it runs in place of the window until you `exit`.
 
 **File tabs**: every file you open from the tree, a search or `gd`/`gr` gets a tab above the editor (an open file is shown, not
@@ -170,11 +187,11 @@ Closing: `ctrl+d` from the tree and from the last editor tab always asks first, 
 asks *Quit Jelly-Dev?*, `y` or `enter` closes, `n` or `esc` stays, and pressing
 `ctrl+d` again also closes. With several tabs `ctrl+d` closes the shown tab at once when it has no unsaved changes. A file with unsaved changes asks *Save / Discard / Cancel* instead, for every changed tab when quitting.
 After a jump (`gd`, `gr`) `ctrl+c` and `ctrl+d` still go back first. `ctrl+c` and `esc` never close anything (`ctrl+c` only returns to
-normal mode, like `esc`); only `ctrl+d`, `:wq`, `:q` and `q` in the tree close. In the terminal panel both belong to the shell. `:q`, `:wq` and `q` in the tree are explicit and close without the box.
+normal mode, like `esc`); only `ctrl+d`, `:wq`, `:q` and `q` in the tree close. In the terminal panel `ctrl+c` belongs to the shell and `ctrl+d` ends the shown terminal tab (a shell that has nothing to read ends by itself on `ctrl+d` as well). `:q`, `:wq` and `q` in the tree are explicit and close without the box.
 
 Welcome screen "open folder" (`o`): type a path and press `tab` to complete it (a single match completes the whole folder, several
 matches complete their common part, further presses walk through them; `shift+tab` goes back). The matching folders are listed
-while you type and can be chosen with the arrows; `enter` opens the folder and asks whether that is a new window (`y`) or this one (`n`),
+while you type and can be chosen with the arrows; `enter` opens the folder (on the welcome screen in this window right away; inside a project window it asks whether that is a new window (`y`) or this one (`n`)),
 `ctrl+w` opens it in a new window right away. A path that does not exist asks *Create this folder?* (`y` makes it, with its parents, `n` goes
 back to the prompt).
 
@@ -237,8 +254,10 @@ vscode-html/css/json-language-server, jdtls (Java); the installer sets them up. 
 typescript-language-server, pyright, the HTML/CSS/JSON servers, the Angular language server, jdtls,
 prettier, black) and **installs what is missing in the background**, one after the other, with the language's own tool (`go
 install`, `npm install -g --prefix ~/.local`, `pipx` or `pip --user`, or a download); the progress shows in the status line
-and the result when it is done. A runtime that is missing (Go, Node.js, Python, Java) is reported, not installed: jd never
-asks for root rights; the installer (`jd setup`) installs runtimes, below your home folder when you have no root rights. A tool
+and the result when it is done. A missing Node.js (with npm, which the npm servers need) is installed first by jd itself, with the pinned and checksummed download of the installer script
+below your home folder, or with your package manager when you have root rights, so `pip install jelly-dev` and adding a language is all it takes, also without
+a terminal (`JD_SKIP_DEPS=1` turns that off). The other runtimes (Go, Python, Java) are reported, not installed: jd never
+asks for root rights; the installer (`jd setup`) installs them, below your home folder when you have no root rights. A tool
 that failed is tried again after a day; `:tools` tries all missing
 ones now and `:tools status` lists what is missing. `JD_NO_AUTO_INSTALL=1` turns the start-up installation off. Tools end up in
 `~/.local/bin` (and Go's bin folder), which jd adds to its own PATH. Angular templates (`*.component.html`) use the Angular

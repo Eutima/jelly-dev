@@ -51,6 +51,12 @@ func NewInstaller(configDir string) *Installer {
 	return &Installer{env: DefaultEnv(), tools: Defaults(), configDir: configDir, languages: languages, restrict: true, path: filepath.Join(configDir, stateFile), now: time.Now}
 }
 
+// UseRuntimeInstaller gives the installer a way to install a missing runtime (Node.js for the npm tools) before it installs a tool.
+// Call it once, before the installer is used.
+func (i *Installer) UseRuntimeInstaller(install func(ctx context.Context, runtime string) error) {
+	i.env.InstallRuntime = install
+}
+
 // wanted reports whether the tool belongs to a chosen language.
 func (i *Installer) wanted(name string) bool {
 	if !i.restrict { // an installer built by hand: everything

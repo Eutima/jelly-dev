@@ -978,6 +978,8 @@ func (m ProjectModel) View() string {
 // body is the tree and the editor under the top bar.
 func (m ProjectModel) body() string {
 	m.editor.ambient = m.toolStatus
+	m.editor.blurred = m.focus != focusProjectEdit // the cursor of an editor that does not have the focus is not drawn
+	m.editor.pane = paneName(m.focus)
 	tree := m.treeWidth()
 	switch {
 	case tree == 0:
@@ -985,7 +987,8 @@ func (m ProjectModel) body() string {
 	case m.width < minProjectWidth:
 		return m.treeView(tree)
 	}
-	divider := strings.TrimSuffix(strings.Repeat(m.theme.Gutter.Render(separator)+"\n", m.bodyHeight()), "\n")
+	glyph, style := m.dividerLook()
+	divider := strings.TrimSuffix(strings.Repeat(style.Render(glyph)+"\n", m.bodyHeight()), "\n")
 	return lipgloss.JoinHorizontal(lipgloss.Top, m.treeView(tree), divider, m.editorColumn())
 }
 
@@ -995,7 +998,7 @@ func (m ProjectModel) treeView(width int) string {
 	if m.focus == focusTree {
 		header = m.theme.Selected.Bold(true)
 	}
-	lines = append(lines, header.Render(padRight(" "+sanitize(filepath.Base(m.root)), width)))
+	lines = append(lines, header.Render(padRight(focusMark(m.focus == focusTree)+sanitize(filepath.Base(m.root)), width)))
 	rows := m.tree.Visible()
 	for y := 0; y < m.treeBody(); y++ {
 		i := m.top + y
@@ -1004,6 +1007,9 @@ func (m ProjectModel) treeView(width int) string {
 			continue
 		}
 		lines = append(lines, m.treeRow(rows[i], i == m.sel, width))
+	}
+	if m.focus != focusTree {
+		dimLines(lines[1:]) // the rows, not the title
 	}
 	return strings.Join(append(lines, m.treeFooterRows(width)...), "\n")
 }

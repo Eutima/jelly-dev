@@ -245,7 +245,7 @@ func (m ProjectModel) distinctName(path string) string {
 func (m ProjectModel) tabBar(width int) *bar {
 	all, names := m.openEditors(), m.tabNames()
 	labels := make([]string, len(all))
-	total := 0
+	total := 1 // the column of the focus mark
 	for i, e := range all {
 		labels[i] = " " + sanitize(names[i])
 		if e.Modified() {
@@ -258,6 +258,11 @@ func (m ProjectModel) tabBar(width int) *bar {
 		total -= len([]rune(labels[first])) + 3
 	}
 	result := &bar{}
+	if m.focus == focusProjectEdit {
+		result.add(barPart{">", m.theme.Selected.Bold(true)})
+	} else {
+		result.add(barPart{" ", m.theme.Footer})
+	}
 	for i := first; i < len(all); i++ {
 		style := m.theme.Footer
 		if i == m.tab {

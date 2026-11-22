@@ -194,7 +194,7 @@ var definitions = []definition{
 	{Diff, ScopeIDE, "show the git diff", []string{"alt+d"}},
 	{Focus, ScopeIDE, "switch focus between the tree and the editor", []string{"ctrl+e"}},
 	{LeaveTerminal, ScopeIDE, "give the focus back from the terminal panel to the editor", []string{"ctrl+]"}},
-	{CloseTerminal, ScopeIDE, "end the shown terminal tab", []string{"alt+w"}},
+	{CloseTerminal, ScopeIDE, "end the shown terminal tab", []string{"ctrl+d"}},
 	{Back, ScopeIDE, "go back to where the last jump started", []string{"ctrl+b"}},
 	{Save, ScopeIDE, "save the file (in every editor mode)", []string{"ctrl+s"}},
 

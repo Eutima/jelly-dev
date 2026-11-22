@@ -232,6 +232,14 @@ out=$(FAKE_NO_SUDO=1 FAKE_LANGS="go,java" FAKE_OS=darwin FAKE_ARCH=arm64 plan ap
 expect "macOS: the Go archive" "$out" "go1.27.4.darwin-arm64.tar.gz"
 expect "macOS: the JDK archive" "$out" "OpenJDK21U-jdk_aarch64_mac_hotspot"
 
+# what jd runs when a language server needs Node.js and it is missing (JD_DEPS=runtimes JD_LANGS=javascript): Node.js and nothing else
+out=$(FAKE_NO_SUDO=1 FAKE_LANGS=javascript plan apt-get "git" "runtimes")
+expect "on demand: Node.js is downloaded" "$out" "download https://nodejs.org/dist/v26.13.1/node-v26.13.1-linux-x64.tar.gz"
+expect_not "on demand: no Go" "$out" "go1.27.4"
+expect_not "on demand: no JDK" "$out" "OpenJDK21U"
+expect_not "on demand: no rustup" "$out" "rustup"
+expect_not "on demand: no language server is installed here" "$out" "npm install -g"
+
 # a machine without a pinned build is told so, nothing is downloaded
 out=$(FAKE_NO_SUDO=1 FAKE_LANGS="go,rust" FAKE_ARCH=armv7l plan apt-get "git xclip xterm" "runtimes")
 expect "an unknown CPU gets no build" "$out" "there is no build of it for linux/armv7l"

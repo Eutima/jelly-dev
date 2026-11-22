@@ -213,9 +213,11 @@ func (m WelcomeModel) choose() (tea.Model, tea.Cmd) {
 	return m.open(m.entries[m.selected].Path)
 }
 
-// open asks where a project opens: in a new window or in this one. Without a way to start windows there is nothing to ask.
+// open opens a project. Inside a project window (embedded) it asks where: in a new window or in this one; at the start, when no project is
+// open yet, there is no window to keep, so it opens here (w and ctrl+w open a new window). Without a way to start windows there is nothing
+// to ask either.
 func (m WelcomeModel) open(path string) (tea.Model, tea.Cmd) {
-	if m.newWindow == nil {
+	if m.newWindow == nil || !m.embedded {
 		m.outcome.Path = path
 		return m.finish()
 	}

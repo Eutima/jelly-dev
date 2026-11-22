@@ -45,6 +45,8 @@ type EditorModel struct {
 	list  *placeList    // the open list of places (references, several definitions)
 
 	completion *completionState // the open completion popup
+	blurred    bool             // the project window's focus is elsewhere: the cursor is not drawn
+	pane       string           // the pane of the project window that has the focus, named in the footer
 	ambient    string           // what the window is doing in the background (installing tools), shown when there is no message
 
 	clipboard vimbuf.Clipboard // the system clipboard, set again on every buffer that is opened
@@ -495,7 +497,11 @@ func (m EditorModel) footerBar() *bar {
 		modified = " [+]"
 	}
 	row, col := m.vim.Cursor()
-	result.add(barPart{fmt.Sprintf(" %s  %s%s  %d:%d   ", m.vim.Mode(), name, modified, row+1, col+1), m.theme.Header})
+	focus := ""
+	if m.forwardEx && m.pane != "" {
+		focus = "  [" + m.pane + "]"
+	}
+	result.add(barPart{fmt.Sprintf(" %s  %s%s  %d:%d%s   ", m.vim.Mode(), name, modified, row+1, col+1, focus), m.theme.Header})
 	if m.forwardEx { // in the project window every action is in the palette, which the top bar offers
 		return result
 	}
@@ -564,7 +570,7 @@ func (m EditorModel) View() string {
 			out.WriteString(style.Render(fmt.Sprintf("%*d ", numWidth-1, i+1)))
 		}
 		cursor, from, to := -1, 0, 0
-		if i == row {
+		if i == row && !m.blurred {
 			cursor = col
 		}
 		if f, t, ok := m.vim.Selected(i); ok {

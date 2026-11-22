@@ -329,12 +329,12 @@ func TestTerminalTabs_OpenSwitchAndClose(t *testing.T) {
 	if model.termActive != 1 {
 		t.Fatalf("a click must choose the tab: %d", model.termActive)
 	}
-	send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w"), Alt: true})
+	send(tea.KeyMsg{Type: tea.KeyCtrlD})
 	if len(model.terms) != 2 || model.termActive != 1 {
-		t.Fatalf("alt+w must close the shown tab: %d tabs, active %d", len(model.terms), model.termActive)
+		t.Fatalf("ctrl+d must close the shown tab: %d tabs, active %d", len(model.terms), model.termActive)
 	}
-	send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w"), Alt: true})
-	send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w"), Alt: true})
+	send(tea.KeyMsg{Type: tea.KeyCtrlD})
+	send(tea.KeyMsg{Type: tea.KeyCtrlD})
 	if len(model.terms) != 0 || model.termPanelHeight() != 0 || model.focus == focusTerminal {
 		t.Fatalf("closing the last tab must remove the panel: %d tabs", len(model.terms))
 	}

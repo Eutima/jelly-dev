@@ -12,7 +12,6 @@ import (
 	"github.com/eutima/jelly-dev/internal/launch"
 	"github.com/eutima/jelly-dev/internal/lsp"
 	"github.com/eutima/jelly-dev/internal/project"
-	"github.com/eutima/jelly-dev/internal/tools"
 	"github.com/eutima/jelly-dev/internal/ui"
 )
 
@@ -134,7 +133,7 @@ func runIDE(args []string, stdout, stderr io.Writer, env environment) int {
 			return theme, ok
 		},
 		Navigator:   navigator,
-		Tools:       tools.NewInstaller(dir),
+		Tools:       newInstaller(dir, env),
 		AutoInstall: env.getenv(envNoAutoInstall) == "", // language servers and formatters are installed when a window opens
 
 		Recent: func() []project.Entry {

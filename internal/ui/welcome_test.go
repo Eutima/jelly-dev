@@ -34,6 +34,17 @@ func welcomeKeys(model tea.Model, keys ...string) (tea.Model, tea.Cmd) {
 
 func welcomeFixture(t *testing.T) (tea.Model, *WelcomeOutcome, *[]string, *[]string, []project.Entry) {
 	t.Helper()
+	return welcomeFixtureIn(t, false)
+}
+
+// embeddedWelcomeFixture is the project list inside a project window (the switcher): it asks where a project opens.
+func embeddedWelcomeFixture(t *testing.T) (tea.Model, *WelcomeOutcome, *[]string, *[]string, []project.Entry) {
+	t.Helper()
+	return welcomeFixtureIn(t, true)
+}
+
+func welcomeFixtureIn(t *testing.T, embedded bool) (tea.Model, *WelcomeOutcome, *[]string, *[]string, []project.Entry) {
+	t.Helper()
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	var entries []project.Entry
 	for _, name := range []string{"alpha", "beta"} {
@@ -46,6 +57,9 @@ func welcomeFixture(t *testing.T) (tea.Model, *WelcomeOutcome, *[]string, *[]str
 	var windows, removed []string
 	model, outcome := NewWelcomeModel(entries, func(dir string) error { windows = append(windows, dir); return nil },
 		func(path string) { removed = append(removed, path) })
+	if embedded {
+		model = model.WithEmbedded()
+	}
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 90, Height: 14})
 	return updated, outcome, &windows, &removed, entries
 }
@@ -58,12 +72,20 @@ func TestWelcome_ListsProjectsAndOpensSelectedOne(t *testing.T) {
 			t.Fatalf("view lacks %q:\n%s", want, view)
 		}
 	}
+	_, cmd := welcomeKeys(model, "j", "enter")
+	if outcome.Path != entries[1].Path || outcome.NewWindow || !isQuit(cmd) {
+		t.Fatalf("with no project open enter opens it here, without a question: %q", outcome.Path)
+	}
+}
+
+func TestWelcome_EmbeddedAsksWhereToOpenTheProject(t *testing.T) {
+	model, outcome, _, _, entries := embeddedWelcomeFixture(t)
 	model, _ = welcomeKeys(model, "j", "enter")
 	if view := stripANSI(model.View()); !strings.Contains(view, "Open beta in a new window?") || outcome.Path != "" {
-		t.Fatalf("enter must ask where to open it:\n%s", view)
+		t.Fatalf("inside a project window enter must ask where to open it:\n%s", view)
 	}
-	_, cmd := welcomeKeys(model, "n") // in this window
-	if outcome.Path != entries[1].Path || outcome.NewWindow || !isQuit(cmd) {
+	model, _ = welcomeKeys(model, "n") // in this window
+	if outcome.Path != entries[1].Path || outcome.NewWindow || !model.(WelcomeModel).Done() {
 		t.Fatalf("outcome %q", outcome.Path)
 	}
 }
@@ -103,8 +125,7 @@ func TestWelcome_OpensTypedFolder(t *testing.T) {
 		t.Fatalf("windows %v", *windows)
 	}
 	model, _ = welcomeKeys(model, "o")
-	model, _ = welcomeKeys(model, append(strings.Split(target, ""), "enter")...)
-	model, cmd := welcomeKeys(model, "n")
+	model, cmd := welcomeKeys(model, append(strings.Split(target, ""), "enter")...)
 	if outcome.Path != target || !isQuit(cmd) {
 		t.Fatalf("outcome %q", outcome.Path)
 	}
@@ -129,16 +150,26 @@ func TestWelcome_AsksToCreateAMissingFolder(t *testing.T) {
 	if _, err := os.Stat(missing); err == nil {
 		t.Fatal("only y creates a folder")
 	}
-	model, _ = welcomeKeys(model, "y") // yes: the folder is made, then the window question comes
+	_, cmd := welcomeKeys(model, "y") // yes: the folder is made and opened here, without a window question
 	if info, err := os.Stat(missing); err != nil || !info.IsDir() {
 		t.Fatalf("yes must create the folder: %v", err)
 	}
+	if outcome.Path != missing || !isQuit(cmd) || len(*windows) != 0 {
+		t.Fatalf("after creating it the folder opens here: %q windows %v", outcome.Path, *windows)
+	}
+}
+
+func TestWelcome_EmbeddedAsksForTheWindowAfterCreatingAFolder(t *testing.T) {
+	model, outcome, windows, _, _ := embeddedWelcomeFixture(t)
+	missing := filepath.Join(t.TempDir(), "made")
+	typed := append([]string{"o"}, strings.Split(missing, "")...)
+	model, _ = welcomeKeys(model, append(typed, "enter", "y")...)
 	if view := stripANSI(model.View()); !strings.Contains(view, "in a new window?") || outcome.Path != "" {
 		t.Fatalf("after creating it the window question follows:\n%s", view)
 	}
-	_, cmd := welcomeKeys(model, "y") // in a new window
-	if len(*windows) != 1 || (*windows)[0] != missing || isQuit(cmd) {
-		t.Fatalf("windows %v", *windows)
+	model, _ = welcomeKeys(model, "y") // in a new window
+	if outcome.Path != missing || !outcome.NewWindow || len(*windows) != 0 {
+		t.Fatalf("outcome %q new window %v", outcome.Path, outcome.NewWindow)
 	}
 }
 
@@ -170,7 +201,7 @@ func TestWelcome_RefusesAFileAndAnEmptyPath(t *testing.T) {
 }
 
 func TestWelcome_EscapeCancelsTheWindowQuestion(t *testing.T) {
-	model, outcome, windows, _, _ := welcomeFixture(t)
+	model, outcome, windows, _, _ := embeddedWelcomeFixture(t)
 	model, _ = welcomeKeys(model, "enter", "esc")
 	if outcome.Path != "" || len(*windows) != 0 || strings.Contains(stripANSI(model.View()), "in a new window?") {
 		t.Fatalf("esc must go back to the list: %q %v", outcome.Path, *windows)
@@ -211,13 +242,9 @@ func TestWelcome_ShowsHintWithoutProjectsAndFitsScreen(t *testing.T) {
 
 func TestWelcome_ClickOpensProject(t *testing.T) {
 	model, outcome, _, _, entries := welcomeFixture(t)
-	updated, _ := model.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: 4})
-	if !strings.Contains(stripANSI(updated.View()), "Open beta in a new window?") {
-		t.Fatalf("a click must ask where to open the project:\n%s", updated.View())
-	}
-	updated, cmd := welcomeKeys(updated, "n")
+	_, cmd := model.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: 4})
 	if outcome.Path != entries[1].Path || !isQuit(cmd) {
-		t.Fatalf("outcome %q (%v)", outcome.Path, updated.View())
+		t.Fatalf("a click opens the project here, without a question: %q", outcome.Path)
 	}
 }
 
@@ -319,8 +346,7 @@ func TestWelcome_CompletesFolderWithTab(t *testing.T) {
 	if got := stripANSI(model.View()); !strings.Contains(got, "Open folder: "+root+"/alpine/█") {
 		t.Fatalf("shift+tab walks backwards and wraps:\n%s", got)
 	}
-	model, _ = pressKey(model, tea.KeyEnter)
-	model, cmd := welcomeKeys(model, "n")
+	_, cmd := pressKey(model, tea.KeyEnter)
 	if outcome.Path != root+"/alpine" || !isQuit(cmd) {
 		t.Fatalf("outcome %q", outcome.Path)
 	}
@@ -337,8 +363,7 @@ func TestWelcome_ListsFoldersWhileTypingAndChoosesWithArrows(t *testing.T) {
 	}
 	model, _ = pressKey(model, tea.KeyDown)
 	model, _ = pressKey(model, tea.KeyDown)
-	model, _ = pressKey(model, tea.KeyEnter)
-	model, cmd := welcomeKeys(model, "n")
+	_, cmd := pressKey(model, tea.KeyEnter)
 	if outcome.Path != root+"/two" || !isQuit(cmd) {
 		t.Fatalf("outcome %q", outcome.Path)
 	}
@@ -365,7 +390,7 @@ func TestWelcome_TypingAgainRefreshesMatches(t *testing.T) {
 }
 
 func TestWelcome_EscapeFromTheWindowQuestionComesBackToThePrompt(t *testing.T) {
-	model, outcome, _, _, _ := welcomeFixture(t)
+	model, outcome, _, _, _ := embeddedWelcomeFixture(t)
 	target, _ := filepath.EvalSymlinks(t.TempDir())
 	model, _ = welcomeKeys(model, append(append([]string{"o"}, strings.Split(target, "")...), "enter", "esc")...)
 	if view := stripANSI(model.View()); !strings.Contains(view, "[tab] complete") || strings.Contains(view, "in a new window?") || outcome.Path != "" {

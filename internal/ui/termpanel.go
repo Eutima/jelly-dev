@@ -141,7 +141,7 @@ func (m ProjectModel) termUpdated(msg termUpdateMsg) (tea.Model, tea.Cmd) {
 }
 
 // terminalKey sends a key to the shell. The keys of the window itself: leaveTermKey gives the focus back to the editor,
-// ctrl+t opens the tab list, alt+t hides the panel, alt+w closes the shown tab and alt+1 ... alt+9 choose one.
+// ctrl+t opens the tab list, alt+t hides the panel, ctrl+d closes the shown tab and alt+1 ... alt+9 choose one.
 func (m ProjectModel) terminalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	switch {
@@ -209,7 +209,7 @@ func (m ProjectModel) termHeader() *bar {
 	if m.focus == focusTerminal {
 		style = m.theme.Selected.Bold(true)
 	}
-	result.add(barPart{" TERMINAL ", style})
+	result.add(barPart{focusMark(m.focus == focusTerminal) + "TERMINAL ", style})
 	for i, session := range m.terms {
 		tab := m.theme.Footer
 		if i == m.termActive {
@@ -239,7 +239,7 @@ func (m ProjectModel) editorColumn() string {
 	panel := m.termPanelHeight()
 	session := m.activeTerm()
 	if panel == 0 || session == nil {
-		return m.withTabBar(m.editor.View())
+		return m.withTabBar(m.dimEditor(m.editor.View()))
 	}
 	width := max(m.editorWidth(), 1)
 	rows := session.Lines(m.focus == focusTerminal)
@@ -254,7 +254,23 @@ func (m ProjectModel) editorColumn() string {
 		}
 		lines = append(lines, lipgloss.NewStyle().MaxWidth(width).Render(line))
 	}
-	return m.withTabBar(m.editor.View()) + "\n" + strings.Join(lines, "\n")
+	if m.focus != focusTerminal {
+		dimLines(lines[1:]) // the rows of the shell, not the title
+	}
+	return m.withTabBar(m.dimEditor(m.editor.View())) + "\n" + strings.Join(lines, "\n")
+}
+
+// dimEditor draws the text of the editor faint when it does not have the focus; its first line (replaced by the tab bar) and its
+// footer stay as they are.
+func (m ProjectModel) dimEditor(view string) string {
+	if m.focus == focusProjectEdit {
+		return view
+	}
+	lines := strings.Split(view, "\n")
+	if last := len(lines) - len(m.editor.footerRows()); last > 1 {
+		dimLines(lines[1:last])
+	}
+	return strings.Join(lines, "\n")
 }
 
 // keyBytes is what a terminal sends to the shell for a key.

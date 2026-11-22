@@ -361,3 +361,50 @@ func TestInstaller_StatusShowsWhyAToolFailed(t *testing.T) {
 		t.Fatalf("status:\n%s", status)
 	}
 }
+
+func TestInstall_NPMInstallsNodeFirst_WhenItIsMissingAndTheHookIsSet(t *testing.T) {
+	m, env := newMachine(t) // no npm
+	m.installs["prettier"] = "prettier"
+	var asked []string
+	env.InstallRuntime = func(_ context.Context, runtime string) error {
+		asked = append(asked, runtime)
+		m.have["npm"] = true // the installer put Node.js on the PATH
+		return nil
+	}
+	if err := env.Install(context.Background(), tool("prettier")); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(asked, []string{"node"}) || len(m.ran) != 1 || !strings.HasPrefix(m.ran[0], "npm install -g") {
+		t.Fatalf("asked %v, ran %v", asked, m.ran)
+	}
+}
+
+func TestInstall_NPMDoesNotAskForNode_WhenNpmIsThere(t *testing.T) {
+	m, env := newMachine(t, "npm")
+	m.installs["prettier"] = "prettier"
+	env.InstallRuntime = func(context.Context, string) error { t.Fatal("Node.js is there: nothing to install"); return nil }
+	if err := env.Install(context.Background(), tool("prettier")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInstall_NPMReportsWhyNodeCouldNotBeInstalled_AndRunsNoNpm(t *testing.T) {
+	m, env := newMachine(t)
+	env.InstallRuntime = func(context.Context, string) error { return errors.New("no network") }
+	err := env.Install(context.Background(), tool("prettier"))
+	if err == nil || !strings.Contains(err.Error(), "Node.js") || !strings.Contains(err.Error(), "no network") || len(m.ran) != 0 {
+		t.Fatalf("err %v, ran %v", err, m.ran)
+	}
+}
+
+func TestInstall_NPMReportsMissingRuntime_WhenThereIsNoHookOrNpmStaysMissing(t *testing.T) {
+	_, env := newMachine(t)
+	var missing *MissingRuntimeError
+	if err := env.Install(context.Background(), tool("prettier")); !errors.As(err, &missing) {
+		t.Fatalf("without a hook the runtime is only reported: %v", err)
+	}
+	env.InstallRuntime = func(context.Context, string) error { return nil } // claims success, npm still not found
+	if err := env.Install(context.Background(), tool("prettier")); !errors.As(err, &missing) {
+		t.Fatalf("npm still missing after the hook: %v", err)
+	}
+}
