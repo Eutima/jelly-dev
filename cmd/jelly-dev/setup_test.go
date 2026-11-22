@@ -519,3 +519,18 @@ func TestMotionThrottle_DropsCrowdedMovesButDeliversTheLastOne(t *testing.T) {
 		t.Error("clicks, drags and keys always pass")
 	}
 }
+
+func TestMotionThrottle_StopCancelsAHeldMovement(t *testing.T) {
+	sent := make(chan tea.Msg, 1)
+	throttle := newMotionThrottle(30*time.Millisecond, func(msg tea.Msg) { sent <- msg })
+	move := tea.MouseMsg{Action: tea.MouseActionMotion, Button: tea.MouseButtonNone}
+	if throttle.filter(nil, move) == nil || throttle.filter(nil, move) != nil {
+		t.Fatal("the first movement passes, the second is held back")
+	}
+	throttle.stop() // the program ended
+	select {
+	case msg := <-sent:
+		t.Fatalf("a movement was sent after stop: %#v", msg)
+	case <-time.After(150 * time.Millisecond):
+	}
+}

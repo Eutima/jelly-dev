@@ -39,11 +39,20 @@ cleanup_temp() {
     old_ifs=$IFS
     IFS='
 '
+    set -f # a path with * or [ in it is a name, not a pattern
     for temp_path in $temp_paths; do
         [ -z "$temp_path" ] || rm -rf "$temp_path"
     done
+    set +f
     IFS=$old_ifs
     temp_paths=""
+}
+
+# set_cleanup_traps makes the script remove its temporary files whenever it ends: normally, by Ctrl-C or by a TERM signal.
+set_cleanup_traps() {
+    trap cleanup_temp EXIT
+    trap 'cleanup_temp; exit 130' INT
+    trap 'cleanup_temp; exit 143' TERM
 }
 warn() { printf 'warning: %s\n' "$*" >&2; }
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -748,8 +757,6 @@ main() {
 
 # Tests source this file without running it.
 if [ -z "${JD_INSTALL_NO_MAIN:-}" ]; then
-    trap cleanup_temp EXIT
-    trap 'cleanup_temp; exit 130' INT
-    trap 'cleanup_temp; exit 143' TERM
+    set_cleanup_traps
     main "$@"
 fi

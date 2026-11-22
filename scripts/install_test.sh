@@ -345,24 +345,35 @@ out=$(
 expect "rustup-init is started as rustup-init" "$out" "started-as-rustup-init"
 
 # ---- temporary files are removed when the script is interrupted ---------------------------------------------------------------
+for signal in INT TERM; do
 out=$(
     tmp=$(mktemp -d)
     # a script that tracks a temporary folder and is then interrupted, like install.sh in main: the folder must be gone afterwards
     sh -c '
         JD_INSTALL_NO_MAIN=1
         . "$1/install.sh"
-        trap cleanup_temp EXIT
-        trap "cleanup_temp; exit 130" INT
+        set_cleanup_traps # the traps of install.sh itself
         folder=$(mktemp -d "$2/jd-test.XXXXXX")
         track_temp "$folder"
         echo "$folder" >"$2/path"
-        kill -INT $$
+        kill -$3 $$
         sleep 5
-    ' sh "$here" "$tmp" >/dev/null 2>&1
+    ' sh "$here" "$tmp" "$signal" >/dev/null 2>&1
     if [ -d "$(cat "$tmp/path")" ]; then echo "left behind"; else echo "cleaned up"; fi
     rm -rf "$tmp"
 )
-expect "an interrupted script removes its temporary folders" "$out" "cleaned up"
+expect "a script that gets $signal removes its temporary folders" "$out" "cleaned up"
+done
+
+# a temporary folder whose name has glob characters is removed as that name, and nothing else with it
+out=$(
+    tmp=$(mktemp -d)
+    mkdir "$tmp/a*" "$tmp/abc"
+    JD_INSTALL_NO_MAIN=1 sh -c '. "$1/install.sh"; track_temp "$2/a*"; cleanup_temp' sh "$here" "$tmp"
+    if [ -d "$tmp/abc" ] && [ ! -d "$tmp/a*" ]; then echo "exact"; else echo "glob expanded"; fi
+    rm -rf "$tmp"
+)
+expect "cleanup removes the named folder and not what a pattern would match" "$out" "exact"
 
 if [ "$failures" -gt 0 ]; then echo "$failures failure(s)"; exit 1; fi
 echo "all install tests passed"
