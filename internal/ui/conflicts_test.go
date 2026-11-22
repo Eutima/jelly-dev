@@ -151,3 +151,30 @@ func TestExternalProgramEnd_KeepsUnsavedEdits(t *testing.T) {
 		t.Fatal("a tab with unsaved edits must keep its text")
 	}
 }
+
+func TestCloseDialog_CtrlCCancelsLikeEsc_AndCtrlDConfirms(t *testing.T) {
+	newDialog := func() ProjectModel {
+		model, err := NewProjectModel(gitRepoWithCommit(t), "", project.Session{}, ProjectHooks{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return model.confirmClose("Close?", func(m ProjectModel) (tea.Model, tea.Cmd) { return m, nil })
+	}
+	for _, key := range []tea.KeyType{tea.KeyCtrlC, tea.KeyEsc} {
+		updated, _ := newDialog().dialogKey(tea.KeyMsg{Type: key})
+		if updated.(ProjectModel).dlg != nil {
+			t.Errorf("key %v must close the dialog", key)
+		}
+	}
+	ran := false
+	model := newDialog()
+	model.dlg.then = func(m ProjectModel) (tea.Model, tea.Cmd) { ran = true; return m, nil }
+	model.dialogKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if ran {
+		t.Error("ctrl+c must not confirm")
+	}
+	model.dialogKey(tea.KeyMsg{Type: tea.KeyCtrlD})
+	if !ran {
+		t.Error("ctrl+d still confirms")
+	}
+}

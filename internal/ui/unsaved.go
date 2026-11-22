@@ -29,7 +29,7 @@ type unsavedDialog struct {
 	hint    string
 	buttons []dialogButton
 	choice  int
-	strict  bool                                    // ctrl+c and ctrl+d never confirm (for what cannot be undone)
+	strict  bool                                    // ctrl+d never confirms (for what cannot be undone)
 	then    func(ProjectModel) (tea.Model, tea.Cmd) // the blocked action, run once the question is answered with yes, save or discard
 }
 
@@ -46,7 +46,7 @@ func (m ProjectModel) confirmUnsaved(then func(ProjectModel) (tea.Model, tea.Cmd
 	return m, true
 }
 
-// confirmClose asks whether to close, even though nothing is unsaved; yes runs then. A second ctrl+c or ctrl+d answers yes.
+// confirmClose asks whether to close, even though nothing is unsaved; yes runs then. A second ctrl+d answers yes; ctrl+c cancels like esc.
 func (m ProjectModel) confirmClose(title string, then func(ProjectModel) (tea.Model, tea.Cmd)) ProjectModel {
 	m.dlg = &unsavedDialog{title: title, hint: " y or enter closes, n or esc stays, ctrl+d again closes", buttons: closeButtons, then: then}
 	return m
@@ -65,12 +65,13 @@ func (m ProjectModel) dialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		return m.dialogAction(d.buttons[d.choice].action)
-	case "ctrl+c", "ctrl+d":
+	case "ctrl+d":
 		if d.buttons[0].action == "yes" && !d.strict { // the key that asked also confirms
 			return m.dialogAction("yes")
 		}
-		return m.dialogAction("cancel") // in the save dialog ctrl+c and ctrl+d both mean: do not go on
-	case "esc", "q":
+		return m.dialogAction("cancel") // in the save dialog ctrl+d means: do not go on
+	case "esc", "q", "ctrl+c": // ctrl+c is esc: it never confirms
+
 		return m.dialogAction("cancel")
 	default:
 		for _, b := range d.buttons {
