@@ -109,16 +109,30 @@ func (m ProjectModel) runExternal(what string, cmd *exec.Cmd) (tea.Model, tea.Cm
 
 // defaultTerminal runs the user's shell in dir.
 func defaultTerminal(dir string) *exec.Cmd {
-	shell := os.Getenv("SHELL")
-	if shell == "" && runtime.GOOS == "windows" {
-		shell = os.Getenv("ComSpec")
-	}
-	if shell == "" {
-		shell = "/bin/sh"
-	}
-	cmd := exec.Command(shell)
+	shell, args := terminalShell(runtime.GOOS, os.Getenv, exec.LookPath)
+	cmd := exec.Command(shell, args...)
 	cmd.Dir = dir
 	return cmd
+}
+
+// terminalShell chooses the shell of the terminal panel and its arguments: $SHELL when it is set; on Windows PowerShell 7 (pwsh), else
+// Windows PowerShell, else %ComSpec% (cmd.exe); on other systems /bin/sh.
+func terminalShell(goos string, getenv func(string) string, lookPath func(string) (string, error)) (string, []string) {
+	if shell := getenv("SHELL"); shell != "" {
+		return shell, nil
+	}
+	if goos != "windows" {
+		return "/bin/sh", nil
+	}
+	for _, name := range []string{"pwsh.exe", "powershell.exe"} {
+		if path, err := lookPath(name); err == nil {
+			return path, []string{"-NoLogo"} // no banner: the panel is small
+		}
+	}
+	if shell := getenv("ComSpec"); shell != "" {
+		return shell, nil
+	}
+	return "cmd.exe", nil
 }
 
 // defaultDiff runs this program's git view (`jd git`) in dir.

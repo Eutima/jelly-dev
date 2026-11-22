@@ -129,7 +129,7 @@ back after `gd`/`gr`). *Terminal* opens a shell in the project in a panel under 
 to the shell; `ctrl+]` (or a click on the editor) gives the focus back, `ctrl+t` (also from the editor and the tree, where it shows the panel) or the
 palette entry hides the panel (the shells keep running). The panel has **tabs**, one shell each: `[+]` (or `:terminal new`, or *New terminal* in the
 tab list) opens another, a click or `alt+1` … `alt+9`
-chooses one, `alt+w` or `[×]` ends the shown one; a shell that exits closes its tab, the last one takes the panel with it. On Windows the panel runs `$SHELL`, else `%ComSpec%` (cmd.exe), in a ConPTY (Windows 10 version 1809 or newer), so the shell is inside the window
+chooses one, `alt+w` or `[×]` ends the shown one; a shell that exits closes its tab, the last one takes the panel with it. On Windows the panel runs `$SHELL`, else PowerShell 7 (`pwsh`), else Windows PowerShell, else `%ComSpec%` (cmd.exe), in a ConPTY (Windows 10 version 1809 or newer), so the shell is inside the window
 like on Linux and macOS; on an older Windows it runs in place of the window until you `exit`.
 
 **File tabs**: every file you open from the tree, a search or `gd`/`gr` gets a tab above the editor (an open file is shown, not

@@ -549,3 +549,40 @@ func TestAltD_ShowsTheDiff_WhenThereAreChanges(t *testing.T) {
 		t.Fatal("with changes the diff must open")
 	}
 }
+
+func TestTerminalShell_PrefersPowerShellOnWindows_AndKeepsTheUsersChoice(t *testing.T) {
+	env := func(values map[string]string) func(string) string { return func(k string) string { return values[k] } }
+	found := func(names ...string) func(string) (string, error) {
+		return func(name string) (string, error) {
+			for _, n := range names {
+				if n == name {
+					return `C:\bin\` + name, nil
+				}
+			}
+			return "", exec.ErrNotFound
+		}
+	}
+	cases := []struct {
+		name, goos string
+		env        map[string]string
+		have       []string
+		want       string
+		args       int
+	}{
+		{"pwsh first", "windows", nil, []string{"pwsh.exe", "powershell.exe"}, `C:\bin\pwsh.exe`, 1},
+		{"Windows PowerShell next", "windows", nil, []string{"powershell.exe"}, `C:\bin\powershell.exe`, 1},
+		{"ComSpec last", "windows", map[string]string{"ComSpec": `C:\Windows\cmd.exe`}, nil, `C:\Windows\cmd.exe`, 0},
+		{"cmd.exe without ComSpec", "windows", nil, nil, "cmd.exe", 0},
+		{"SHELL wins", "windows", map[string]string{"SHELL": `C:\git\bash.exe`}, []string{"pwsh.exe"}, `C:\git\bash.exe`, 0},
+		{"sh elsewhere", "linux", nil, []string{"pwsh.exe"}, "/bin/sh", 0},
+	}
+	for _, c := range cases {
+		shell, args := terminalShell(c.goos, env(c.env), found(c.have...))
+		if c.args == 1 && (len(args) != 1 || args[0] != "-NoLogo") {
+			t.Errorf("%s: the arguments are %v, want -NoLogo", c.name, args)
+		}
+		if shell != c.want || len(args) != c.args {
+			t.Errorf("%s: shell %q args %v, want %q with %d arg(s)", c.name, shell, args, c.want, c.args)
+		}
+	}
+}
