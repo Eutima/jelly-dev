@@ -354,10 +354,12 @@ runtime_jdk() {
     user_runtime jdk "Java JDK" javac "$jdk_bin" java javac jar
 }
 
+rustup_present() { have rustup || [ -x "$HOME/.cargo/bin/rustup" ]; }
+
 # runtime_rust installs rustup (the Rust toolchain manager, which lives in ~/.cargo and ~/.rustup by design) with its own installer.
 # The checksum is the one rustup publishes next to the installer (static.rust-lang.org): an integrity check, not a pin.
 runtime_rust() {
-    if have rustup || [ -x "$HOME/.cargo/bin/rustup" ]; then log "ok       Rust toolchain (rustup)"; return 0; fi
+    if rustup_present; then log "ok       Rust toolchain (rustup)"; return 0; fi
     runtime_platform
     case "$rt_os:$rt_arch:$rt_libc" in
         linux:amd64:gnu) triple=x86_64-unknown-linux-gnu ;;

@@ -21,6 +21,8 @@ plan() {
         fake_pm=$1
         fake_have=" $2 sudo "
         have() { case "$fake_have" in *" $1 "*) return 0 ;; esac; return 1; }
+        rust_component() { return 1; } # the components of this machine's toolchain do not count either
+        rustup_present() { have rustup; } # not the ~/.cargo/bin of this machine (a CI runner has rustup there)
         detect_pm() { pm=$fake_pm; }
         is_wsl() { return 1; }
         uname() { echo Linux; }
