@@ -315,5 +315,24 @@ expect "a second run adds nothing twice" "$out" "count: 1"
 out=$(tmp=$(mktemp -d); HOME=$tmp PATH="$tmp/.local/bin:/usr/bin" JD_INSTALL_NO_MAIN=1 JD_BIN=$tmp/.local/bin/jd sh -c ". '$here/install.sh'; add_to_path; ls -A '$tmp' | grep -c profile; rm -rf '$tmp'" 2>&1)
 expect "nothing is written when the folder is on the PATH already" "$out" "0"
 
+# ---- rustup-init is started under its own name ("tmp.Ab12" from mktemp made it believe it was a proxy called tmp) ---------------
+# shellcheck disable=SC1091,SC2329,SC2034,SC2016 # install.sh is sourced; the fakes replace functions of install.sh
+out=$(
+    tmp=$(mktemp -d)
+    HOME=$tmp JD_INSTALL_NO_MAIN=1 sh -c '
+        . "$1/install.sh"
+        rustup_present() { return 1; }
+        runtime_platform() { rt_os=linux rt_arch=amd64 rt_libc=gnu; }
+        fetch() { case "$1" in
+            *.sha256) echo abc123 >"$2" ;;
+            *) printf "#!/bin/sh\necho started-as-\"\$(basename \"\$0\")\"\n" >"$2" ;;
+        esac; }
+        sha256_of() { echo abc123; }
+        runtime_rust
+    ' sh "$here" 2>&1
+    rm -rf "$tmp"
+)
+expect "rustup-init is started as rustup-init" "$out" "started-as-rustup-init"
+
 if [ "$failures" -gt 0 ]; then echo "$failures failure(s)"; exit 1; fi
 echo "all install tests passed"

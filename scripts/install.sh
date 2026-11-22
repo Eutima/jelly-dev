@@ -377,8 +377,11 @@ runtime_rust() {
         planned="$planned rustup"
         return 0
     fi
-    init=$(mktemp)
-    expected=$(mktemp)
+    # rustup-init decides what it is by the name it is started under ("tmp.Ab12" from mktemp makes it think it is a proxy called tmp), so it
+    # is downloaded as "rustup-init" into a folder of its own
+    init_dir=$(mktemp -d)
+    init=$init_dir/rustup-init
+    expected=$init_dir/rustup-init.sha256
     if fetch "$url" "$init" && fetch "$url.sha256" "$expected" &&
         [ "$(sha256_of "$init")" = "$(cut -d' ' -f1 "$expected")" ] &&
         chmod +x "$init" && "$init" -y --profile minimal --no-modify-path; then
@@ -386,7 +389,7 @@ runtime_rust() {
     else
         problem "Rust (rustup) could not be installed from $url"
     fi
-    rm -f "$init" "$expected"
+    rm -rf "$init_dir"
 }
 
 deps_runtimes() {
