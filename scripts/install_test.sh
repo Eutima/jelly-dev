@@ -344,5 +344,25 @@ out=$(
 )
 expect "rustup-init is started as rustup-init" "$out" "started-as-rustup-init"
 
+# ---- temporary files are removed when the script is interrupted ---------------------------------------------------------------
+out=$(
+    tmp=$(mktemp -d)
+    # a script that tracks a temporary folder and is then interrupted, like install.sh in main: the folder must be gone afterwards
+    sh -c '
+        JD_INSTALL_NO_MAIN=1
+        . "$1/install.sh"
+        trap cleanup_temp EXIT
+        trap "cleanup_temp; exit 130" INT
+        folder=$(mktemp -d "$2/jd-test.XXXXXX")
+        track_temp "$folder"
+        echo "$folder" >"$2/path"
+        kill -INT $$
+        sleep 5
+    ' sh "$here" "$tmp" >/dev/null 2>&1
+    if [ -d "$(cat "$tmp/path")" ]; then echo "left behind"; else echo "cleaned up"; fi
+    rm -rf "$tmp"
+)
+expect "an interrupted script removes its temporary folders" "$out" "cleaned up"
+
 if [ "$failures" -gt 0 ]; then echo "$failures failure(s)"; exit 1; fi
 echo "all install tests passed"

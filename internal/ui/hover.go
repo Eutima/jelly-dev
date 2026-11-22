@@ -132,6 +132,7 @@ func (m EditorModel) hoverRows(width int) []string {
 // wrapIndented wraps a line at the spaces and keeps its indentation (the signatures and code of the documentation) on every row.
 func wrapIndented(text string, width, maxLines int) []string {
 	trimmed := strings.TrimLeft(text, " \t")
+	// the trimmed prefix is only spaces and tabs (ASCII), so its length in bytes is its width in columns; a tab counts as four
 	indent := min(len(strings.ReplaceAll(text[:len(text)-len(trimmed)], "\t", "    ")), width/2)
 	lines := wrapWords(trimmed, max(width-indent, 1), maxLines)
 	for i := range lines {

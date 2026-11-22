@@ -27,6 +27,24 @@ root_needed="" # system packages that were skipped because there are no root rig
 
 fail() { echo "error: $*" >&2; exit 1; }
 log() { printf '%s\n' "$*"; }
+
+# temporary files and folders are removed when the script ends, also when it is interrupted (Ctrl-C) or terminated: track_temp notes one, the
+# traps near the end of the script run cleanup_temp
+temp_paths=""
+track_temp() {
+    temp_paths="$temp_paths
+$1"
+}
+cleanup_temp() {
+    old_ifs=$IFS
+    IFS='
+'
+    for temp_path in $temp_paths; do
+        [ -z "$temp_path" ] || rm -rf "$temp_path"
+    done
+    IFS=$old_ifs
+    temp_paths=""
+}
 warn() { printf 'warning: %s\n' "$*" >&2; }
 have() { command -v "$1" >/dev/null 2>&1; }
 # problem records a dependency that could not be installed; the installer goes on and lists them at the end.
@@ -338,6 +356,7 @@ user_runtime() {
         return 0
     fi
     archive=$(mktemp)
+    track_temp "$archive"
     if fetch "$asset_url" "$archive" &&
         [ "$(sha256_of "$archive")" = "$asset_sha" ] &&
         rm -rf "$dest.new" && mkdir -p "$dest.new" && tar -xzf "$archive" -C "$dest.new" --strip-components=1 &&
@@ -388,6 +407,7 @@ runtime_rust() {
     # rustup-init decides what it is by the name it is started under ("tmp.Ab12" from mktemp makes it think it is a proxy called tmp), so it
     # is downloaded as "rustup-init" into a folder of its own
     init_dir=$(mktemp -d) || { problem "Rust (rustup) could not be installed: no temporary folder"; return 1; }
+    track_temp "$init_dir"
     init=$init_dir/rustup-init
     expected=$init_dir/rustup-init.sha256
     if fetch "$url" "$init" && fetch "$url.sha256" "$expected" &&
@@ -499,6 +519,7 @@ lsp_jdtls() {
         return 0
     fi
     archive=$(mktemp)
+    track_temp "$archive"
     if fetch "$JDTLS_URL" "$archive" &&
         [ "$(sha256_of "$archive")" = "$JDTLS_SHA256" ] &&
         mkdir -p "$target" "$install_dir" && tar -xzf "$archive" -C "$target" && [ -f "$target/bin/jdtls" ]; then
@@ -616,7 +637,7 @@ install_jd() {
     base_url="https://github.com/$repo/releases/download/$tag"
 
     tmp=$(mktemp -d)
-    trap 'rm -rf "$tmp"' EXIT
+    track_temp "$tmp"
 
     echo "Downloading jelly-dev $tag for $os/$arch"
     download "$base_url/$archive" "$tmp/$archive"
@@ -727,5 +748,8 @@ main() {
 
 # Tests source this file without running it.
 if [ -z "${JD_INSTALL_NO_MAIN:-}" ]; then
+    trap cleanup_temp EXIT
+    trap 'cleanup_temp; exit 130' INT
+    trap 'cleanup_temp; exit 143' TERM
     main "$@"
 fi

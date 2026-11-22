@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -129,7 +130,11 @@ func main() {
 }
 
 func runProgram(model tea.Model) error {
-	_, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseAllMotion(), tea.WithFilter(throttleMouseMotion())).Run()
+	var program *tea.Program
+	throttle := newMotionThrottle(mouseMotionGap, func(msg tea.Msg) { program.Send(msg) })
+	program = tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseAllMotion(), tea.WithFilter(throttle.filter))
+	_, err := program.Run()
+	throttle.stop()
 	return err
 }
 
@@ -137,19 +142,70 @@ func runProgram(model tea.Model) error {
 // cell the pointer crosses, and each would redraw the screen, which lags over a slow link.
 const mouseMotionGap = 25 * time.Millisecond
 
-// throttleMouseMotion drops mouse movements that follow the last one too closely. Clicks, wheel and drags always pass.
-func throttleMouseMotion() func(tea.Model, tea.Msg) tea.Msg {
-	var last time.Time
-	return func(_ tea.Model, msg tea.Msg) tea.Msg {
-		if mouse, ok := msg.(tea.MouseMsg); ok && mouse.Action == tea.MouseActionMotion && mouse.Button == tea.MouseButtonNone {
-			now := time.Now()
-			if now.Sub(last) < mouseMotionGap {
-				return nil
-			}
-			last = now
-		}
+// deliveredMotion is a mouse movement the throttle held back and sends on after the pause; the filter lets it through.
+type deliveredMotion struct{ tea.MouseMsg }
+
+// motionThrottle drops mouse movements that follow the last one too closely, but never loses the last of them: it is sent on once the pause
+// is over, so the window knows where the pointer stopped. Clicks, wheel, drags and keys always pass.
+type motionThrottle struct {
+	gap     time.Duration
+	send    func(tea.Msg)
+	mu      sync.Mutex
+	last    time.Time
+	pending *tea.MouseMsg
+	timer   *time.Timer
+}
+
+func newMotionThrottle(gap time.Duration, send func(tea.Msg)) *motionThrottle {
+	return &motionThrottle{gap: gap, send: send}
+}
+
+// filter is the message filter of the program.
+func (t *motionThrottle) filter(_ tea.Model, msg tea.Msg) tea.Msg {
+	if delivered, ok := msg.(deliveredMotion); ok {
+		return delivered.MouseMsg
+	}
+	mouse, ok := msg.(tea.MouseMsg)
+	if !ok || mouse.Action != tea.MouseActionMotion || mouse.Button != tea.MouseButtonNone {
 		return msg
 	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := time.Now()
+	if elapsed := now.Sub(t.last); elapsed >= t.gap {
+		t.last, t.pending = now, nil
+		if t.timer != nil {
+			t.timer.Stop()
+			t.timer = nil
+		}
+		return msg
+	} else if t.timer == nil {
+		t.timer = time.AfterFunc(t.gap-elapsed, t.flush)
+	}
+	t.pending = &mouse // the newest held movement wins
+	return nil
+}
+
+// flush sends on the movement that was held back.
+func (t *motionThrottle) flush() {
+	t.mu.Lock()
+	pending := t.pending
+	t.pending, t.timer, t.last = nil, nil, time.Now()
+	t.mu.Unlock()
+	if pending != nil {
+		t.send(deliveredMotion{*pending})
+	}
+}
+
+// stop cancels a movement that is still held back (the program has ended).
+func (t *motionThrottle) stop() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.timer != nil {
+		t.timer.Stop()
+		t.timer = nil
+	}
+	t.pending = nil
 }
 
 // run executes the command and returns the process exit code.

@@ -24,6 +24,7 @@ type LanguagesModel struct {
 	languages     []tools.Language
 	checked       map[string]bool
 	sel           int
+	top           int // first language shown, when the list is higher than the window
 	outcome       *LanguagesOutcome
 	width, height int
 	done          bool
@@ -53,20 +54,51 @@ func (m LanguagesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.keepSelectionVisible()
 	case tea.KeyMsg:
-		return m.handleKey(msg)
+		updated, cmd := m.handleKey(msg)
+		if next, ok := updated.(LanguagesModel); ok {
+			next.keepSelectionVisible()
+			return next, cmd
+		}
+		return updated, cmd
 	case tea.MouseMsg:
-		if leftPress(msg) {
+		switch {
+		case msg.Button == tea.MouseButtonWheelUp:
+			m.top = max(m.top-wheelLines, 0)
+		case msg.Button == tea.MouseButtonWheelDown:
+			m.top = min(m.top+wheelLines, max(len(m.languages)-m.visibleRows(), 0))
+		case leftPress(msg):
 			if keys := m.hintBar().visibleKeysAt(msg.X, m.width); msg.Y == m.height-1 && keys != nil {
 				return replay(m, keys)
 			}
-			if row := msg.Y - languagesTop; row >= 0 && row < len(m.languages) {
+			if row := msg.Y - languagesTop + m.top; msg.Y >= languagesTop && msg.Y-languagesTop < m.visibleRows() && row < len(m.languages) {
 				m.sel = row
 				m.toggle()
 			}
 		}
 	}
 	return m, nil
+}
+
+// visibleRows is how many languages fit between the explanation and the two lines at the bottom (all of them when the window is high enough).
+func (m LanguagesModel) visibleRows() int {
+	if m.height == 0 {
+		return len(m.languages)
+	}
+	return min(max(m.height-languagesTop-2, 1), len(m.languages))
+}
+
+// keepSelectionVisible scrolls the list so that the selected language is shown.
+func (m *LanguagesModel) keepSelectionVisible() {
+	rows := m.visibleRows()
+	if m.sel < m.top {
+		m.top = m.sel
+	}
+	if m.sel >= m.top+rows {
+		m.top = m.sel - rows + 1
+	}
+	m.top = min(max(m.top, 0), max(len(m.languages)-rows, 0))
 }
 
 const languagesTop = 3 // title, explanation and an empty line come before the first entry
@@ -128,7 +160,8 @@ func (m LanguagesModel) View() string {
 		m.theme.Equal.Render(padRight(" Check the languages: jd installs the language server and the formatter of each.", m.width)),
 		strings.Repeat(" ", m.width),
 	}
-	for i, l := range m.languages {
+	for i := m.top; i < m.top+m.visibleRows() && i < len(m.languages); i++ {
+		l := m.languages[i]
 		mark := "[ ]"
 		if m.checked[l.ID] {
 			mark = "[x]"
@@ -143,7 +176,11 @@ func (m LanguagesModel) View() string {
 	for len(lines) < m.height-2 {
 		lines = append(lines, strings.Repeat(" ", m.width))
 	}
-	lines = append(lines, m.theme.Equal.Render(padRight(" Later: jd install-lsp <language>... installs more.", m.width)), m.hintBar().render(m.width, m.theme.Footer))
+	later := " Later: jd install-lsp <language>... installs more."
+	if m.visibleRows() < len(m.languages) {
+		later += fmt.Sprintf("   (%d of %d shown: scroll with the arrows)", m.visibleRows(), len(m.languages))
+	}
+	lines = append(lines, m.theme.Equal.Render(padRight(later, m.width)), m.hintBar().render(m.width, m.theme.Footer))
 	return strings.Join(lines[:min(len(lines), max(m.height, 1))], "\n")
 }
 

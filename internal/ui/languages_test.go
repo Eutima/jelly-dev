@@ -146,3 +146,31 @@ func TestLanguages_AllKeyLeavesAnOptInChoiceAlone(t *testing.T) {
 		t.Fatalf("a checks the ordinary languages and keeps the opt-in choice as it was: %v", got)
 	}
 }
+
+func TestLanguages_ScrollInASmallWindowAndKeepTheHintsVisible(t *testing.T) {
+	m, outcome := languagesModel(t)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 10}) // 5 languages fit
+	m = updated.(LanguagesModel)
+	view := stripANSI(m.View())
+	if !strings.Contains(view, "[enter] install") || !strings.Contains(view, "[x] Python") || strings.Contains(view, "PowerShell") {
+		t.Fatalf("a small window shows the first languages and the hints:\n%s", view)
+	}
+	if !strings.Contains(view, "5 of 16 shown") {
+		t.Errorf("the list must say that it scrolls:\n%s", view)
+	}
+	m = languageKeys(m, "G")
+	view = stripANSI(m.View())
+	if !strings.Contains(view, "PowerShell") || strings.Contains(view, "Python") || !strings.Contains(view, "[enter] install") {
+		t.Fatalf("G scrolls to the last language and the hints stay:\n%s", view)
+	}
+	// a click on the last visible row toggles that language, not the one at the same row of the unscrolled list
+	updated, _ = m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 3, Y: languagesTop + 4})
+	m = updated.(LanguagesModel)
+	if got := m.checkedIDs(); !slices.Contains(got, "powershell") {
+		t.Errorf("the click went to the wrong row: %v", got)
+	}
+	m = languageKeys(m, "enter")
+	if outcome.Skipped || !slices.Contains(outcome.Chosen, "powershell") {
+		t.Errorf("outcome %+v", outcome)
+	}
+}

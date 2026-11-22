@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -487,18 +488,34 @@ func TestPathExport_QuotesFoldersWithShellSyntax(t *testing.T) {
 	}
 }
 
-func TestThrottleMouseMotion_DropsCrowdedMovesButNotClicks(t *testing.T) {
-	filter := throttleMouseMotion()
-	move := tea.MouseMsg{Action: tea.MouseActionMotion, Button: tea.MouseButtonNone}
-	if filter(nil, move) == nil {
-		t.Error("the first movement must pass")
+func TestMotionThrottle_DropsCrowdedMovesButDeliversTheLastOne(t *testing.T) {
+	sent := make(chan tea.Msg, 4)
+	throttle := newMotionThrottle(20*time.Millisecond, func(msg tea.Msg) { sent <- msg })
+	defer throttle.stop()
+	move := func(x int) tea.MouseMsg {
+		return tea.MouseMsg{X: x, Action: tea.MouseActionMotion, Button: tea.MouseButtonNone}
 	}
-	if filter(nil, move) != nil {
-		t.Error("a movement right after the last one must be dropped")
+	if throttle.filter(nil, move(1)) == nil {
+		t.Fatal("the first movement must pass")
+	}
+	if throttle.filter(nil, move(2)) != nil || throttle.filter(nil, move(3)) != nil {
+		t.Fatal("movements right after the last one must be held back")
+	}
+	select {
+	case msg := <-sent:
+		delivered, ok := msg.(deliveredMotion)
+		if !ok || delivered.X != 3 {
+			t.Fatalf("the newest held movement (x=3) must be sent on, got %#v", msg)
+		}
+		if passed := throttle.filter(nil, msg); passed != delivered.MouseMsg {
+			t.Fatalf("the filter must let the delivered movement through, got %#v", passed)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the last movement was lost")
 	}
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
 	drag := tea.MouseMsg{Action: tea.MouseActionMotion, Button: tea.MouseButtonLeft}
-	if filter(nil, click) == nil || filter(nil, drag) == nil || filter(nil, tea.KeyMsg{}) == nil {
+	if throttle.filter(nil, click) == nil || throttle.filter(nil, drag) == nil || throttle.filter(nil, tea.KeyMsg{}) == nil {
 		t.Error("clicks, drags and keys always pass")
 	}
 }

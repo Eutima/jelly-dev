@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -64,6 +65,9 @@ func (e Env) installJdtls(ctx context.Context, t Tool) error {
 		fmt.Sprintf("@%s \"%s\" %%*\r\n", python, script))
 }
 
+// renameFile moves a file or folder; a variable so tests can make a move fail.
+var renameFile = os.Rename
+
 // installPses downloads PowerShell Editor Services (the PowerShell language server) and writes the launcher that starts it with pwsh.
 func (e Env) installPses(ctx context.Context, t Tool) error {
 	pwsh, err := e.need(t, "PowerShell 7 (pwsh)", "pwsh")
@@ -89,7 +93,7 @@ func (e Env) installPses(ctx context.Context, t Tool) error {
 	if err := os.RemoveAll(staging); err != nil {
 		return err
 	}
-	defer os.RemoveAll(staging)
+	defer func() { _ = os.RemoveAll(staging) }() // best effort: the next install removes a leftover first
 	if err := os.MkdirAll(filepath.Join(staging, "logs"), 0o755); err != nil {
 		return err
 	}
@@ -100,12 +104,25 @@ func (e Env) installPses(ctx context.Context, t Tool) error {
 	if _, err := os.Stat(filepath.Join(staging, "PowerShellEditorServices", "Start-EditorServices.ps1")); err != nil {
 		return fmt.Errorf("PowerShell Editor Services: %s was not in the download", script)
 	}
-	if err := os.RemoveAll(target); err != nil { // an update: the old files go
+	// an update: the old install is moved aside, the new one moved in, and the old one only deleted after that; if the move fails the old
+	// install is put back
+	previous := target + ".old"
+	if err := os.RemoveAll(previous); err != nil {
 		return err
 	}
-	if err := os.Rename(staging, target); err != nil {
+	moved := false
+	if err := renameFile(target, previous); err == nil {
+		moved = true
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	if err := renameFile(staging, target); err != nil {
+		if moved {
+			_ = renameFile(previous, target)
+		}
+		return err
+	}
+	_ = os.RemoveAll(previous)
 	command := "& " + psQuote(script) +
 		" -BundledModulesPath " + psQuote(target) +
 		" -LogPath " + psQuote(filepath.Join(target, "logs", "jd.log")) +

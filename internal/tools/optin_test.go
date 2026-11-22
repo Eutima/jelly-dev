@@ -157,10 +157,41 @@ func TestInstall_PowerShellFailedUpdateKeepsTheWorkingServer(t *testing.T) {
 	if data, _ := os.ReadFile(script); string(data) != "# new" {
 		t.Fatalf("a good update replaces the files: %q", data)
 	}
+	if _, err := os.Stat(filepath.Join(env.DataDir(), "powershell-editor-services.old")); err == nil {
+		t.Error("the old install must be deleted once the new one is in place")
+	}
 }
 
 func TestQuoting_PercentSignsInACmdLauncherAreWrittenTwice(t *testing.T) {
 	if got := cmdQuote(`C:\100%\x`); got != `"C:\100%%\x"` {
 		t.Errorf("cmdQuote = %s", got)
+	}
+}
+
+func TestInstall_PowerShellKeepsTheOldServerWhenMovingTheNewOneInFails(t *testing.T) {
+	m, env := newMachine(t, "pwsh")
+	m.archive = psesArchive(t, map[string]string{"PowerShellEditorServices/Start-EditorServices.ps1": "# old"})
+	if err := env.Install(context.Background(), tool("powershell-editor-services")); err != nil {
+		t.Fatal(err)
+	}
+	m.archive = psesArchive(t, map[string]string{"PowerShellEditorServices/Start-EditorServices.ps1": "# new"})
+	target := filepath.Join(env.DataDir(), "powershell-editor-services")
+	previous := renameFile
+	renameFile = func(from, to string) error {
+		if from == target+".new" { // the new install cannot be moved in
+			return errors.New("disk on fire")
+		}
+		return previous(from, to)
+	}
+	t.Cleanup(func() { renameFile = previous })
+	if err := env.Update(context.Background(), tool("powershell-editor-services")); err == nil || !strings.Contains(err.Error(), "disk on fire") {
+		t.Fatalf("the failed move must be reported: %v", err)
+	}
+	script := filepath.Join(target, "PowerShellEditorServices", "Start-EditorServices.ps1")
+	if data, err := os.ReadFile(script); err != nil || string(data) != "# old" {
+		t.Fatalf("the old server must be put back: %q %v", data, err)
+	}
+	if _, err := os.Stat(target + ".old"); err == nil {
+		t.Error("no .old folder may be left behind")
 	}
 }

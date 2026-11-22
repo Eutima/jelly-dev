@@ -446,6 +446,7 @@ vim.top    = - t, ctrl+home      # a key sequence: keys separated by spaces (vim
 
 - **Files**: `~/.jdrc`, then `jdrc` in `$JD_CONFIG_DIR` (when set), then `.jdrc` in the folder jd starts in (the project folder, else the working
   directory); a later file overrides an earlier one, per command. The files are read when jd starts.
+  A line for a command that no longer exists is reported as a problem and skipped: `merge.wrap` is gone because long lines always wrap now, so delete that line.
 - **Syntax**: `command = key[, key ...]`, `#` starts a comment. Keys are written as Bubble Tea names them: `ctrl+x`, `alt+x`, `f1`…`f20`, `esc`,
   `tab`, `shift+tab`, `enter`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `pgup`, `pgdown`, `home`, `end`, `ctrl+right`, a single
   character, and `space`, `comma`, `hash` for the characters that cannot stand for themselves. Names are case-insensitive.
