@@ -31,6 +31,10 @@ func (m ProjectModel) topBar() *bar {
 	label := barPart{" Commands ", m.theme.Header}
 	result.button([]string{paletteKey}, []barPart{label, {"(" + paletteKey + ") ", m.theme.Header}}, []barPart{label})
 	result.add(barPart{" ", m.theme.Footer})
+	if label := m.conflictsLabel(); label != "" { // merge conflicts: a click starts the merge tool
+		result.button([]string{mergeToolKey}, []barPart{{label, m.theme.Header.Bold(true)}, {"(:mergetool) ", m.theme.Header}}, []barPart{{label, m.theme.Header.Bold(true)}})
+		result.add(barPart{" ", m.theme.Footer})
+	}
 	return result
 }
 
@@ -40,8 +44,11 @@ func (m ProjectModel) clickTopBar(x int) (tea.Model, tea.Cmd) {
 	if len(keys) == 0 {
 		return m, nil
 	}
-	if keys[0] == paletteKey {
+	switch keys[0] {
+	case paletteKey:
 		return m.openPalette()
+	case mergeToolKey:
+		return m.startMergeTool()
 	}
 	return m, nil
 }

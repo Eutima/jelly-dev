@@ -413,3 +413,21 @@ func runGit(parent context.Context, dir string, maxBytes int, args ...string) ([
 	}
 	return stdout.buf.Bytes(), nil
 }
+
+// UnmergedFiles lists the paths (relative to the repository root) that have unresolved merge conflicts in the repository
+// of dir. A directory outside a repository has none.
+func UnmergedFiles(dir string) ([]string, error) {
+	out, err := runGit(context.Background(), dir, MaxTextBytes, "ls-files", "-u", "-z", "--full-name")
+	if err != nil {
+		return nil, fmt.Errorf("list unmerged files: %w", err)
+	}
+	var paths []string
+	seen := map[string]bool{}
+	for _, entry := range strings.Split(string(out), "\x00") {
+		if _, path, found := strings.Cut(entry, "\t"); found && !seen[path] {
+			seen[path] = true
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
+}

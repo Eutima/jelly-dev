@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -15,6 +16,7 @@ import (
 	"github.com/eutima/jelly-dev/internal/filetree"
 	"github.com/eutima/jelly-dev/internal/lsp"
 	"github.com/eutima/jelly-dev/internal/project"
+	"github.com/eutima/jelly-dev/internal/source"
 	"github.com/eutima/jelly-dev/internal/terminal"
 )
 
@@ -60,6 +62,8 @@ type ProjectHooks struct {
 	Terminal func(dir string) *exec.Cmd
 	// Diff returns the command that shows the changes of the project in dir; nil starts `jd git`.
 	Diff func(dir string) *exec.Cmd
+	// MergeTool returns the command that resolves the merge conflicts of the project in dir; nil runs `git mergetool` with jd.
+	MergeTool func(dir string) *exec.Cmd
 }
 
 // ProjectModel is the project window: the file tree on the left, the editor on the right.
@@ -78,20 +82,22 @@ type ProjectModel struct {
 	tab    int           // the shown tab
 	hooks  ProjectHooks
 
-	toolRun       *toolRun            // the running installation of language servers and formatters
-	toolStatus    string              // what the installation is doing now, shown while it runs
-	picker        *WelcomeModel       // the open list of recent projects, nil when closed
-	pickerOutcome *WelcomeOutcome     // what the picker chose
-	search        *SearchModel        // the open project search, nil when closed
-	knownFiles    []string            // the file list of the last search, shown at once the next time
-	name          *namePrompt         // the prompt for a new file name, nil when none is open
-	dlg           *unsavedDialog      // the question about unsaved changes, nil when none is open
-	palette       *commandPalette     // the list of all actions, nil when closed
-	pick          *formatPick         // the list of formatters to choose from, nil when closed
-	langs         *languagePick       // the list of languages (:addlang), nil when closed
-	terms         []*terminal.Session // the shells (tabs) of the panel under the editor
-	termActive    int                 // the tab that is shown
-	termShown     bool                // whether the panel is visible (hidden shells keep running)
+	toolRun          *toolRun            // the running installation of language servers and formatters
+	toolStatus       string              // what the installation is doing now, shown while it runs
+	picker           *WelcomeModel       // the open list of recent projects, nil when closed
+	pickerOutcome    *WelcomeOutcome     // what the picker chose
+	search           *SearchModel        // the open project search, nil when closed
+	knownFiles       []string            // the file list of the last search, shown at once the next time
+	name             *namePrompt         // the prompt for a new file name, nil when none is open
+	dlg              *unsavedDialog      // the question about unsaved changes, nil when none is open
+	palette          *commandPalette     // the list of all actions, nil when closed
+	conflicts        []string            // the files with unresolved merge conflicts
+	conflictsChecked time.Time           // when they were looked for last
+	pick             *formatPick         // the list of formatters to choose from, nil when closed
+	langs            *languagePick       // the list of languages (:addlang), nil when closed
+	terms            []*terminal.Session // the shells (tabs) of the panel under the editor
+	termActive       int                 // the tab that is shown
+	termShown        bool                // whether the panel is visible (hidden shells keep running)
 
 	status string
 	warn   bool
@@ -105,6 +111,10 @@ func NewProjectModel(root, file string, session project.Session, hooks ProjectHo
 		return ProjectModel{}, err
 	}
 	m := ProjectModel{theme: DarkTheme(), root: tree.Root.Path, tree: tree, hooks: hooks, focus: focusTree}
+	if inGitRepository(m.root) { // the merge conflicts are known from the start
+		m.conflicts, _ = source.UnmergedFiles(m.root)
+		m.conflictsChecked = time.Now()
+	}
 	m.editor = m.newEditor(editor.Document{LineEnding: "\n", FinalNewline: true, New: true})
 	m.editor.doc.New = true
 	m.files = []EditorModel{m.editor}
@@ -320,17 +330,27 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editor.notice("", false)
 		}
 		return m, nil
+	case conflictsMsg:
+		if msg.root == m.root {
+			m.conflicts = msg.files
+		}
+		return m, nil
 	case externalDoneMsg:
 		if msg.err != nil {
 			m.say(fmt.Sprintf("%s: %v", msg.what, msg.err), true)
 		}
-		return m, nil
+		return m, m.checkConflicts()
 	case ExCommandMsg:
 		return m.runProjectCommand(msg.Command)
 	case JumpMsg:
 		return m.jumpToPlace(msg.Place, msg.Back)
 	case tea.KeyMsg:
-		return m.handleKey(msg)
+		updated, cmd := m.handleKey(msg)
+		if next, ok := updated.(ProjectModel); ok && time.Since(next.conflictsChecked) >= conflictCheckInterval {
+			next.conflictsChecked = time.Now() // a merge started in a terminal tab shows up while the window is used
+			return next, tea.Batch(cmd, next.checkConflicts())
+		}
+		return updated, cmd
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	}
@@ -672,6 +692,8 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 		return m.openPalette()
 	case "diff", "changes":
 		return m.showDiff()
+	case "mergetool", "merge", "conflicts":
+		return m.startMergeTool()
 	case "tabnext", "tabn", "bnext", "bn":
 		return m.stepTab(1)
 	case "tabprevious", "tabprev", "tabp", "bprevious", "bprev", "bp":

@@ -203,6 +203,10 @@ tools, quit. Type to narrow it, `enter` or a click runs the entry, `esc` closes 
 the branch and *Commands*, and the footers only the mode and position and `[alt+p] commands`. (`ctrl+shift+p` cannot be used: a terminal
 sends it as `ctrl+p`, and Windows Terminal keeps it for its own palette.)
 
+**Merge conflicts**: when the project is in a merge with unresolved conflicts, the top bar shows `! N conflicts (:mergetool)`. A click, `:mergetool`
+or the palette entry runs `git mergetool` with jd as the tool (whatever git is configured with): one merge view per conflicting file, the result
+is staged when you save. The window looks again after the merge tool ends and now and then while you type.
+
 **Top bar and shortcuts**: *Diff* shows the git changes of the project as in `jd git` (`alt+d`, `D` in the tree or `:diff`; `q` returns to
 the editor; save first, the diff shows what is on disk). `ctrl+p` and `ctrl+t` work in the tree and in the editor's normal mode (`ctrl+o` is the way
 back after `gd`/`gr`). *Terminal* opens a shell in the project in a panel under the editor, like VS Code. Everything you type goes

@@ -12,6 +12,9 @@ import (
 // palette), so jd uses alt+p; f1 works too.
 const paletteKey = "alt+p"
 
+// mergeToolKey is what the top bar button of the merge conflicts sends back when it is clicked.
+const mergeToolKey = ":mergetool"
+
 // paletteAction is one entry of the command palette: what it does, the key that does it directly, and how it runs.
 type paletteAction struct {
 	label, key string
@@ -46,6 +49,7 @@ func (m ProjectModel) paletteActions() []paletteAction {
 		{"Switch project", "ctrl+p", command("project")},
 		{"Open terminal", "ctrl+t", command("terminal")},
 		{"Show the git diff", "alt+d", command("diff")},
+		{"Resolve merge conflicts (git mergetool)", ":mergetool", command("mergetool")},
 		{"Find file", "ctrl+f", command("find")},
 		{"Search text in the project", "ctrl+g", command("grep")},
 		{"Save file", "ctrl+s", editorCommand("w")},
