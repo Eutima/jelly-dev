@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -76,7 +78,62 @@ func (m *Manager) client(ctx context.Context, path string) (*Client, string, err
 		}
 	}
 	m.clients[key] = c
+	if spec.Name == "typescript-language-server" && !hasProjectFile(root) {
+		m.preload(c, spec, root)
+	}
 	return c, languageID, nil
+}
+
+const (
+	maxPreloadFiles = 300
+	maxPreloadBytes = 512 << 10
+)
+
+// hasProjectFile reports whether a folder has the tsconfig.json or jsconfig.json that tells the TypeScript server which files
+// belong together.
+func hasProjectFile(root string) bool {
+	for _, name := range []string{"tsconfig.json", "jsconfig.json"} {
+		if _, err := os.Stat(filepath.Join(root, name)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// preload opens the files of the server's language below root. Without tsconfig.json or jsconfig.json the TypeScript server
+// only knows the files that are open, so references and definitions would never leave the current file. Dependency and build
+// folders and hidden folders are skipped, and at most maxPreloadFiles files are opened.
+func (m *Manager) preload(c *Client, spec ServerSpec, root string) {
+	skip := map[string]bool{"node_modules": true, "dist": true, "build": true, "out": true, "coverage": true}
+	opened := 0
+	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return nil
+		case entry.IsDir():
+			if path != root && (skip[entry.Name()] || strings.HasPrefix(entry.Name(), ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		case opened >= maxPreloadFiles:
+			return filepath.SkipAll
+		}
+		found, languageID, ok := specFor(m.servers, path)
+		if !ok || found.Name != spec.Name {
+			return nil
+		}
+		if info, err := entry.Info(); err != nil || !info.Mode().IsRegular() || info.Size() > maxPreloadBytes {
+			return nil
+		}
+		data, err := os.ReadFile(path) // #nosec G304 -- a file of the user's own project
+		if err != nil {
+			return nil
+		}
+		if c.Sync(path, languageID, string(data)) == nil {
+			opened++
+		}
+		return nil
+	})
 }
 
 // Definition returns the places where the symbol at a position (zero-based line, rune column) of text is defined.

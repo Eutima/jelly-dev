@@ -60,6 +60,10 @@ type Client struct {
 	settings map[string]any      // what the server is told about its configuration (Configure)
 	closed   bool
 	done     chan struct{}
+
+	activity time.Time       // when the server last sent anything: a server that is still setting up the project keeps talking
+	progress map[string]bool // the work the server announced and has not finished (indexing, loading a project)
+	ready    bool            // the first request waited until the server was quiet
 }
 
 // Start runs a language server (command is its command line) for a project folder and performs the handshake.
@@ -85,7 +89,8 @@ func Start(ctx context.Context, name string, command []string, root string) (*Cl
 }
 
 func newClient(name string, cmd *exec.Cmd, r io.Reader, w io.Writer) *Client {
-	c := &Client{name: name, cmd: cmd, tr: newTransport(r, w), pending: map[int]chan response{}, docs: map[string]document{}, done: make(chan struct{})}
+	c := &Client{name: name, cmd: cmd, tr: newTransport(r, w), pending: map[int]chan response{}, docs: map[string]document{}, done: make(chan struct{}),
+		activity: time.Now(), progress: map[string]bool{}}
 	go c.readLoop()
 	return c
 }
@@ -106,6 +111,7 @@ func handshake(ctx context.Context, c *Client, root string) (*Client, error) {
 				}},
 			},
 			"workspace": map[string]any{"workspaceFolders": true, "configuration": true},
+			"window":    map[string]any{"workDoneProgress": true}, // servers then report what they are busy with (see waitReady)
 		},
 	}
 	if err := c.call(ctx, "initialize", params, nil); err != nil {
@@ -131,6 +137,7 @@ func (c *Client) readLoop() {
 		if err := json.Unmarshal(body, &msg); err != nil {
 			continue
 		}
+		c.noteActivity(msg)
 		switch {
 		case msg.Method != "" && msg.ID != nil:
 			c.answerServerRequest(msg)
@@ -153,6 +160,63 @@ func (c *Client) readLoop() {
 				ch <- response{result: msg.Result, err: err}
 			}
 		}
+	}
+}
+
+// noteActivity records that the server spoke, and which work it announced or finished.
+func (c *Client) noteActivity(msg message) {
+	var params struct {
+		Token json.RawMessage `json:"token"`
+		Value struct {
+			Kind string `json:"kind"`
+		} `json:"value"`
+	}
+	isProgress := msg.Method == "window/workDoneProgress/create" || msg.Method == "$/progress"
+	if isProgress {
+		_ = json.Unmarshal(msg.Params, &params)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.activity = time.Now()
+	token := string(params.Token)
+	switch {
+	case !isProgress || token == "":
+	case msg.Method == "window/workDoneProgress/create", params.Value.Kind == "begin", params.Value.Kind == "report":
+		c.progress[token] = true
+	case params.Value.Kind == "end":
+		delete(c.progress, token)
+	}
+}
+
+const (
+	// firstQuiet is how long a server that has just started must have been silent before the first request: servers load the
+	// project in the background and answer a request that arrives earlier from the open file alone.
+	firstQuiet = 500 * time.Millisecond
+	// readyTimeout bounds the wait for a server that keeps working (a big project, a server that never announces its work).
+	readyTimeout = 8 * time.Second
+	readyPoll    = 25 * time.Millisecond
+)
+
+// waitReady lets the server finish what it is busy with before a question: work it announced (progress) is always waited
+// for, and the first question of a server also waits until the server has been quiet for a moment. Questions asked
+// before that see only the files that are open, which looked like "gr only finds the current file".
+func (c *Client) waitReady(ctx context.Context) {
+	deadline := time.Now().Add(readyTimeout)
+	for {
+		c.mu.Lock()
+		quiet := time.Duration(0)
+		if !c.ready {
+			quiet = firstQuiet
+		}
+		done := c.closed || (len(c.progress) == 0 && time.Since(c.activity) >= quiet)
+		if done {
+			c.ready = true
+		}
+		c.mu.Unlock()
+		if done || ctx.Err() != nil || time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(readyPoll)
 	}
 }
 
@@ -312,6 +376,7 @@ func locations(raw json.RawMessage) ([]Location, error) {
 }
 
 func (c *Client) positionRequest(ctx context.Context, method, path string, pos Position, extra map[string]any) ([]Location, error) {
+	c.waitReady(ctx)
 	params := map[string]any{"textDocument": map[string]string{"uri": PathToURI(path)}, "position": pos}
 	for key, value := range extra {
 		params[key] = value

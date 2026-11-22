@@ -19,6 +19,9 @@ type ServerSpec struct {
 	LanguageID  string            `json:"languageId,omitempty"`  // for all extensions of this server
 	LanguageIDs map[string]string `json:"languageIds,omitempty"` // per extension, wins over LanguageID
 	RootMarkers []string          `json:"rootMarkers,omitempty"` // files that mark the root of a project, e.g. "go.mod"
+	// OutermostRoot starts the server in the outermost folder with a marker (below the project root) instead of the nearest one. Python
+	// projects need it: a Django project has a requirements.txt in every app, but its imports (and the uses of a class) span the apps.
+	OutermostRoot bool `json:"outermostRoot,omitempty"`
 	// Formatter is a command that reads a file's text on stdin and writes the formatted text to stdout; "{file}" stands
 	// for the file name. It is used for :format when it is installed, else the language server formats.
 	Formatter []string `json:"formatter,omitempty"`
@@ -38,7 +41,7 @@ func DefaultServers() []ServerSpec {
 			RootMarkers: []string{"tsconfig.json", "jsconfig.json", "package.json"},
 			Formatter:   prettier,
 		},
-		{Name: "pyright", Command: []string{"pyright-langserver", "--stdio"}, Extensions: []string{".py", ".pyi"}, LanguageID: "python", RootMarkers: []string{"pyproject.toml", "setup.py", "requirements.txt"}, Formatter: []string{"black", "-q", "-"}},
+		{Name: "pyright", Command: []string{"pyright-langserver", "--stdio"}, Extensions: []string{".py", ".pyi"}, LanguageID: "python", RootMarkers: []string{"pyrightconfig.json", "pyproject.toml", "setup.py", "manage.py", "requirements.txt"}, OutermostRoot: true, Formatter: []string{"black", "-q", "-"}},
 		{
 			Name:       "angular",
 			Command:    []string{"ngserver", "--stdio", "--tsProbeLocations", "{root}/node_modules,{home}/.local/lib/node_modules", "--ngProbeLocations", "{root}/node_modules,{home}/.local/lib/node_modules"},
@@ -144,17 +147,25 @@ func specFor(servers []ServerSpec, path string) (ServerSpec, string, bool) {
 }
 
 // rootFor returns the folder a server is started in: the nearest folder above the file (up to the project root) that
-// holds one of the markers, else the project root.
+// holds one of the markers, else the project root. With spec.OutermostRoot it is the outermost such folder.
 func rootFor(spec ServerSpec, projectRoot, path string) string {
+	found := ""
 	for dir := filepath.Dir(path); strings.HasPrefix(dir, projectRoot); dir = filepath.Dir(dir) {
 		for _, marker := range spec.RootMarkers {
 			if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
-				return dir
+				if !spec.OutermostRoot {
+					return dir
+				}
+				found = dir
+				break
 			}
 		}
 		if dir == projectRoot || filepath.Dir(dir) == dir {
 			break
 		}
+	}
+	if found != "" {
+		return found
 	}
 	return projectRoot
 }
