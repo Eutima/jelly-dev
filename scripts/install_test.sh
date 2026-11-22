@@ -232,6 +232,14 @@ out=$(FAKE_NO_SUDO=1 FAKE_LANGS="go,java" FAKE_OS=darwin FAKE_ARCH=arm64 plan ap
 expect "macOS: the Go archive" "$out" "go1.27.4.darwin-arm64.tar.gz"
 expect "macOS: the JDK archive" "$out" "OpenJDK21U-jdk_aarch64_mac_hotspot"
 
+# install.ps1 is embedded in jd and also run by Windows PowerShell 5 from a file without a byte order mark: it must stay plain ASCII
+if LC_ALL=C grep -q '[^ -~	]' "$here/install.ps1"; then
+    echo "FAIL install.ps1 has characters that are not ASCII:"; LC_ALL=C grep -n '[^ -~	]' "$here/install.ps1" | head -3
+    failures=$((failures + 1))
+else
+    echo "ok   install.ps1 is plain ASCII"
+fi
+
 # what jd runs when a language server needs Node.js and it is missing (JD_DEPS=runtimes JD_LANGS=javascript): Node.js and nothing else
 out=$(FAKE_NO_SUDO=1 FAKE_LANGS=javascript plan apt-get "git" "runtimes")
 expect "on demand: Node.js is downloaded" "$out" "download https://nodejs.org/dist/v26.13.1/node-v26.13.1-linux-x64.tar.gz"

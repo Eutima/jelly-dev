@@ -37,6 +37,31 @@ function Test-Admin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+# Assert-JdRuns stops with an explanation when Windows does not let jd.exe start ("Access denied" when it is run): that is security software
+# or a policy that blocks the new, unsigned program, not a damaged download (the SHA-256 sum was checked before the file was copied).
+function Assert-JdRuns([string]$exe) {
+    if ($env:JD_DRY_RUN) { return }
+    $reason = ''
+    try {
+        & $exe --version | Out-Null
+        if ($LASTEXITCODE -eq 0) { return }
+        $reason = "exit code $LASTEXITCODE"
+    } catch { $reason = $_.Exception.Message }
+    $quoted = $exe.Replace("'", "''") # the path goes into a single quoted PowerShell string below
+    throw @"
+$exe was installed, but Windows does not let it run ($reason).
+Security software or a policy is blocking the new program. Fix it, then run this installer again. Check:
+  - A notice "Attack surface reduction" (German: "Verringerung der Angriffsflaeche", rule "Use advanced protection against ransomware") means Microsoft
+    Defender does not know this new, unsigned program yet. In PowerShell as administrator:
+      Add-MpPreference -AttackSurfaceReductionOnlyExclusions '$quoted'
+    On a managed PC (Intune, Group Policy) the administrator has to add that exclusion.
+  - Windows Security > Virus & threat protection > Protection history: a blocked or quarantined jd.exe is listed there; allow or restore it,
+    that is all.
+  - Other antivirus or AppLocker / Windows Defender Application Control (company PCs): ask your administrator to allow $exe,
+    or set INSTALL_DIR to a folder the policy allows.
+"@
+}
+
 $installDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\jelly-dev' }
 
 if (-not $env:JD_BIN) {
@@ -75,6 +100,7 @@ try {
     Expand-Archive (Join-Path $tmp $archive) -DestinationPath $tmp -Force
     New-Item -ItemType Directory -Path $installDir -Force | Out-Null
     Copy-Item (Join-Path $tmp 'jd.exe') (Join-Path $installDir 'jd.exe') -Force
+    Unblock-File (Join-Path $installDir 'jd.exe') -ErrorAction SilentlyContinue # no "downloaded from the internet" mark
     Remove-Item (Join-Path $installDir 'jelly-dev.exe') -Force -ErrorAction SilentlyContinue # old command name
 }
 finally {
@@ -82,6 +108,7 @@ finally {
 }
 
 Add-ToUserPath $installDir
+Assert-JdRuns (Join-Path $installDir 'jd.exe')
 }
 # ---- dependencies: git, Windows Terminal, runtimes and language servers for the IDE ----------------------------
 $script:problems = @()

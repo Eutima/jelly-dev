@@ -44,6 +44,13 @@ curl -fsSL https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/ins
 irm https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/install.ps1 | iex
 ```
 
+If Windows says *Access denied* (*Zugriff verweigert*) when `jd.exe` starts, security software or a policy is blocking the new, unsigned program; the download itself
+is checked against the published SHA-256 sum. A notice *Verringerung der Angriffsfläche* / *Attack surface reduction* (rule *Use advanced protection against
+ransomware*) means Microsoft Defender does not know the file yet: exempt it (PowerShell as administrator:
+`Add-MpPreference -AttackSurfaceReductionOnlyExclusions "$env:LOCALAPPDATA\Programs\jelly-dev\jd.exe"`; on a managed PC your administrator adds the exclusion).
+Otherwise look in *Windows Security > Virus & threat protection > Protection history* for a blocked or quarantined `jd.exe`, or ask your administrator
+(AppLocker, Windows Defender Application Control). The installer tests `jd.exe` right after copying it and says so.
+
 **pip** (Linux glibc/musl including Alpine, macOS 11 or newer, Windows; x86-64 and arm64)
 
 ```
