@@ -118,7 +118,7 @@ func main() {
 }
 
 func runProgram(model tea.Model) error {
-	_, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
+	_, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
 	return err
 }
 

@@ -34,6 +34,8 @@ type CodeNavigator interface {
 	RememberFormatter(path string, choice lsp.FormatterChoice) error
 	// Complete returns the suggestions at a position.
 	Complete(ctx context.Context, path, text string, row, col int) ([]lsp.CompletionItem, error)
+	// Hover returns the documentation of the symbol at a position ("" when there is none).
+	Hover(ctx context.Context, path, text string, row, col int) (string, error)
 }
 
 // navKind tells which question was asked.

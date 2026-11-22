@@ -55,6 +55,7 @@ const (
 	LeaveTerminal Command = "leaveterminal"
 	CloseTerminal Command = "closeterminal"
 	Back          Command = "back"
+	Hover         Command = "hover"
 	Save          Command = "save"
 )
 
@@ -222,6 +223,7 @@ var definitions = []definition{
 	{LeaveTerminal, ScopeIDE, "give the focus back from the terminal panel to the editor", []string{"ctrl+]"}},
 	{CloseTerminal, ScopeIDE, "end the shown terminal tab", []string{"ctrl+d"}},
 	{Back, ScopeIDE, "go back to where the last jump started", []string{"ctrl+b"}},
+	{Hover, ScopeIDE, "show the documentation of the symbol under the cursor (language server)", []string{"ctrl+alt+space"}},
 	{Save, ScopeIDE, "save the file (in every editor mode)", []string{"ctrl+s"}},
 
 	{MergePalette, ScopeMerge, "show the command palette", []string{"ctrl+a", "f1"}},

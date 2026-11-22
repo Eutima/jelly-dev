@@ -278,7 +278,7 @@ never overwritten. Edits outside the project folder are never applied.
 **Select text in the terminal**: press and drag in the terminal panel to select text; letting go copies it to the clipboard.
 
 **Language servers** (started when first needed, per project): `gd` jumps to the definition of the symbol under the cursor, `gr` lists
-its references (`j`/`k`, `enter` or a click jump), `ctrl+b` returns to where the last jump started (also after a search jump), also
+its references (`j`/`k`, `enter` or a click jump), `ctrl+alt+space` (command `hover`, in every mode) shows the documentation of the symbol under the cursor above the status line, as does resting the mouse pointer on an identifier for half a second (any key or pointer movement hides it; some terminals do not send ctrl+alt+space, rebind it in `~/.jdrc`), `ctrl+b` returns to where the last jump started (also after a search jump), also
 across files; so do `ctrl+c` and `ctrl+d` in normal mode, one step at a time, and only when there is no jump left to undo `ctrl+d` closes the
 window (`ctrl+c` does nothing) (unsaved changes block going back to another file, E37). `:format` (`:fmt`) formats the file as one undoable change: with the file type's formatter command when installed (Go: `gofmt`;
 HTML, CSS, SCSS, JavaScript, TypeScript, JSON: `prettier`; Python: `black`), otherwise with the language server (Java is formatted

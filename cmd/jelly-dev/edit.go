@@ -267,6 +267,10 @@ func (w *windowNavigator) Complete(ctx context.Context, path, text string, row, 
 	return w.current().Complete(ctx, path, text, row, col)
 }
 
+func (w *windowNavigator) Hover(ctx context.Context, path, text string, row, col int) (string, error) {
+	return w.current().Hover(ctx, path, text, row, col)
+}
+
 func (w *windowNavigator) Rename(ctx context.Context, path, text string, row, col int, newName string) (lsp.WorkspaceEdit, error) {
 	return w.current().Rename(ctx, path, text, row, col, newName)
 }

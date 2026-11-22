@@ -519,3 +519,11 @@ func TestNanoScope_RefusesTypedTextAndKeysTheWindowTakes(t *testing.T) {
 		t.Fatalf("conflicts: %v", conflicts)
 	}
 }
+
+func TestNormalize_CtrlAltSpaceIsAltCtrlAt(t *testing.T) {
+	for _, in := range []string{"ctrl+alt+space", "alt+ctrl+space", "Ctrl+Alt+Space"} {
+		if got, err := Normalize(in); err != nil || got != "alt+ctrl+@" {
+			t.Errorf("Normalize(%q) = %q, %v; want alt+ctrl+@", in, got, err)
+		}
+	}
+}

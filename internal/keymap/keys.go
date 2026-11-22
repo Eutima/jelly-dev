@@ -34,6 +34,9 @@ func Normalize(key string) (string, error) {
 		return key, nil
 	}
 	lower := strings.ToLower(key)
+	if rest, ok := strings.CutPrefix(lower, "ctrl+alt+"); ok { // Bubble Tea names the combination alt+ctrl+...
+		return Normalize("alt+ctrl+" + rest)
+	}
 	alt := strings.HasPrefix(lower, "alt+")
 	if alt {
 		lower, key = strings.TrimPrefix(lower, "alt+"), key[len("alt+"):]

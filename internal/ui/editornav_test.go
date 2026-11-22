@@ -30,6 +30,12 @@ type fakeNav struct {
 	withText    string                // what FormatWith returns
 	withErr     error
 	remembered  []string // "<file>:<formatter>" of every RememberFormatter call
+	hoverText   string   // what Hover returns
+}
+
+func (f *fakeNav) Hover(_ context.Context, path, _ string, row, col int) (string, error) {
+	f.asked = append(f.asked, "hover "+filepath.Base(path)+" "+itoa(row)+":"+itoa(col))
+	return f.hoverText, f.err
 }
 
 func (f *fakeNav) FormatterChoices(string) []lsp.FormatterChoice { return f.choices }

@@ -47,11 +47,14 @@ type EditorModel struct {
 	jumps []lsp.Place   // where jumps started, newest last (ctrl+o returns)
 	list  *placeList    // the open list of places (references, several definitions)
 
-	completion *completionState // the open completion popup
-	fit        bool             // the cursor was placed before the editor had a size: the first WindowSizeMsg lays its view out
-	blurred    bool             // the project window's focus is elsewhere: the cursor is not drawn
-	pane       string           // the pane of the project window that has the focus, named in the footer
-	ambient    string           // what the window is doing in the background (installing tools), shown when there is no message
+	completion  *completionState // the open completion popup
+	hover       string           // the documentation shown above the status line until the next key or pointer movement
+	pointerCell [2]int           // the cell the pointer was last seen on
+	hoverSeq    int              // counts key presses and pointer movements: a documentation answer for an older count is dropped
+	fit         bool             // the cursor was placed before the editor had a size: the first WindowSizeMsg lays its view out
+	blurred     bool             // the project window's focus is elsewhere: the cursor is not drawn
+	pane        string           // the pane of the project window that has the focus, named in the footer
+	ambient     string           // what the window is doing in the background (installing tools), shown when there is no message
 
 	clipboard vimbuf.Clipboard // the system clipboard, set again on every buffer that is opened
 
@@ -203,6 +206,13 @@ func (m EditorModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.scrollToCursor()
 	case completionResultMsg:
 		return m.handleCompletionResult(msg), nil
+	case hoverResultMsg:
+		return m.handleHoverResult(msg), nil
+	case hoverDwellMsg:
+		if msg.seq == m.hoverSeq && m.completion == nil && m.list == nil {
+			return m, m.hoverRequest(msg.row, msg.col, true)
+		}
+		return m, nil
 	case formatResultMsg:
 		return m.handleFormatResult(msg)
 	case navResultMsg:
@@ -219,6 +229,8 @@ func (m EditorModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m EditorModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.notice("", false)
+	m.hover = ""
+	m.hoverSeq++
 	if m.forwardEx && keys.Is(keymap.Palette, msg.String()) { // the project window opens its palette
 		return m, func() tea.Msg { return ExCommandMsg{Command: "palette"} }
 	}
@@ -231,6 +243,9 @@ func (m EditorModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.list != nil {
 		return m.handleListKey(msg)
+	}
+	if keys.Is(keymap.Hover, msg.String()) && m.vim.Mode() != vimbuf.Command && !m.nanoAsking() {
+		return m.askHover()
 	}
 	if msg.Paste && msg.Type == tea.KeyRunes { // text pasted by the terminal is text, never commands
 		m.quitArmed = false
@@ -488,6 +503,15 @@ func (m *EditorModel) scrollToCursor() {
 }
 
 func (m EditorModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action == tea.MouseActionMotion && msg.Button == tea.MouseButtonNone { // the pointer moves without a button: documentation when it rests
+		if m.hover == "" && m.pointerCell == [2]int{msg.X, msg.Y} {
+			return m, nil // still on the same cell: the wait for it is running
+		}
+		m.pointerCell = [2]int{msg.X, msg.Y}
+		m.hoverSeq++
+		m.hover = ""
+		return m, m.pointerRested(msg.X, msg.Y)
+	}
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
 		m.top = max(m.top-wheelLines, 0)
@@ -513,16 +537,28 @@ func (m EditorModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 // clickText puts the cursor where the text was clicked.
 func (m *EditorModel) clickText(x, y int) {
-	line := m.top + y - 1
-	if y < 1 || y > m.textHeight() || line >= m.vim.LineCount() || (m.vim.Mode() != vimbuf.Normal && m.nano == nil) {
+	if m.vim.Mode() != vimbuf.Normal && m.nano == nil {
 		return
+	}
+	row, col, ok := m.textPosition(x, y)
+	if !ok {
+		return
+	}
+	m.vim.SetCursor(row, col)
+	m.scrollToCursor()
+}
+
+// textPosition is the line and rune column of the text under a screen cell (clamped to the line); ok is false outside the text.
+func (m EditorModel) textPosition(x, y int) (row, col int, ok bool) {
+	row = m.top + y - 1
+	if y < 1 || y > m.textHeight() || row >= m.vim.LineCount() {
+		return 0, 0, false
 	}
 	column := m.left + x - m.numberWidth()
 	if x < m.numberWidth() {
 		column = m.left
 	}
-	m.vim.SetCursor(line, runeAtColumn([]rune(m.vim.Line(line)), column))
-	m.scrollToCursor()
+	return row, runeAtColumn([]rune(m.vim.Line(row)), column), true
 }
 
 // footerBar builds the status line: mode, file and position on the left, the clickable commands on the right.
@@ -691,6 +727,8 @@ func (m EditorModel) messageRows() []string {
 	switch {
 	case m.vim.Mode() == vimbuf.Command:
 		return []string{renderText(m.vim.CommandPrefix()+m.vim.CommandLine(), nil, width, m.theme.Equal, m.theme.Equal)}
+	case m.hover != "":
+		return m.hoverRows(width)
 	case m.ambient != "" && m.status == "" && m.completion == nil:
 		return wrapped(sanitize(m.ambient), m.theme.Equal.Faint(true))
 	case m.completion != nil && m.status == "":
