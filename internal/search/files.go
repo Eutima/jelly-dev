@@ -64,13 +64,14 @@ type FileMatch struct {
 }
 
 // MatchFiles returns the files whose path matches the query, best first, at most limit. The query is split at
-// spaces; every word must appear in the path as a subsequence (case-insensitive). Matches in the file name, at the start
-// of words and in one piece score higher. An empty query matches everything in the order of files.
-func MatchFiles(files []string, query string, limit int) []FileMatch {
+// spaces; every word must appear in the path (case-insensitive): as a subsequence when fuzzy is set, else in one piece
+// ("contains"). Matches in the file name, at the start of words and in one piece score higher. An empty query matches
+// everything in the order of files.
+func MatchFiles(files []string, query string, limit int, fuzzy bool) []FileMatch {
 	terms := strings.Fields(strings.ToLower(query))
 	var out []FileMatch
 	for _, file := range files {
-		score, ok := scorePath(file, terms)
+		score, ok := scorePath(file, terms, fuzzy)
 		if !ok {
 			continue
 		}
@@ -93,12 +94,12 @@ func MatchFiles(files []string, query string, limit int) []FileMatch {
 	return out
 }
 
-func scorePath(path string, terms []string) (int, bool) {
+func scorePath(path string, terms []string, fuzzy bool) (int, bool) {
 	lower := strings.ToLower(path)
 	base := strings.LastIndexByte(lower, '/') + 1
 	total := 0
 	for _, term := range terms {
-		score, ok := scoreTerm(lower, base, term)
+		score, ok := scoreTerm(lower, base, term, fuzzy)
 		if !ok {
 			return 0, false
 		}
@@ -108,8 +109,8 @@ func scorePath(path string, terms []string) (int, bool) {
 }
 
 // scoreTerm matches one word as a subsequence of the path and rates the best placement it finds: it looks for the
-// word in one piece first (in the file name, then anywhere), then letter by letter.
-func scoreTerm(lower string, base int, term string) (int, bool) {
+// word in one piece first (in the file name, then anywhere), then, when fuzzy is set, letter by letter.
+func scoreTerm(lower string, base int, term string, fuzzy bool) (int, bool) {
 	if i := strings.LastIndex(lower[base:], term); i >= 0 {
 		score := 100 + 20*len(term)
 		if i == 0 {
@@ -126,6 +127,9 @@ func scoreTerm(lower string, base int, term string) (int, bool) {
 			score += 20
 		}
 		return score, true
+	}
+	if !fuzzy {
+		return 0, false
 	}
 	score, pos, previous := 0, 0, -2
 	for _, r := range term {

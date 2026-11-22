@@ -59,6 +59,7 @@ type SearchModel struct {
 	input         []rune
 	regex         bool
 	caseSensitive bool // off: smart case (a capital letter makes the query case sensitive)
+	containsOnly  bool // file names: a word must appear in one piece (alt+f); off: fuzzy, the letters may be spread over the path
 
 	files       []string
 	filesLoaded bool
@@ -120,10 +121,15 @@ func (m SearchModel) resultCount() int {
 	return len(m.textResults)
 }
 
+// matchFiles matches the typed query against the file names the way the search is set (fuzzy or contains).
+func (m SearchModel) matchFiles() []search.FileMatch {
+	return search.MatchFiles(m.files, string(m.input), maxFileResults, !m.containsOnly)
+}
+
 // refilter recomputes the file name matches for the typed query.
 func (m *SearchModel) refilter() {
 	if m.mode == searchFiles {
-		m.fileResults = search.MatchFiles(m.files, string(m.input), maxFileResults)
+		m.fileResults = m.matchFiles()
 	}
 	m.sel, m.top = 0, 0
 }
@@ -171,7 +177,7 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 		m.files, m.filesLoaded, m.filesCut = msg.files, true, msg.truncated
 		if m.mode == searchFiles {
 			selected := m.selectedPath()
-			m.fileResults = search.MatchFiles(m.files, string(m.input), maxFileResults)
+			m.fileResults = m.matchFiles()
 			m.restoreSelection(selected)
 			return m, nil
 		}
@@ -228,6 +234,13 @@ func (m SearchModel) handleKey(msg tea.KeyMsg) (SearchModel, tea.Cmd) {
 		if m.mode == searchText && len(m.input) > 0 {
 			return m, m.scheduleText()
 		}
+		return m, nil
+	case "alt+f":
+		if m.mode != searchFiles {
+			return m, nil
+		}
+		m.containsOnly = !m.containsOnly
+		m.refilter()
 		return m, nil
 	case "alt+c":
 		m.caseSensitive = !m.caseSensitive
@@ -386,6 +399,11 @@ func (m SearchModel) hintBar() *bar {
 	}
 	result.command("enter", "open", m.resultCount() > 0, m.theme)
 	result.command("tab", "files/text", true, m.theme)
+	match := "fuzzy"
+	if m.containsOnly {
+		match = "contains"
+	}
+	result.command("alt+f", match, m.mode == searchFiles, m.theme)
 	result.command("ctrl+r", regex, m.mode == searchText, m.theme)
 	result.command("alt+c", caseHint, m.mode == searchText, m.theme)
 	result.command("↑↓", "choose", m.resultCount() > 0, m.theme)
@@ -450,6 +468,9 @@ func (m SearchModel) inputRows() []string {
 		if m.textCut {
 			status = fmt.Sprintf("first %d matches", len(m.textResults))
 		}
+	}
+	if m.mode == searchFiles && m.containsOnly {
+		status = "contains · " + status
 	}
 	if m.mode == searchText && m.caseSensitive {
 		status = "case · " + status

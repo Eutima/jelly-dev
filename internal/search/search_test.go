@@ -80,30 +80,30 @@ func TestMatchFiles_RanksNameMatchesFirst(t *testing.T) {
 		{"zzz", nil},
 	}
 	for _, tt := range tests {
-		got := paths(MatchFiles(files, tt.query, 10))
+		got := paths(MatchFiles(files, tt.query, 10, true))
 		if !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("%q: got %v, want %v", tt.query, got, tt.want)
 		}
 	}
-	if got := paths(MatchFiles(files, "ins", 10)); len(got) == 0 || got[0] != "scripts/install.sh" {
+	if got := paths(MatchFiles(files, "ins", 10, true)); len(got) == 0 || got[0] != "scripts/install.sh" {
 		t.Errorf("ins: got %v", got)
 	}
-	if got := paths(MatchFiles(files, "uied", 10)); len(got) < 2 || got[0] != "internal/ui/editor.go" { // letters spread over the path
+	if got := paths(MatchFiles(files, "uied", 10, true)); len(got) < 2 || got[0] != "internal/ui/editor.go" { // letters spread over the path
 		t.Errorf("uied: got %v", got)
 	}
-	if got := paths(MatchFiles(files, "ed go", 10)); len(got) == 0 || !strings.HasSuffix(got[0], "editor.go") {
+	if got := paths(MatchFiles(files, "ed go", 10, true)); len(got) == 0 || !strings.HasSuffix(got[0], "editor.go") {
 		t.Errorf("two words: got %v", got)
 	}
-	if got := MatchFiles(files, "", 3); len(got) != 3 || got[0].Path != files[0] {
+	if got := MatchFiles(files, "", 3, true); len(got) != 3 || got[0].Path != files[0] {
 		t.Fatalf("an empty query lists the files in order: %v", got)
 	}
-	if got := MatchFiles(files, "go", 2); len(got) != 2 {
+	if got := MatchFiles(files, "go", 2, true); len(got) != 2 {
 		t.Fatalf("the limit applies: %v", got)
 	}
 }
 
 func TestMatchFiles_PrefersExactFileName(t *testing.T) {
-	got := paths(MatchFiles([]string{"a/maintenance.go", "b/main.go", "c/domain.go"}, "main.go", 5))
+	got := paths(MatchFiles([]string{"a/maintenance.go", "b/main.go", "c/domain.go"}, "main.go", 5, true))
 	if len(got) == 0 || got[0] != "b/main.go" {
 		t.Fatalf("got %v", got)
 	}
@@ -196,5 +196,27 @@ func TestText_StopsWhenContextCancelled(t *testing.T) {
 	}
 	if m, _, err := Text(context.Background(), root, []string{"a.txt"}, "", TextOptions{}); err != nil || m != nil {
 		t.Fatal("an empty query finds nothing")
+	}
+}
+
+func TestMatchFiles_ContainsNeedsTheWordInOnePiece_AndIgnoresCase(t *testing.T) {
+	files := []string{"internal/ui/editor.go", "internal/ui/Editor_test.go", "scripts/install.sh", "main.go"}
+	if got := paths(MatchFiles(files, "uied", 10, true)); len(got) < 2 {
+		t.Fatalf("fuzzy must find uied across the path, got %v", got)
+	}
+	if got := paths(MatchFiles(files, "uied", 10, false)); len(got) != 0 {
+		t.Errorf("contains must not match letters spread over the path, got %v", got)
+	}
+	if got := paths(MatchFiles(files, "EDITOR", 10, false)); len(got) != 2 {
+		t.Errorf("contains must find editor in both files whatever the case, got %v", got)
+	}
+	if got := paths(MatchFiles(files, "ui edit", 10, false)); len(got) != 2 {
+		t.Errorf("every word must appear in one piece, got %v", got)
+	}
+	if got := paths(MatchFiles(files, "ins", 10, false)); len(got) != 1 || got[0] != "scripts/install.sh" {
+		t.Errorf("ins is contained in install.sh only, got %v", got)
+	}
+	if got := MatchFiles(files, "", 3, false); len(got) != 3 {
+		t.Errorf("an empty query matches everything, got %d", len(got))
 	}
 }

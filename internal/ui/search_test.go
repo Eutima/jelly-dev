@@ -257,3 +257,40 @@ func TestSearch_CaseToggleMakesALowerCaseQueryCaseSensitive(t *testing.T) {
 		t.Fatalf("a second alt+c must switch back to smart case:\n%s", view)
 	}
 }
+
+func TestSearch_FileNamesAreFuzzyUntilAltFSwitchesToContains(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlF})
+	model = projectSend(model, runeKeys("ndl")...) // the letters of needle, spread over the name
+
+	view := stripANSI(model.View())
+	if !strings.Contains(view, "needle.go") || !strings.Contains(view, "fuzzy") {
+		t.Fatalf("fuzzy is the default and finds needle.go with ndl:\n%s", view)
+	}
+	model = projectSend(model, keyMsg("alt+f"))
+	view = stripANSI(model.View())
+	if strings.Contains(view, "needle.go") || !strings.Contains(view, "contains") {
+		t.Fatalf("alt+f must switch to contains, where ndl finds nothing:\n%s", view)
+	}
+	model = projectSend(model, keyMsg("ctrl+u"))
+	for range 3 {
+		model = projectSend(model, keyMsg("backspace"))
+	}
+	model = projectSend(model, runeKeys("EEDL")...) // in one piece, other case
+	if view := stripANSI(model.View()); !strings.Contains(view, "needle.go") {
+		t.Fatalf("contains ignores case and finds eedl in needle.go:\n%s", view)
+	}
+	model = projectSend(model, keyMsg("alt+f"))
+	if view := stripANSI(model.View()); !strings.Contains(view, "fuzzy") {
+		t.Fatalf("a second alt+f must switch back to fuzzy:\n%s", view)
+	}
+}
+
+func TestSearch_AltFDoesNothingInTheTextTab(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlG})
+	model = projectSend(model, keyMsg("alt+f"))
+	if model.search.containsOnly {
+		t.Error("alt+f changed the file name matching from the text tab")
+	}
+}
