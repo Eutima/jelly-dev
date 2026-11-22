@@ -339,6 +339,9 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.say(fmt.Sprintf("%s: %v", msg.what, msg.err), true)
 		}
+		if reloaded := m.reloadChanged(); len(reloaded) > 0 && msg.err == nil {
+			m.say("Reloaded "+strings.Join(reloaded, ", ")+" (changed on disk)", false)
+		}
 		return m, m.checkConflicts()
 	case ExCommandMsg:
 		return m.runProjectCommand(msg.Command)

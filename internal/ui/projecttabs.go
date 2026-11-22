@@ -263,3 +263,30 @@ func (m ProjectModel) session() project.Session {
 	}
 	return session
 }
+
+// reloadChanged reads the open files again that changed on disk (a merge tool, the diff view or a shell may have written
+// them). A tab with unsaved edits keeps its text. The cursor stays on its line. It returns the names of the reloaded files.
+func (m *ProjectModel) reloadChanged() []string {
+	all := m.openEditors()
+	var reloaded []string
+	for i, e := range all {
+		if e.Path() == "" || e.doc.New || e.Modified() {
+			continue
+		}
+		doc, err := editor.Load(e.Path())
+		if err != nil || doc.New || (slices.Equal(doc.Lines, e.doc.Lines) && doc.LineEnding == e.doc.LineEnding) {
+			continue
+		}
+		row, col := e.Cursor()
+		e = e.opened(doc).At(min(row, max(len(doc.Lines)-1, 0)), col)
+		all[i] = e
+		reloaded = append(reloaded, filepath.Base(e.Path()))
+	}
+	if len(reloaded) > 0 {
+		m.files = all
+		if m.tab >= 0 && m.tab < len(all) {
+			m.editor = all[m.tab]
+		}
+	}
+	return reloaded
+}

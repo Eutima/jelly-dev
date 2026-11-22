@@ -108,3 +108,46 @@ func TestPalette_OffersTheMergeTool(t *testing.T) {
 	}
 	t.Fatal("the palette must list :mergetool")
 }
+
+func TestExternalProgramEnd_ReloadsChangedFiles_WhenTheyHaveNoUnsavedEdits(t *testing.T) {
+	dir := conflictedRepo(t)
+	path := filepath.Join(dir, "a.txt")
+	model, err := NewProjectModel(dir, path, project.Session{}, ProjectHooks{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(model.editor.Lines(), "\n"), "<<<<<<<") {
+		t.Fatalf("the file must start with conflict markers: %v", model.editor.Lines())
+	}
+	if err := os.WriteFile(path, []byte("resolved\n"), 0o644); err != nil { // what the merge tool does
+		t.Fatal(err)
+	}
+	updated, _ := model.Update(externalDoneMsg{what: "mergetool"})
+	model = updated.(ProjectModel)
+	if got := strings.Join(model.editor.Lines(), "\n"); got != "resolved" {
+		t.Fatalf("the editor must show the merged file, it shows %q", got)
+	}
+	if status := model.status + model.editor.status; !strings.Contains(status, "Reloaded a.txt") {
+		t.Fatalf("status %q", status)
+	}
+}
+
+func TestExternalProgramEnd_KeepsUnsavedEdits(t *testing.T) {
+	dir := gitRepoWithCommit(t)
+	path := filepath.Join(dir, "a.txt")
+	model, err := NewProjectModel(dir, path, project.Session{}, ProjectHooks{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.editor.vim.Handle("x") // an unsaved change
+	if !model.editor.Modified() {
+		t.Fatal("the edit must count as unsaved")
+	}
+	if err := os.WriteFile(path, []byte("other\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := model.Update(externalDoneMsg{what: "diff"})
+	if !updated.(ProjectModel).editor.Modified() {
+		t.Fatal("a tab with unsaved edits must keep its text")
+	}
+}
