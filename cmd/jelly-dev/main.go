@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -116,15 +117,39 @@ func main() {
 	env.newTools = func(dir string) languageTools { return newInstaller(dir, env) }
 	shellPath := os.Getenv("PATH") // before EnsurePath adds folders: the hint below is about the PATH the user's shell has
 	tools.EnsurePath()             // tools installed below ~/.local/bin and the Go bin folder are found even when the shell's PATH lacks them
+	ranUI := false
+	runWindow := env.runUI
+	env.runUI = func(model tea.Model) error { ranUI = true; return runWindow(model) }
 	code := run(os.Args[1:], os.Stdout, os.Stderr, env)
 	exe, _ := os.Executable()
-	fmt.Fprint(os.Stderr, exitHint(code, exe, shellPath, runtime.GOOS, stderrIsTerminal())) // after the window closed, where the message stays visible
+	if ranUI { // not after --version, rc and the other commands that never opened a window
+		fmt.Fprint(os.Stderr, exitHint(code, exe, shellPath, runtime.GOOS, stderrIsTerminal())) // after the window closed, where the message stays visible
+	}
 	os.Exit(code)
 }
 
 func runProgram(model tea.Model) error {
-	_, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
+	_, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseAllMotion(), tea.WithFilter(throttleMouseMotion())).Run()
 	return err
+}
+
+// mouseMotionGap is the shortest time between two mouse movements (without a button) that reach the window: the terminal sends one for every
+// cell the pointer crosses, and each would redraw the screen, which lags over a slow link.
+const mouseMotionGap = 25 * time.Millisecond
+
+// throttleMouseMotion drops mouse movements that follow the last one too closely. Clicks, wheel and drags always pass.
+func throttleMouseMotion() func(tea.Model, tea.Msg) tea.Msg {
+	var last time.Time
+	return func(_ tea.Model, msg tea.Msg) tea.Msg {
+		if mouse, ok := msg.(tea.MouseMsg); ok && mouse.Action == tea.MouseActionMotion && mouse.Button == tea.MouseButtonNone {
+			now := time.Now()
+			if now.Sub(last) < mouseMotionGap {
+				return nil
+			}
+			last = now
+		}
+		return msg
+	}
 }
 
 // run executes the command and returns the process exit code.

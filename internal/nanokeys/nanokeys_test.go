@@ -270,3 +270,15 @@ func TestPaste_GoesIntoTheOpenQuestionOnly(t *testing.T) {
 		t.Fatal("a yes/no question takes no text")
 	}
 }
+
+func TestReplace_LeavesNoSearchErrorBehindAfterTheLastMatch(t *testing.T) {
+	s, b := session("a1 a2", "x")
+	press(s, b, "alt+r", "a", "enter", "b", "enter")
+	press(s, b, "y", "y") // both matches are replaced, the search then finds nothing more
+	if s.Status() != "Replaced 2 occurrences" {
+		t.Fatalf("status %q", s.Status())
+	}
+	if message := b.Message(); message != "" {
+		t.Errorf("the buffer keeps the search error %q behind", message)
+	}
+}

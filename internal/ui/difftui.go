@@ -216,7 +216,7 @@ func (m DiffModel) lastOffset() int {
 	for i := m.rowCount() - 1; i >= 0; i-- {
 		used += len(m.rowLines(i, numWidth, paneWidth, rightWidth))
 		if used > m.bodyHeight() {
-			return i + 1
+			return min(i+1, m.rowCount()-1) // a last row that alone fills the window is shown from its start
 		}
 	}
 	return 0

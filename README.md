@@ -255,8 +255,10 @@ end of the file, an empty `/` repeats the last pattern, and `:noh` removes the h
 
 **Search** (`ctrl+f` file names, `ctrl+g` file content; in the tree also `/`; `:find [name]`, `:grep [text]`): a full-screen search over
 the project. `tab` switches between the two. File names are matched fuzzily (`uied` finds `internal/ui/editor.go`; several words must all
-match; names rank above paths); `alt+f` switches to *contains*, where every word must appear in one piece (`editor` finds `editor.go`, `uied` finds nothing). Both ignore case. Content search starts while you type (smart case: lower case ignores case, a capital letter makes it
-case sensitive; `alt+c` makes every query case sensitive; `ctrl+r` switches to regular expressions) and lists `file:line  text` with the match highlighted; under the list a preview shows the code around the selected match (five lines before and after, when the window is at least 16 lines high). `enter` or a click
+match; names rank above paths);
+`alt+f` switches to *contains*, where every word must appear in one piece (`editor` finds `editor.go`, `uied` finds nothing).
+Both ignore case. Content search starts while you type (smart case: lower case ignores case, a capital letter makes it
+case sensitive; `alt+c` makes every query case sensitive; `ctrl+r` switches to regular expressions) and lists `file:line  text` with the match highlighted; under the list a preview shows the code around the selected match (up to five lines before and after: all of them in a window of 36 lines or more, fewer in a smaller one, none below 16 lines). `enter` or a click
 opens the file at the match, `esc` (or `ctrl+d`) closes. `node_modules`, `.venv`, `venv`, `__pycache__`, `.tox`, `.gradle`, `.idea`,
 `.git`, caches and everything in the project's `.gitignore` or an optional `.jdignore` (same patterns) are skipped, as are binary
 files and files over 1 MiB.

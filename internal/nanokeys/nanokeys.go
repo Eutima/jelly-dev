@@ -284,6 +284,7 @@ func (s *Session) answerReplace(b *vimbuf.Buffer, key string) Outcome {
 func (s *Session) next(b *vimbuf.Buffer) {
 	row, col := b.Cursor()
 	if !b.FindNext(false) {
+		b.ClearMessage() // the E486 of the search: the replace says how it went
 		s.finishReplace()
 		return
 	}

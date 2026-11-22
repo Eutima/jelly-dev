@@ -240,6 +240,17 @@ func pathHint(exe, path, goos string) string {
 			return ""
 		}
 	}
-	return fmt.Sprintf("jd: jd is not on your PATH yet (it is in %[1]s). Use it in this shell:  export PATH=\"%[1]s:$PATH\"\n"+
-		"jd: new shells find it after the first-start setup added that line to your profile; if it did not, add it to ~/.profile yourself.\n", folder)
+	return fmt.Sprintf("jd: jd is not on your PATH yet (it is in %s). Use it in this shell:  %s\n"+
+		"jd: to keep it for new shells add that line to your ~/.profile (the first-start setup of jd does it when it ran).\n", folder, pathExport(folder))
+}
+
+// pathExport is the line that puts a folder on the PATH: in double quotes for an ordinary folder name, in single quotes when the name has
+// characters the shell would treat as syntax (a space, $, a quote, a backtick ...).
+func pathExport(folder string) string {
+	if strings.IndexFunc(folder, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/._-~+@:,=", r))
+	}) < 0 {
+		return `export PATH="` + folder + `:$PATH"`
+	}
+	return `export PATH=` + "'" + strings.ReplaceAll(folder, "'", `'\''`) + "'" + `:"$PATH"`
 }

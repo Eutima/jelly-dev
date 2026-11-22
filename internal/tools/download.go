@@ -84,18 +84,27 @@ func (e Env) installPses(ctx context.Context, t Tool) error {
 	if err := verifySHA256(archive, psesSHA256); err != nil {
 		return fmt.Errorf("PowerShell Editor Services %s: %w", psesVersion, err)
 	}
-	if err := os.RemoveAll(target); err != nil { // an update: the old files go
+	// unpacked next to the old install and moved into place once it is complete: a failed update leaves the working server alone
+	staging := target + ".new"
+	if err := os.RemoveAll(staging); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Join(target, "logs"), 0o755); err != nil {
+	defer os.RemoveAll(staging)
+	if err := os.MkdirAll(filepath.Join(staging, "logs"), 0o755); err != nil {
 		return err
 	}
-	if err := extractZip(archive, target); err != nil {
+	if err := extractZip(archive, staging); err != nil {
 		return fmt.Errorf("unpack PowerShell Editor Services: %w", err)
 	}
 	script := filepath.Join(target, "PowerShellEditorServices", "Start-EditorServices.ps1")
-	if _, err := os.Stat(script); err != nil {
+	if _, err := os.Stat(filepath.Join(staging, "PowerShellEditorServices", "Start-EditorServices.ps1")); err != nil {
 		return fmt.Errorf("PowerShell Editor Services: %s was not in the download", script)
+	}
+	if err := os.RemoveAll(target); err != nil { // an update: the old files go
+		return err
+	}
+	if err := os.Rename(staging, target); err != nil {
+		return err
 	}
 	command := "& " + psQuote(script) +
 		" -BundledModulesPath " + psQuote(target) +
@@ -110,11 +119,13 @@ func (e Env) installPses(ctx context.Context, t Tool) error {
 // psQuote is a PowerShell string literal: single quotes, a quote inside is doubled.
 func psQuote(text string) string { return "'" + strings.ReplaceAll(text, "'", "''") + "'" }
 
-// shQuote is a shell word: single quotes, a quote inside is written '\”.
+// shQuote is a shell word: single quotes; a quote inside ends the quotes, is written as \' and starts them again.
 func shQuote(text string) string { return "'" + strings.ReplaceAll(text, "'", `'\''`) + "'" }
 
-// cmdQuote is a word of a .cmd file: double quotes, a quote inside is doubled.
-func cmdQuote(text string) string { return `"` + strings.ReplaceAll(text, `"`, `""`) + `"` }
+// cmdQuote is a word of a .cmd file: double quotes, a quote inside is doubled, and a percent sign is written twice (cmd expands %NAME%).
+func cmdQuote(text string) string {
+	return `"` + strings.ReplaceAll(strings.ReplaceAll(text, `"`, `""`), "%", "%%") + `"`
+}
 
 // verifySHA256 refuses a file whose SHA-256 differs from the expected hex digest.
 func verifySHA256(path, want string) error {

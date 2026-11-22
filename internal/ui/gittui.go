@@ -562,7 +562,7 @@ func (m GitModel) messageView(message string) string {
 	for i := 0; i < m.footerHeight(); i++ {
 		lines = append(lines, m.theme.Footer.Render(padRight("", width)))
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(lines[:min(len(lines), max(m.height, 1))], "\n") // a long path header must not push the pane out of the window
 }
 
 // withSize returns the model resized to the given terminal area.

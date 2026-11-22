@@ -100,7 +100,9 @@ func (m LanguagesModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.toggle()
 	case "a":
 		for _, l := range m.languages {
-			m.checked[l.ID] = !l.OptIn // like "all": the opt-in languages (C#, PowerShell) have to be checked one by one
+			if !l.OptIn { // like "all": the opt-in languages (C#, PowerShell) are left as they are, they are checked one by one
+				m.checked[l.ID] = true
+			}
 		}
 	case "n":
 		clear(m.checked)

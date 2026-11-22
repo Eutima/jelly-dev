@@ -108,7 +108,7 @@ func scorePath(path string, terms []string, fuzzy bool) (int, bool) {
 	return total - len(path)/8, true
 }
 
-// scoreTerm matches one word as a subsequence of the path and rates the best placement it finds: it looks for the
+// scoreTerm matches one word in the path (as a subsequence too, when fuzzy is set) and rates the best placement it finds: it looks for the
 // word in one piece first (in the file name, then anywhere), then, when fuzzy is set, letter by letter.
 func scoreTerm(lower string, base int, term string, fuzzy bool) (int, bool) {
 	if i := strings.LastIndex(lower[base:], term); i >= 0 {

@@ -62,8 +62,11 @@ func (m EditorModel) pointerRested(x, y int) tea.Cmd {
 		return nil
 	}
 	row, col, ok := m.textPosition(x, y)
+	if !ok {
+		return nil
+	}
 	line := []rune(m.vim.Line(row))
-	if !ok || x < m.numberWidth() || col >= len(line) || !isWordRune(line[col]) {
+	if x < m.numberWidth() || col >= len(line) || !isWordRune(line[col]) {
 		return nil // not on a character of an identifier
 	}
 	seq := m.hoverSeq
@@ -96,6 +99,7 @@ func (m EditorModel) handleHoverResult(msg hoverResultMsg) EditorModel {
 		}
 		m.notice("", false)
 		m.hover = msg.text
+		m.scrollToCursor() // the documentation takes rows from the text: the cursor line must stay in view
 	}
 	return m
 }
@@ -116,13 +120,24 @@ func (m EditorModel) hoverRows(width int) []string {
 			lines = append(lines, "")
 			continue
 		}
-		lines = append(lines, wrapWords(source, max(width, 2)-1, limit-len(lines))...)
+		lines = append(lines, wrapIndented(source, max(width, 2)-1, limit-len(lines))...)
 	}
 	rows := make([]string, len(lines))
 	for i, line := range lines {
 		rows[i] = m.theme.Equal.Faint(false).Render(padRight(" "+line, width))
 	}
 	return rows
+}
+
+// wrapIndented wraps a line at the spaces and keeps its indentation (the signatures and code of the documentation) on every row.
+func wrapIndented(text string, width, maxLines int) []string {
+	trimmed := strings.TrimLeft(text, " \t")
+	indent := min(len(strings.ReplaceAll(text[:len(text)-len(trimmed)], "\t", "    ")), width/2)
+	lines := wrapWords(trimmed, max(width-indent, 1), maxLines)
+	for i := range lines {
+		lines[i] = strings.Repeat(" ", indent) + lines[i]
+	}
+	return lines
 }
 
 // nanoAsking tells whether the nano-style editor has a question open: keys then belong to it.

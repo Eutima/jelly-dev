@@ -38,6 +38,9 @@ func (m SearchModel) previewHeight() int {
 	return min(previewMaxRows, m.height/3)
 }
 
+// errNotRegular says a path is no longer a file (it was one when the search read it).
+var errNotRegular = errors.New("not a regular file")
+
 // errPreviewTooLarge says a file is bigger than what the content search reads.
 var errPreviewTooLarge = errors.New("file too large for a preview")
 
@@ -47,6 +50,9 @@ func (m SearchModel) previewFile(path string) ([]string, error) {
 	info, err := os.Stat(full)
 	if err != nil {
 		return nil, err
+	}
+	if !info.Mode().IsRegular() { // a pipe or device swapped in after the search would block the window
+		return nil, errNotRegular
 	}
 	if info.Size() > search.MaxFileBytes {
 		return nil, errPreviewTooLarge
@@ -65,31 +71,50 @@ func (m SearchModel) previewFile(path string) ([]string, error) {
 	return lines, nil
 }
 
-// expandPreviewText turns tabs into four spaces and moves a column of the original text with them. It keeps at most previewLineRunes runes,
-// around the column when it is given (col >= 0); the returned column is relative to the kept text.
-func expandPreviewText(text string, col int) ([]rune, int) {
-	runes := []rune(text)
+// expandPreviewText turns tabs into four spaces and moves a match (column and length in runes of the original text) with them. It keeps at
+// most previewLineRunes runes, around the column when it is given (col >= 0); the returned column is relative to the kept text.
+func expandPreviewText(text string, col, length int) (runes []rune, start, width int) {
+	original := []rune(text)
 	from := 0
-	if col >= 0 && len(runes) > previewLineRunes {
-		from = max(min(col-previewLineRunes/4, len(runes)-previewLineRunes), 0)
+	if col >= 0 && len(original) > previewLineRunes {
+		from = max(min(col-previewLineRunes/4, len(original)-previewLineRunes), 0)
 	}
-	to := min(from+previewLineRunes, len(runes))
-	var out []rune
-	shifted := -1
+	to := min(from+previewLineRunes, len(original))
+	start, width = -1, length
 	for i := from; i < to; i++ {
 		if i == col {
-			shifted = len(out)
+			start = len(runes)
 		}
-		if runes[i] == '\t' {
-			out = append(out, ' ', ' ', ' ', ' ')
+		if original[i] == '\t' {
+			runes = append(runes, ' ', ' ', ' ', ' ')
+			if col >= 0 && i >= col && i < col+length {
+				width += 3 // a tab inside the match is wider when drawn
+			}
 			continue
 		}
-		out = append(out, runes[i])
+		runes = append(runes, original[i])
 	}
 	if col >= to {
-		shifted = len(out)
+		start = len(runes)
 	}
-	return out, shifted
+	return runes, start, width
+}
+
+// previewMatchStillThere tells whether the text of the match is still at its place in the line: the file may have been edited since the search.
+func previewMatchStillThere(line string, match search.TextMatch) bool {
+	if match.Length == 0 {
+		return true
+	}
+	found := []rune(match.Text)
+	from := match.Col - match.Offset
+	if from < 0 || from+match.Length > len(found) {
+		return true // the search kept less of a very long line than the match: nothing to compare
+	}
+	current := []rune(line)
+	if match.Col+match.Length > len(current) {
+		return false
+	}
+	return string(current[match.Col:match.Col+match.Length]) == string(found[from:from+match.Length])
 }
 
 // previewRows draws the code around the selected result: a header, then the lines before and after the match (as many as the panel
@@ -113,11 +138,11 @@ func (m SearchModel) previewRows() []string {
 	rows = append(rows, m.theme.Header.Render(padRight(fmt.Sprintf(" %s:%d  (±%d lines)", sanitize(match.Path), match.Row+1, context), m.width)))
 	lines, err := m.previewFile(match.Path)
 	switch {
-	case err != nil && errors.Is(err, errPreviewTooLarge):
+	case errors.Is(err, errPreviewTooLarge):
 		rows = append(rows, m.theme.Equal.Faint(true).Render(padRight(" "+err.Error(), m.width)))
 	case err != nil:
 		rows = append(rows, m.theme.Equal.Faint(true).Render(padRight(" cannot read the file", m.width)))
-	case match.Row >= len(lines):
+	case match.Row >= len(lines) || !previewMatchStillThere(lines[match.Row], match):
 		rows = append(rows, m.theme.Equal.Faint(true).Render(padRight(" the file changed: search again", m.width)))
 	default:
 		rows = append(rows, m.previewCode(lines, match, context, height-1)...)
@@ -137,13 +162,13 @@ func (m SearchModel) previewCode(lines []string, match search.TextMatch, context
 	for row := first; row <= last; row++ {
 		prefix := fmt.Sprintf(" %*d │ ", numWidth, row+1)
 		if row != match.Row {
-			text, _ := expandPreviewText(lines[row], -1)
+			text, _, _ := expandPreviewText(lines[row], -1, 0)
 			drawn = append(drawn, m.matchRowLines(prefix, text, -1, 0, m.theme.Equal, false)...)
 			continue
 		}
-		text, start := expandPreviewText(lines[row], previewColumn(lines[row], match.Col))
+		text, start, width := expandPreviewText(lines[row], previewColumn(lines[row], match.Col), match.Length)
 		matchFrom = len(drawn)
-		drawn = append(drawn, m.matchRowLines(prefix, text, start, match.Length, m.theme.Selected, true)...)
+		drawn = append(drawn, m.matchRowLines(prefix, text, start, width, m.theme.Selected, true)...)
 		matchTo = len(drawn)
 	}
 	from := 0

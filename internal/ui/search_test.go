@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -379,7 +380,11 @@ func TestSearch_PreviewSaysSoWhenTheFileIsGoneOrChanged(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fx.root, "a.txt"), []byte("short\n"), 0o644); err != nil { // the hit line is gone
 		t.Fatal(err)
 	}
-	if view := stripANSI(model.View()); !strings.Contains(view, "the file changed: search again") || strings.Contains(view, "two needle\n") && strings.Contains(view, "2 │") {
+	view := stripANSI(model.View())
+	if !strings.Contains(view, "the file changed: search again") {
+		t.Errorf("a shrunk file must say so:\n%s", view)
+	}
+	if strings.Contains(view, "2 │ two needle") {
 		t.Errorf("a shrunk file must not show stale lines:\n%s", view)
 	}
 	if err := os.Remove(filepath.Join(fx.root, "a.txt")); err != nil {
@@ -409,13 +414,73 @@ func TestSearch_PreviewOfAHugeLineStaysSmall(t *testing.T) {
 }
 
 func TestExpandPreviewText_KeepsTheColumnWithTabsAndAroundALongLine(t *testing.T) {
-	runes, col := expandPreviewText("\tfoo", 1)
+	runes, col, _ := expandPreviewText("\tfoo", 1, 3)
 	if string(runes) != "    foo" || col != 4 {
 		t.Errorf("got %q at %d, want the tab as four spaces and the match at 4", string(runes), col)
 	}
 	long := strings.Repeat("a", 10000) + "X" + strings.Repeat("b", 10000)
-	runes, col = expandPreviewText(long, 10000)
+	runes, col, _ = expandPreviewText(long, 10000, 1)
 	if len(runes) != previewLineRunes || runes[col] != 'X' {
 		t.Errorf("kept %d runes, match at %d: %q", len(runes), col, string(runes[max(col-2, 0):min(col+3, len(runes))]))
+	}
+}
+
+func TestSearch_PreviewSaysSoWhenTheLineWasEditedAfterTheSearch(t *testing.T) {
+	model, fx := newProjectFixture(t, 100, map[string]string{"a.txt": "one\ntwo needle\nthree\n"})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	model = updated.(ProjectModel)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlG})
+	model = projectSend(model, runeKeys("needle")...)
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	if err := os.WriteFile(filepath.Join(fx.root, "a.txt"), []byte("one\ntwo thread\nthree\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if view := stripANSI(model.View()); !strings.Contains(view, "the file changed: search again") {
+		t.Errorf("an edited line must not be shown as the hit:\n%s", view)
+	}
+}
+
+func TestSearch_PreviewMarksATabInsideTheMatch(t *testing.T) {
+	_, start, width := expandPreviewText("a\tb\tc", 1, 3) // the match is "\tb\t"
+	if start != 1 || width != 3+6 {
+		t.Errorf("start %d, width %d: the two tabs must count as eight columns", start, width)
+	}
+}
+
+func TestSearch_PreviewRefusesAFileBiggerThanTheSearchReads(t *testing.T) {
+	m := SearchModel{root: t.TempDir()}
+	big := filepath.Join(m.root, "big.txt")
+	if err := os.WriteFile(big, make([]byte, 1<<20+1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.previewFile("big.txt"); !errors.Is(err, errPreviewTooLarge) {
+		t.Errorf("got %v, want the too-large error", err)
+	}
+}
+
+func TestSearch_PreviewReadsAFileOnceAndDoesNotRememberErrors(t *testing.T) {
+	m := SearchModel{root: t.TempDir(), preview: &previewCache{}}
+	if _, err := m.previewFile("late.txt"); err == nil {
+		t.Fatal("a missing file is an error")
+	}
+	if err := os.WriteFile(filepath.Join(m.root, "late.txt"), []byte("a\nb\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	first, err := m.previewFile("late.txt")
+	if err != nil || len(first) != 2 {
+		t.Fatalf("the file that appeared later must be read: %v %v", first, err)
+	}
+	second, _ := m.previewFile("late.txt")
+	if &first[0] != &second[0] {
+		t.Error("an unchanged file is read again instead of coming from the cache")
+	}
+}
+
+func TestSearch_AltFDoesNotSwitchToContainsInTheTextTab(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlG})
+	model = projectSend(model, keyMsg("alt+f"))
+	if view := stripANSI(model.View()); strings.Contains(view, "contains") {
+		t.Errorf("alt+f must not switch the file name matching from the text tab:\n%s", view)
 	}
 }

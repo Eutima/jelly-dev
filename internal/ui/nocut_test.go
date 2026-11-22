@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -150,5 +151,48 @@ func TestDrawRows_FillsTheBodyAndMapsEveryLineToItsRow(t *testing.T) {
 		if row != 1 {
 			t.Errorf("line %d belongs to row %d, want 1", i, row)
 		}
+	}
+}
+
+func TestCompletionPopup_KeepsItsWidthWhileTheSelectionScrolls(t *testing.T) {
+	var items []lsp.CompletionItem
+	for i := 0; i < 20; i++ {
+		label := "item" + strconv.Itoa(i)
+		detail := ""
+		if i == 15 {
+			detail = "a much longer description than the others have"
+		}
+		items = append(items, lsp.CompletionItem{Label: label, Detail: detail})
+	}
+	model := completionEditor(t, &fakeNav{completions: items}, "it\n", "A")
+	model = request(model)
+	before := model.completionWidth(model.textWidth())
+	for range 12 { // down past the first screen of the popup
+		model.moveCompletion(1)
+	}
+	if after := model.completionWidth(model.textWidth()); after != before {
+		t.Errorf("the popup changed from %d to %d columns while scrolling", before, after)
+	}
+	if rows := model.completionLines(before); len(rows) == 0 || !strings.Contains(stripANSI(strings.Join(model.completionLines(before), "\n")), "item12") {
+		t.Errorf("the selected suggestion is not in the popup")
+	}
+}
+
+func TestDiffView_ShowsTheLastRowFromItsStart_WhenItAloneFillsTheWindow(t *testing.T) {
+	long := strings.Repeat("0123456789", 30)
+	model := NewDiffModel("a", "b", []string{"x", long}, []string{"x", long + "!"})
+	sized, _ := model.Update(tea.WindowSizeMsg{Width: 40, Height: 6})
+	view := stripANSI(sized.(DiffModel).View())
+	if !strings.Contains(view, "0123456789") {
+		t.Errorf("a tiny window shows nothing of the last row:\n%s", view)
+	}
+}
+
+func TestGitMessagePane_StaysInsideTheWindow_WhenThePathIsLong(t *testing.T) {
+	model, _ := newGitTestModel(60, 9)
+	model.files[2].Path = strings.Repeat("deeply/nested/folder/", 8) + "c.bin"
+	model.selected = 2
+	if lines := strings.Count(model.messageView("a binary file"), "\n") + 1; lines > model.height {
+		t.Errorf("the pane takes %d lines in a window of %d", lines, model.height)
 	}
 }

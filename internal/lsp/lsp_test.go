@@ -101,6 +101,16 @@ func TestHelperServer(t *testing.T) {
 			default:
 				reply(loc(len(strings.Split(texts[p.TextDocument.URI], "\n")), 0)) // proves which text the server has
 			}
+		case "textDocument/hover":
+			var p struct {
+				Position Position `json:"position"`
+			}
+			_ = json.Unmarshal(msg.Params, &p)
+			if p.Position.Character > 50 { // nothing to say there
+				reply(nil)
+			} else {
+				reply(map[string]any{"contents": map[string]any{"kind": "markdown", "value": "```go\nfunc X()\n```\n\nX does it."}})
+			}
 		case "textDocument/completion":
 			shape := os.Getenv("GO_FAKE_COMPLETION")
 			items := []any{
@@ -723,5 +733,38 @@ func TestRootFor_FindsTheFolderOfAProjectFileByPattern(t *testing.T) {
 	}
 	if got := rootFor(spec, root, filepath.Join(root, "other", "x.cs")); got != root {
 		t.Errorf("without a project file the project root counts, got %s", got)
+	}
+}
+
+func TestRootFor_PatternMarkersWorkInFoldersWithOddNames(t *testing.T) {
+	root := t.TempDir()
+	odd := filepath.Join(root, "a[1]*b")
+	if err := os.MkdirAll(odd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(odd, "App.csproj"), []byte("<Project/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	spec, _, _ := specFor(DefaultServers(), "x.cs")
+	if got := rootFor(spec, root, filepath.Join(odd, "User.cs")); got != odd {
+		t.Errorf("rootFor = %s, want %s", got, odd)
+	}
+}
+
+func TestManager_HoverAsksForTheDocumentationAtAPosition(t *testing.T) {
+	target := newFile(t, "a.go", "x\n")
+	spec := ServerSpec{Name: "fake", Command: fakeCommand(t, target), Extensions: []string{".go"}, LanguageID: "go"}
+	manager := NewManager(filepath.Dir(target), []ServerSpec{spec})
+	manager.lookPath = func(string) (string, error) { return "/bin/fake", nil }
+	defer manager.Close()
+	got, err := manager.Hover(context.Background(), target, "X()\n", 0, 0)
+	if err != nil || got != "func X()\n\nX does it." {
+		t.Fatalf("hover = %q, %v", got, err)
+	}
+	if got, err := manager.Hover(context.Background(), target, strings.Repeat(" ", 60)+"\n", 0, 60); err != nil || got != "" {
+		t.Fatalf("a place without documentation gives nothing: %q, %v", got, err)
+	}
+	if _, err := manager.Hover(context.Background(), filepath.Join(filepath.Dir(target), "x.unknown"), "", 0, 0); !errors.Is(err, ErrNoServer) {
+		t.Fatalf("a file type without a server: %v", err)
 	}
 }

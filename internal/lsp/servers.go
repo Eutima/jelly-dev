@@ -173,11 +173,20 @@ func rootFor(spec ServerSpec, projectRoot, path string) string {
 	return projectRoot
 }
 
-// hasMarker tells whether a folder holds a root marker: a file name, or a pattern with * or ? ("*.csproj").
+// hasMarker tells whether a folder holds a root marker: a file name, or a pattern with * or ? ("*.csproj"). A pattern is matched against the
+// names in the folder, so a folder name with * or [ in it does not confuse it.
 func hasMarker(dir, marker string) bool {
 	if strings.ContainsAny(marker, "*?[") {
-		matches, err := filepath.Glob(filepath.Join(dir, marker))
-		return err == nil && len(matches) > 0
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return false
+		}
+		for _, entry := range entries {
+			if matched, _ := filepath.Match(marker, entry.Name()); matched {
+				return true
+			}
+		}
+		return false
 	}
 	_, err := os.Stat(filepath.Join(dir, marker))
 	return err == nil

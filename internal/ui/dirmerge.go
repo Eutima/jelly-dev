@@ -98,6 +98,7 @@ func (m DirMergeModel) updateChild(msg tea.Msg) (tea.Model, tea.Cmd) {
 	} else {
 		m.status = ""
 	}
+	m.ensureVisible() // a message of several lines makes the list shorter
 	return m, nil
 }
 

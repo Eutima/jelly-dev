@@ -471,3 +471,34 @@ func TestPathHint_AcceptsALinkedAndATrailingSlashEntry(t *testing.T) {
 		}
 	}
 }
+
+func TestPathExport_QuotesFoldersWithShellSyntax(t *testing.T) {
+	cases := map[string]string{
+		"/home/me/.local/bin": `export PATH="/home/me/.local/bin:$PATH"`,
+		"/home/my docs/bin":   `export PATH='/home/my docs/bin':"$PATH"`,
+		"/home/$HOME/bin":     `export PATH='/home/$HOME/bin':"$PATH"`,
+		"/home/it's/bin":      `export PATH='/home/it'\''s/bin':"$PATH"`,
+		"/home/`x`/bin":       "export PATH='/home/`x`/bin':\"$PATH\"",
+	}
+	for folder, want := range cases {
+		if got := pathExport(folder); got != want {
+			t.Errorf("pathExport(%q) = %s, want %s", folder, got, want)
+		}
+	}
+}
+
+func TestThrottleMouseMotion_DropsCrowdedMovesButNotClicks(t *testing.T) {
+	filter := throttleMouseMotion()
+	move := tea.MouseMsg{Action: tea.MouseActionMotion, Button: tea.MouseButtonNone}
+	if filter(nil, move) == nil {
+		t.Error("the first movement must pass")
+	}
+	if filter(nil, move) != nil {
+		t.Error("a movement right after the last one must be dropped")
+	}
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	drag := tea.MouseMsg{Action: tea.MouseActionMotion, Button: tea.MouseButtonLeft}
+	if filter(nil, click) == nil || filter(nil, drag) == nil || filter(nil, tea.KeyMsg{}) == nil {
+		t.Error("clicks, drags and keys always pass")
+	}
+}

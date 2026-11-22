@@ -179,6 +179,9 @@ func (b *Buffer) MarkWritten() { b.modified = false }
 // Message returns the last message (an error such as E37), cleared by the next key press.
 func (b *Buffer) Message() string { return b.message }
 
+// ClearMessage drops the last message (the caller shows its own).
+func (b *Buffer) ClearMessage() { b.message = "" }
+
 // CommandLine returns the text after ":" while in command mode.
 func (b *Buffer) CommandLine() string { return b.cmd }
 

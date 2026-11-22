@@ -2,6 +2,7 @@ package ui
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -133,5 +134,15 @@ func TestLanguages_TheHintSaysWhatEnterDoesWhenNothingIsChecked(t *testing.T) {
 	updated, _ = updated.Update(tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}})
 	if view := stripANSI(updated.View()); !strings.Contains(view, "[enter] install") || !strings.Contains(view, "[x] Python") {
 		t.Fatalf("with a check enter installs:\n%s", view)
+	}
+}
+
+func TestLanguages_AllKeyLeavesAnOptInChoiceAlone(t *testing.T) {
+	m, _ := languagesModel(t)
+	m = languageKeys(m, append(rowsDown("csharp"), " ")...) // C# is checked by hand
+	m = languageKeys(m, "a")
+	got := m.checkedIDs()
+	if !slices.Contains(got, "csharp") || slices.Contains(got, "powershell") || !slices.Contains(got, "python") {
+		t.Fatalf("a checks the ordinary languages and keeps the opt-in choice as it was: %v", got)
 	}
 }

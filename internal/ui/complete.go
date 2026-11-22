@@ -38,6 +38,8 @@ type completionState struct {
 	sel    int
 	top    int
 	source string // "language server", "words in the file"
+	// labelWidth and naturalWidth are measured over all the matches once, so the popup does not change shape while the selection scrolls
+	labelWidth, naturalWidth int
 }
 
 func isWordRune(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) }
@@ -121,6 +123,16 @@ func (m *EditorModel) refilterCompletion() {
 	}
 	state.items = rankCompletions(state.all, typed)
 	state.sel, state.top = 0, 0
+	state.labelWidth, state.naturalWidth = 0, 0
+	for _, item := range state.items {
+		extra := item.Detail
+		if extra == "" {
+			extra = lsp.KindName(item.Kind)
+		}
+		label := runewidth.StringWidth(sanitize(item.Label))
+		state.labelWidth = max(state.labelWidth, label)
+		state.naturalWidth = max(state.naturalWidth, 1+label+2+runewidth.StringWidth(sanitize(extra))+1)
+	}
 	if len(state.items) == 0 {
 		m.completion = nil
 	}
@@ -289,10 +301,7 @@ func (m EditorModel) completionLines(width int) []string {
 func (m EditorModel) completionItemLines(index, width int) []string {
 	state := m.completion
 	item := state.items[index]
-	labelWidth := 0
-	for _, shown := range state.items[state.top:min(len(state.items), state.top+maxCompletionRows)] {
-		labelWidth = max(labelWidth, runewidth.StringWidth(sanitize(shown.Label)))
-	}
+	labelWidth := state.labelWidth
 	label := sanitize(item.Label)
 	extra := sanitize(item.Detail)
 	if extra == "" {
@@ -322,16 +331,7 @@ func (m EditorModel) completionRowStyle(chosen bool) lipgloss.Style {
 
 // completionWidth is the width of the popup.
 func (m EditorModel) completionWidth(room int) int {
-	state := m.completion
-	widest := 0
-	for _, item := range state.items[state.top:min(len(state.items), state.top+maxCompletionRows)] {
-		extra := item.Detail
-		if extra == "" {
-			extra = lsp.KindName(item.Kind)
-		}
-		widest = max(widest, 1+runewidth.StringWidth(sanitize(item.Label))+2+runewidth.StringWidth(sanitize(extra))+1)
-	}
-	return min(max(widest, 12), maxCompletionWidth, room)
+	return min(max(m.completion.naturalWidth, 12), maxCompletionWidth, room)
 }
 
 // completionHint is the message line text while the popup is open.

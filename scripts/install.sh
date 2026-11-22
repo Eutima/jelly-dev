@@ -387,7 +387,7 @@ runtime_rust() {
     fi
     # rustup-init decides what it is by the name it is started under ("tmp.Ab12" from mktemp makes it think it is a proxy called tmp), so it
     # is downloaded as "rustup-init" into a folder of its own
-    init_dir=$(mktemp -d)
+    init_dir=$(mktemp -d) || { problem "Rust (rustup) could not be installed: no temporary folder"; return 1; }
     init=$init_dir/rustup-init
     expected=$init_dir/rustup-init.sha256
     if fetch "$url" "$init" && fetch "$url.sha256" "$expected" &&

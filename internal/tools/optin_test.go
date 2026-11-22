@@ -132,3 +132,35 @@ func TestQuoting_KeepsPathsWithQuotesInOneWord(t *testing.T) {
 		t.Errorf("cmdQuote = %s", got)
 	}
 }
+
+func TestInstall_PowerShellFailedUpdateKeepsTheWorkingServer(t *testing.T) {
+	m, env := newMachine(t, "pwsh")
+	m.archive = psesArchive(t, map[string]string{"PowerShellEditorServices/Start-EditorServices.ps1": "# old"})
+	if err := env.Install(context.Background(), tool("powershell-editor-services")); err != nil {
+		t.Fatal(err)
+	}
+	m.archive = psesArchive(t, map[string]string{"readme.txt": "an update without the start script"})
+	if err := env.Update(context.Background(), tool("powershell-editor-services")); err == nil {
+		t.Fatal("a broken download must fail")
+	}
+	script := filepath.Join(env.DataDir(), "powershell-editor-services", "PowerShellEditorServices", "Start-EditorServices.ps1")
+	if data, err := os.ReadFile(script); err != nil || string(data) != "# old" {
+		t.Fatalf("the working server must stay: %q %v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(env.DataDir(), "powershell-editor-services.new")); err == nil {
+		t.Error("the staging folder must be removed")
+	}
+	m.archive = psesArchive(t, map[string]string{"PowerShellEditorServices/Start-EditorServices.ps1": "# new"})
+	if err := env.Update(context.Background(), tool("powershell-editor-services")); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(script); string(data) != "# new" {
+		t.Fatalf("a good update replaces the files: %q", data)
+	}
+}
+
+func TestQuoting_PercentSignsInACmdLauncherAreWrittenTwice(t *testing.T) {
+	if got := cmdQuote(`C:\100%\x`); got != `"C:\100%%\x"` {
+		t.Errorf("cmdQuote = %s", got)
+	}
+}
