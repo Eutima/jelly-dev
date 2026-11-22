@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
 	"github.com/eutima/jelly-dev/internal/lsp"
@@ -290,10 +291,7 @@ func (m EditorModel) completionLines(width int) []string {
 	}
 	lines := make([]string, 0, len(shown))
 	for i, item := range shown {
-		style := m.theme.Header
-		if state.top+i == state.sel {
-			style = m.theme.Selected
-		}
+		style := m.completionRowStyle(state.top+i == state.sel)
 		label := sanitize(item.Label)
 		extra := sanitize(item.Detail)
 		if extra == "" {
@@ -303,6 +301,18 @@ func (m EditorModel) completionLines(width int) []string {
 		lines = append(lines, style.Render(padRight(runewidth.Truncate(text, width, "…"), width)))
 	}
 	return lines
+}
+
+// completionRowStyle is the style of a popup row. Where the selection is reverse video the rows are too (header style), so
+// the chosen one is the plain bold line instead.
+func (m EditorModel) completionRowStyle(chosen bool) lipgloss.Style {
+	switch {
+	case !chosen:
+		return m.theme.Header
+	case m.theme.Selected.GetReverse():
+		return m.theme.Equal.Bold(true)
+	}
+	return m.theme.Selected
 }
 
 // completionWidth is the width of the popup.
