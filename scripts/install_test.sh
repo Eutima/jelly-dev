@@ -64,7 +64,7 @@ expect_not "other groups are skipped" "$out" "xterm"
 out=$(plan apt-get "git xclip xterm go npm java python3" "lsp")
 expect "gopls via go install" "$out" "[dry-run] go install golang.org/x/tools/gopls@latest"
 expect "pyright via npm in the home prefix" "$out" "npm install -g --prefix $HOME/.local pyright"
-expect "typescript server via npm" "$out" "typescript typescript-language-server"
+expect "typescript server via npm" "$out" "typescript@5 typescript-language-server"
 expect "angular server via npm" "$out" "npm install -g --prefix $HOME/.local @angular/language-server @angular/language-service typescript"
 expect "html server via npm" "$out" "npm install -g --prefix $HOME/.local vscode-langservers-extracted"
 expect "prettier via npm" "$out" "npm install -g --prefix $HOME/.local prettier"
