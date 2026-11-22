@@ -277,7 +277,7 @@ func (m DiffModel) footerBar() *bar {
 	result.command("j/k", "scroll", true, m.theme)
 	result.binding(keymap.DiffSplit, "split/unified", true, m.theme)
 	result.binding(keymap.DiffQuit, "quit", true, m.theme)
-	result.binding(keymap.DiffPalette, "commands", true, m.theme)
+	result.binding(keymap.DiffPalette, "actions", true, m.theme)
 	if m.editable {
 		result.binding(keymap.DiffRevert, "revert", m.current >= 0, m.theme)
 		result.binding(keymap.DiffEdit, "edit", true, m.theme)

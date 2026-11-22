@@ -104,7 +104,7 @@ func (m ProjectModel) openPalette() (tea.Model, tea.Cmd) {
 	for i, action := range actions {
 		items[i] = PickItem{Lead: action.key, Label: action.label}
 	}
-	m.palette = &commandPalette{picker: newPicker(m.theme, "Commands ("+keys.Label(keymap.Palette)+")", items), actions: actions}
+	m.palette = &commandPalette{picker: newPicker(m.theme, "Actions ("+keys.Label(keymap.Palette)+")", items), actions: actions}
 	return m, nil
 }
 
@@ -143,4 +143,4 @@ func (m ProjectModel) updatePalette(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // paletteHint is the one hint the bars of the project window show: a click opens the palette.
-func paletteHint() string { return fmt.Sprintf("commands (%s)", keys.Label(keymap.Palette)) }
+func paletteHint() string { return fmt.Sprintf("actions (%s)", keys.Label(keymap.Palette)) }

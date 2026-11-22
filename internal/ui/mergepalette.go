@@ -68,7 +68,7 @@ func (m MergeModel) openPalette() (tea.Model, tea.Cmd) {
 			items = append(items, PickItem{Lead: keys.Label(action.command), Label: action.label})
 		}
 	}
-	m.palette = &mergePalette{picker: newPicker(m.theme, "Commands ("+keys.Label(keymap.MergePalette)+")", items), actions: actions}
+	m.palette = &mergePalette{picker: newPicker(m.theme, "Actions ("+keys.Label(keymap.MergePalette)+")", items), actions: actions}
 	return m, nil
 }
 

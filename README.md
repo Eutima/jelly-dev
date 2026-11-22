@@ -122,10 +122,10 @@ file in its project (the git root, else its folder); a name that does not exist 
 projects, and for each one the file and cursor that were open, is kept in `<user config dir>/jd/projects.json`
 (`JD_CONFIG_DIR` changes the folder), so the next `jd` continues where you stopped.
 
-**Command palette**: `ctrl+a` (or `f1`, or a click on *Commands* in the top bar; the same key closes it again) opens a searchable list of
+**Actions** (the command palette): `ctrl+a` (or `f1`, or a click on *Actions* in the top bar; the same key closes it again) opens a searchable list of
 all actions with their shortcuts: switch project, terminal, git diff, find file, search text, save, format, `gd`/`gr`, tabs, focus, theme,
 tools, quit. Type to narrow it, `enter` or a click runs the entry, `esc` closes it. The bars show nothing else: the top bar has the project,
-the branch and *Commands*, and the footers only the mode and position and `[ctrl+a] commands`. (`ctrl+shift+p` cannot be used: a terminal
+the branch and *Actions*, and the footers only the mode and position and `[ctrl+a] actions`. (`ctrl+shift+p` cannot be used: a terminal
 sends it as `ctrl+p`, and Windows Terminal keeps it for its own palette.)
 
 The diff views (`jd git`, the *Diff* of the window and `jd diff`) have the same palette on `ctrl+a` or `f1` (the `diff.palette` command in `.jdrc`): next and
@@ -324,7 +324,7 @@ Keys in the merge view (conflicts; the defaults, see "Shortcuts and .jdrc"):
 | `q` | quit |
 | `ctrl+a` (or `f1`) | command palette: every action above in a searchable list |
 
-The footer of the merge view is one line, `[→] ours  [←] theirs  [e] edit  [ctrl+a] commands`; everything else is in the palette.
+The footer of the merge view is one line, `[→] ours  [←] theirs  [e] edit  [ctrl+a] actions`; everything else is in the palette.
 
 Merge: `jd merge <base> <local> <remote> <merged>` shows ours | result | theirs. Non-conflicting changes are
 merged automatically; conflicts start with the base lines. The result pane has a line cursor:

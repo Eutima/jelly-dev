@@ -494,7 +494,7 @@ func TestMergeView_GivesResultPaneMostWidth_WhenWide(t *testing.T) {
 
 func TestMergeView_ShowsUnavailableActionsAsFaint_WhenNothingSelected(t *testing.T) {
 	model, _ := newMergeTestModel(baseText, oursText, theirsText, &saver{})
-	if view := model.View(); !strings.Contains(view, "[ctrl+a] commands") {
+	if view := model.View(); !strings.Contains(view, "[ctrl+a] actions") {
 		t.Fatalf("contextual hints expected:\n%s", view)
 	}
 	model = mergePress(model, "n", "n", "t")

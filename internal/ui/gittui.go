@@ -465,7 +465,7 @@ func (m GitModel) listFooterBar() *bar {
 		result.command(h[0], h[1], true, m.theme)
 	}
 	result.binding(keymap.DiffQuit, "quit", true, m.theme)
-	result.binding(keymap.DiffPalette, "commands", true, m.theme)
+	result.binding(keymap.DiffPalette, "actions", true, m.theme)
 	return result
 }
 

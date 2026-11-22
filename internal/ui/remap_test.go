@@ -61,7 +61,7 @@ func TestProject_RemappedCommandsRunOnTheirNewKeysOnly(t *testing.T) {
 	}
 	palette := pressKeyName(model, "f2").(ProjectModel)
 	view := stripANSI(palette.View())
-	if palette.palette == nil || !strings.Contains(view, "Commands (f2)") || !strings.Contains(view, "ctrl+j") {
+	if palette.palette == nil || !strings.Contains(view, "Actions (f2)") || !strings.Contains(view, "ctrl+j") {
 		t.Fatalf("the palette shows the new keys:\n%s", view)
 	}
 	started := pressKeyName(model, "alt+x").(ProjectModel)
@@ -123,7 +123,7 @@ func TestMerge_RemappedKeysRunTheirCommandsAndAreShown(t *testing.T) {
 	model, _ := newMergeTestModel(baseText, oursText, theirsText, &saver{})
 	model = mergePress(model, "n", "n") // the conflict
 	view := stripANSI(model.View())
-	for _, want := range []string{"[alt+o] ours", "[f2] commands", "[←] theirs"} {
+	for _, want := range []string{"[alt+o] ours", "[f2] actions", "[←] theirs"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("the footer lacks %q:\n%s", want, view)
 		}
@@ -158,7 +158,7 @@ func TestMerge_RemappedKeysRunTheirCommandsAndAreShown(t *testing.T) {
 	}
 	palette := pressKeyName(model, "f2").(MergeModel)
 	paletteView := stripANSI(palette.View())
-	if palette.palette == nil || !strings.Contains(paletteView, "Commands (f2)") || !strings.Contains(paletteView, "alt+o") {
+	if palette.palette == nil || !strings.Contains(paletteView, "Actions (f2)") || !strings.Contains(paletteView, "alt+o") {
 		t.Fatalf("the palette shows the new keys:\n%s", paletteView)
 	}
 }

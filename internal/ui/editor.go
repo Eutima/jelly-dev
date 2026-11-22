@@ -45,6 +45,7 @@ type EditorModel struct {
 	list  *placeList    // the open list of places (references, several definitions)
 
 	completion *completionState // the open completion popup
+	fit        bool             // the cursor was placed before the editor had a size: the first WindowSizeMsg lays its view out
 	blurred    bool             // the project window's focus is elsewhere: the cursor is not drawn
 	pane       string           // the pane of the project window that has the focus, named in the footer
 	ambient    string           // what the window is doing in the background (installing tools), shown when there is no message
@@ -116,6 +117,10 @@ func (m EditorModel) Cursor() (row, col int) { return m.vim.Cursor() }
 // At returns the model with the cursor on a line and column and the view scrolled to it.
 func (m EditorModel) At(row, col int) EditorModel {
 	m.vim.SetCursor(row, col)
+	if m.width == 0 || m.height == 0 { // a restored session: scrolling now would use a view of one cell, the size comes later
+		m.fit = true
+		return m
+	}
 	m.scrollToCursor()
 	return m
 }
@@ -166,6 +171,9 @@ func (m EditorModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.vim.SetPage(m.bodyHeight())
+		if m.fit { // the first size after a cursor was restored: lay the view out from offset 0, scrolling only as far as the cursor needs
+			m.top, m.left, m.fit = 0, 0, false
+		}
 		m.scrollToCursor()
 	case completionResultMsg:
 		return m.handleCompletionResult(msg), nil

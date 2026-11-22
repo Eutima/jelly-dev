@@ -49,7 +49,7 @@ func TestTopBar_ShowsOnlyTheCommandsButton(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := strings.Split(model.View(), "\n")[0]
-	if !strings.Contains(first, "Commands") || !strings.Contains(first, "ctrl+a") {
+	if !strings.Contains(first, "Actions") || !strings.Contains(first, "ctrl+a") {
 		t.Fatalf("the top bar must offer the palette: %q", first)
 	}
 	for _, gone := range []string{"Project", "Terminal", "Diff"} {

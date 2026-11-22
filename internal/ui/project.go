@@ -244,6 +244,9 @@ func (m ProjectModel) editorWidth() int {
 }
 
 func (m ProjectModel) resizeEditor() ProjectModel {
+	if m.width == 0 { // the size of the window is not known yet: the editors keep no size (a restored cursor is laid out when it arrives)
+		return m
+	}
 	updated, _ := m.editor.Update(tea.WindowSizeMsg{Width: max(m.editorWidth(), 1), Height: m.editorHeight()})
 	m.editor = updated.(EditorModel)
 	for _, session := range m.terms {

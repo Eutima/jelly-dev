@@ -480,7 +480,7 @@ func (m MergeModel) actionBar() *bar {
 	result.binding(keymap.MergeOurs, "ours"+mark(paneOurs), selected, m.theme)
 	result.binding(keymap.MergeTheirs, "theirs"+mark(paneTheirs), selected, m.theme)
 	result.binding(keymap.MergeEdit, "edit", len(m.rows) > 0, m.theme)
-	result.binding(keymap.MergePalette, "commands", true, m.theme)
+	result.binding(keymap.MergePalette, "actions", true, m.theme)
 	return result
 }
 

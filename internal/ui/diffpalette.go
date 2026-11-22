@@ -30,7 +30,7 @@ func newDiffPalette(theme Theme, all []diffPaletteAction) *diffPalette {
 			items = append(items, PickItem{Lead: keys.Label(action.command), Label: action.label})
 		}
 	}
-	palette.picker = newPicker(theme, "Commands ("+keys.Label(keymap.DiffPalette)+")", items)
+	palette.picker = newPicker(theme, "Actions ("+keys.Label(keymap.DiffPalette)+")", items)
 	return palette
 }
 

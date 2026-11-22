@@ -13,7 +13,7 @@ import (
 func TestTreeFooter_HasNoHints(t *testing.T) {
 	model, _ := newProjectFixture(t, 120, sampleFiles)
 	footer := stripANSI(strings.Join(model.treeFooterRows(model.treeFooterWidth()), "\n"))
-	for _, gone := range []string{"[", "commands", "[n]", "[d]", "[e]"} {
+	for _, gone := range []string{"[", "actions", "[n]", "[d]", "[e]"} {
 		if strings.Contains(footer, gone) {
 			t.Errorf("%q must not be in the tree footer: %q", gone, footer)
 		}

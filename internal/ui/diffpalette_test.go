@@ -13,7 +13,7 @@ func TestDiffPalette_OpensListsActionsAndRunsOne_WhenCtrlAPressed(t *testing.T) 
 	opened, _ := model.Update(keyMsg("ctrl+a"))
 	model = opened.(DiffModel)
 	view := stripANSI(model.View())
-	if model.palette == nil || !strings.Contains(view, "Commands (ctrl+a)") || !strings.Contains(view, "Next change") || !strings.Contains(view, "Switch between the split") {
+	if model.palette == nil || !strings.Contains(view, "Actions (ctrl+a)") || !strings.Contains(view, "Next change") || !strings.Contains(view, "Switch between the split") {
 		t.Fatalf("the palette must list the actions:\n%s", view)
 	}
 	if strings.Contains(view, "Revert the selected change") {
@@ -40,7 +40,7 @@ func TestDiffPalette_WorksInTheGitView_AndQuitsFromIt(t *testing.T) {
 	opened, _ := model.Update(keyMsg("f1"))
 	model = opened.(GitModel)
 	view := stripANSI(model.View())
-	if model.palette == nil || !strings.Contains(view, "Commands (") || !strings.Contains(view, "Quit") {
+	if model.palette == nil || !strings.Contains(view, "Actions (") || !strings.Contains(view, "Quit") {
 		t.Fatalf("git view palette:\n%s", view)
 	}
 	typed, _ := model.Update(keyMsg("q"))

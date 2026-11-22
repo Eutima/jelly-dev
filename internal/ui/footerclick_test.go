@@ -86,7 +86,7 @@ func TestMergeFooter_ClicksRunTheCommands(t *testing.T) {
 	if merged.Result()[1] != "X" {
 		t.Fatalf("[→] must apply ours: %v", merged.Result())
 	}
-	merged = clickOn(t, model, model.View(), "[ctrl+a] commands").(MergeModel)
+	merged = clickOn(t, model, model.View(), "[ctrl+a] actions").(MergeModel)
 	if merged.palette == nil {
 		t.Fatal("[ctrl+a] must open the command palette")
 	}
@@ -234,7 +234,7 @@ func TestProject_BarsFitSmallTerminals(t *testing.T) {
 	model, _ := newProjectFixture(t, 45, sampleFiles)
 	model, _ = projectKeys(model, "G", "enter")
 	lines := strings.Split(stripANSI(model.View()), "\n")
-	if !strings.Contains(lines[0], "Commands") {
+	if !strings.Contains(lines[0], "Actions") {
 		t.Fatalf("the top bar keeps its first button: %q", lines[0])
 	}
 }

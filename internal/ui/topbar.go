@@ -33,7 +33,7 @@ func (m ProjectModel) topBar() *bar {
 		result.add(barPart{" Note of " + sanitize(filepath.Base(owner)) + " ", m.theme.Header.Bold(true)})
 	}
 	result.add(barPart{" ", m.theme.Footer})
-	label := barPart{" Commands ", m.theme.Header}
+	label := barPart{" Actions ", m.theme.Header}
 	if shown := keys.Label(keymap.Palette); shown != "" {
 		result.button([]string{paletteClick}, []barPart{label, {"(" + shown + ") ", m.theme.Header}}, []barPart{label})
 	} else {

@@ -230,7 +230,7 @@ func TestEditor_FooterInTheProjectWindowHasNoCommands(t *testing.T) {
 	nav := &fakeNav{}
 	model, _ := navProject(t, nav)
 	text := stripANSI(model.Editor().footerBar().render(300, model.theme.Footer))
-	for _, gone := range []string{"[", "commands", "gd", "gr", "ctrl+f", ":w", ":q"} {
+	for _, gone := range []string{"[", "actions", "gd", "gr", "ctrl+f", ":w", ":q"} {
 		if strings.Contains(text, gone) {
 			t.Errorf("%q belongs in the palette, not in the footer: %q", gone, text)
 		}
