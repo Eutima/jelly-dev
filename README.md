@@ -57,8 +57,12 @@ Otherwise look in *Windows Security > Virus & threat protection > Protection his
 pip install jelly-dev      # puts the jd command on the PATH; pipx install jelly-dev works too
 ```
 
+Without root rights (a normal user in a container, a system Python) pip installs *to the user*: `jd` is then in `~/.local/bin`, which many shells do not have
+on the PATH, and `jd` says *not found*. Run `export PATH="$HOME/.local/bin:$PATH"`, or start
+it once with `python3 -m jelly_dev`: its first start adds the folder to your shell profile, so new shells find `jd`. As root (a Dockerfile `RUN`) `jd` goes to `/usr/local/bin`.
+
 **Docker**: the pip install is also the quickest way to get a nice editor inside a container: `RUN pip install jelly-dev` in a Dockerfile (Alpine, Debian
-or Ubuntu image with Python), then `docker exec -it <container> jd`. The wheel carries the static binary, jd needs no root, no `HOME` and no
+or Ubuntu image with Python; with a non-root `USER` add `ENV PATH="$HOME/.local/bin:$PATH"` after the `USER` line, or the full path of that user's home folder), then `docker exec -it <container> jd`. The wheel carries the static binary, jd needs no root, no `HOME` and no
 write access to the root file system (CI runs it that way), and it has a project tree, a vim-style editor, diffs and a shell panel, so a
 quick fix or a look at the files of a running container needs no other tools. Node.js and npm, which some language servers need, do not have to be in the
 image: jd installs them below `~/.local` when the first such server is added (`:addlang`, `jd install-lsp javascript`, or when a window opens), so
