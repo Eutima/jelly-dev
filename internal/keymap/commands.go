@@ -83,13 +83,14 @@ const (
 
 // The diff, git and directory views.
 const (
-	DiffNext   Command = "diff.next"
-	DiffPrev   Command = "diff.prev"
-	DiffSplit  Command = "diff.split"
-	DiffRevert Command = "diff.revert"
-	DiffEdit   Command = "diff.edit"
-	DiffUndo   Command = "diff.undo"
-	DiffQuit   Command = "diff.quit"
+	DiffNext    Command = "diff.next"
+	DiffPrev    Command = "diff.prev"
+	DiffSplit   Command = "diff.split"
+	DiffRevert  Command = "diff.revert"
+	DiffEdit    Command = "diff.edit"
+	DiffUndo    Command = "diff.undo"
+	DiffQuit    Command = "diff.quit"
+	DiffPalette Command = "diff.palette"
 )
 
 // The editor's normal and visual mode.
@@ -184,20 +185,20 @@ func (d definition) sequences() []Sequence {
 
 // definitions lists every command in the order `jd rc` prints them. The default keys are the ones jd always had.
 var definitions = []definition{
-	{Palette, ScopeIDE, "show the command palette", []string{"alt+p", "f1"}},
+	{Palette, ScopeIDE, "show the command palette", []string{"ctrl+a", "f1"}},
 	{Tabs, ScopeIDE, "switch tab (files and terminals); shift+tab only in the tree and the editor's normal mode, alt+t everywhere", []string{"shift+tab", "alt+t"}},
 	{Terminal, ScopeIDE, "show or hide the terminal panel", []string{"ctrl+t"}},
-	{Projects, ScopeIDE, "switch project", []string{"ctrl+p"}},
+	{Projects, ScopeIDE, "switch project", []string{"ctrl+o"}},
 	{Find, ScopeIDE, "find a file by name", []string{"ctrl+f"}},
 	{Grep, ScopeIDE, "search text in the project", []string{"ctrl+g"}},
 	{Diff, ScopeIDE, "show the git diff", []string{"alt+d"}},
 	{Focus, ScopeIDE, "switch focus between the tree and the editor", []string{"ctrl+e"}},
 	{LeaveTerminal, ScopeIDE, "give the focus back from the terminal panel to the editor", []string{"ctrl+]"}},
 	{CloseTerminal, ScopeIDE, "end the shown terminal tab", []string{"alt+w"}},
-	{Back, ScopeIDE, "go back to where the last jump started", []string{"ctrl+o"}},
+	{Back, ScopeIDE, "go back to where the last jump started", []string{"ctrl+b"}},
 	{Save, ScopeIDE, "save the file (in every editor mode)", []string{"ctrl+s"}},
 
-	{MergePalette, ScopeMerge, "show the command palette", []string{"alt+p", "f1"}},
+	{MergePalette, ScopeMerge, "show the command palette", []string{"ctrl+a", "f1"}},
 	{MergeNext, ScopeMerge, "next change", []string{"n", "tab"}},
 	{MergePrev, ScopeMerge, "previous change", []string{"p", "shift+tab"}},
 	{MergeOurs, ScopeMerge, "add ours to the change (again: remove it)", []string{"right"}},
@@ -229,6 +230,7 @@ var definitions = []definition{
 	{DiffEdit, ScopeDiff, "edit the file", []string{"e", "enter"}},
 	{DiffUndo, ScopeDiff, "undo the last revert or edit", []string{"u"}},
 	{DiffQuit, ScopeDiff, "quit", []string{"q", "esc", "ctrl+c", "ctrl+d"}},
+	{DiffPalette, ScopeDiff, "show the command palette", []string{"ctrl+a", "f1"}},
 
 	{VimLeft, ScopeVim, "move left", []string{"h", "left", "backspace"}},
 	{VimRight, ScopeVim, "move right", []string{"l", "right", "space"}},

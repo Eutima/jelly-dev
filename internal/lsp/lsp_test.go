@@ -129,6 +129,25 @@ func TestHelperServer(t *testing.T) {
 			lines := strings.Split(texts[p.TextDocument.URI], "\n")
 			// the fake formatter turns the first line to upper case
 			reply([]any{map[string]any{"range": Range{Start: Position{0, 0}, End: Position{0, len([]rune(lines[0]))}}, "newText": strings.ToUpper(lines[0])}})
+		case "textDocument/rename":
+			if os.Getenv("GO_FAKE_NORENAME") == "1" {
+				send(map[string]any{"jsonrpc": "2.0", "id": msg.ID, "error": map[string]any{"code": -32601, "message": "unknown method"}})
+				continue
+			}
+			var p struct{ NewName string }
+			_ = json.Unmarshal(msg.Params, &p)
+			uri := PathToURI(os.Getenv("GO_FAKE_TARGET"))
+			reply(map[string]any{"documentChanges": []any{
+				map[string]any{"textDocument": map[string]any{"uri": uri, "version": 1}, "edits": []any{
+					map[string]any{"range": Range{Start: Position{0, 0}, End: Position{0, 1}}, "newText": p.NewName},
+				}},
+				map[string]any{"kind": "rename", "oldUri": uri, "newUri": uri + ".moved"},
+			}})
+		case "workspace/willRenameFiles":
+			uri := PathToURI(os.Getenv("GO_FAKE_TARGET"))
+			reply(map[string]any{"changes": map[string]any{uri: []any{
+				map[string]any{"range": Range{Start: Position{0, 0}, End: Position{0, 1}}, "newText": "IMPORT"},
+			}}})
 		case "shutdown":
 			reply(nil)
 		case "exit":
@@ -612,5 +631,63 @@ func TestExpandCommand(t *testing.T) {
 	want := []string{"ngserver", "--probe", "/work/app/node_modules,/home/me/.local/lib/node_modules", "plain"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestManager_RenameReturnsEditsAndFileRenames(t *testing.T) {
+	target := newFile(t, "main.go", "x\n")
+	spec := ServerSpec{Name: "fake", Command: fakeCommand(t, target), Extensions: []string{".go"}, LanguageID: "go"}
+	manager := NewManager(filepath.Dir(target), []ServerSpec{spec})
+	manager.lookPath = func(string) (string, error) { return "/bin/fake", nil }
+	defer manager.Close()
+	edit, err := manager.Rename(context.Background(), target, "x\n", 0, 0, "renamed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(edit.Files) != 1 || edit.Files[0].Path != target || edit.EditCount() != 1 || edit.Files[0].Edits[0].NewText != "renamed" {
+		t.Fatalf("edit = %+v", edit)
+	}
+	if len(edit.Renames) != 1 || edit.Renames[0].Old != target || edit.Renames[0].New != target+".moved" {
+		t.Fatalf("renames = %+v", edit.Renames)
+	}
+}
+
+func TestManager_RenameReportsServerWithoutRename(t *testing.T) {
+	target := newFile(t, "main.go", "x\n")
+	t.Setenv("GO_FAKE_NORENAME", "1")
+	spec := ServerSpec{Name: "fake", Command: fakeCommand(t, target), Extensions: []string{".go"}}
+	manager := NewManager(filepath.Dir(target), []ServerSpec{spec})
+	manager.lookPath = func(string) (string, error) { return "/bin/fake", nil }
+	defer manager.Close()
+	if _, err := manager.Rename(context.Background(), target, "x", 0, 0, "y"); !errors.Is(err, ErrCannotRename) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestManager_RenameFileAsksServerForImportEdits_AndToleratesFileTypesWithoutServer(t *testing.T) {
+	target := newFile(t, "main.go", "x\n")
+	spec := ServerSpec{Name: "fake", Command: fakeCommand(t, target), Extensions: []string{".go"}, LanguageID: "go"}
+	manager := NewManager(filepath.Dir(target), []ServerSpec{spec})
+	manager.lookPath = func(string) (string, error) { return "/bin/fake", nil }
+	defer manager.Close()
+	edit, err := manager.RenameFile(context.Background(), target, target+".new")
+	if err != nil || edit.EditCount() != 1 || edit.Files[0].Edits[0].NewText != "IMPORT" {
+		t.Fatalf("edit = %+v, %v", edit, err)
+	}
+	if edit, err := manager.RenameFile(context.Background(), filepath.Join(filepath.Dir(target), "a.unknown"), "b.unknown"); err != nil || !edit.Empty() {
+		t.Fatalf("unknown type: %+v, %v", edit, err)
+	}
+}
+
+func TestParseWorkspaceEdit_RefusesFileDeletion_AndReadsChangesMap(t *testing.T) {
+	if _, err := ParseWorkspaceEdit([]byte(`{"documentChanges":[{"kind":"delete","uri":"file:///x"}]}`)); err == nil {
+		t.Fatal("a deletion must be refused")
+	}
+	edit, err := ParseWorkspaceEdit([]byte(`{"changes":{"file:///a/b.go":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"newText":"z"}]}}`))
+	if err != nil || edit.EditCount() != 1 || edit.Files[0].Path != filepath.FromSlash("/a/b.go") {
+		t.Fatalf("edit = %+v, %v", edit, err)
+	}
+	if edit, err := ParseWorkspaceEdit([]byte("null")); err != nil || !edit.Empty() {
+		t.Fatalf("null: %+v, %v", edit, err)
 	}
 }

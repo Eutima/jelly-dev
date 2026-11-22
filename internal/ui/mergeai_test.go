@@ -74,3 +74,18 @@ func TestMergeAssistant_IgnoresKey_WhenNoAssistantInstalled(t *testing.T) {
 		t.Fatalf("unresolved = %d, busy = %v", model.Unresolved(), model.aiBusy)
 	}
 }
+
+func TestMergeAssistant_PaletteListsBothAndExplains_WhenNotInstalled(t *testing.T) {
+	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
+	listed := map[string]bool{}
+	for _, action := range model.paletteActions() {
+		listed[action.label] = action.enabled
+	}
+	if !listed["Resolve with Claude"] || !listed["Resolve with Codex"] {
+		t.Fatalf("the palette must list both assistants: %v", listed)
+	}
+	model = runAssistantKey(t, model, "c")
+	if !strings.Contains(model.status, "codex command was not found") {
+		t.Fatalf("a missing assistant must say so: %q", model.status)
+	}
+}

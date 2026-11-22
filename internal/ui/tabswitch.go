@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/eutima/jelly-dev/internal/keymap"
@@ -28,10 +29,13 @@ func (m ProjectModel) openTabSwitcher() (tea.Model, tea.Cmd) {
 	for i, e := range m.openEditors() {
 		detail := "no file yet"
 		if path := e.Path(); path != "" {
-			detail = sanitize(m.relative(path))
+			detail = sanitize(m.display(path))
+		}
+		if detail == names[i] { // the name already is the path
+			detail = ""
 		}
 		if e.Modified() {
-			detail += "  [+]"
+			detail = strings.TrimSpace(detail + "  [+]")
 		}
 		items = append(items, PickItem{Lead: fmt.Sprint(i + 1), Label: sanitize(names[i]), Detail: detail})
 		targets = append(targets, tabTarget{index: i})

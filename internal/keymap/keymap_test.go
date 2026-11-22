@@ -209,7 +209,7 @@ func TestRender_ListsEveryCommandWithItsSourceAndParsesBackToTheSameMapping(t *t
 
 func TestRender_WithoutAnyFileIsTheDefaults(t *testing.T) {
 	text := Default().Render()
-	if strings.Contains(text, "# ~/") || strings.Contains(text, "# ./") || !strings.Contains(text, "alt+p, f1") || strings.Count(text, "# default:") != len(definitions) {
+	if strings.Contains(text, "# ~/") || strings.Contains(text, "# ./") || !strings.Contains(text, "ctrl+a, f1") || strings.Count(text, "# default:") != len(definitions) {
 		t.Fatalf("every command comes from the defaults:\n%s", text)
 	}
 }
@@ -456,10 +456,10 @@ func TestSequence_WrittenAndPretty(t *testing.T) {
 }
 
 func TestConflicts_AWindowKeyInAnyPositionOfASequenceCouldNeverComplete(t *testing.T) {
-	a, _ := parse(t, "vim.bottom = - alt+p\n")
+	a, _ := parse(t, "vim.bottom = - ctrl+a\n")
 	m, _ := Default().Apply(a, "~/.jdrc")
 	conflicts := m.Conflicts()
-	if len(conflicts) != 1 || !strings.Contains(conflicts[0].String(), "~/.jdrc line 1: vim.bottom: - alt+p uses alt+p, which is the key of palette in the project window") {
+	if len(conflicts) != 1 || !strings.Contains(conflicts[0].String(), "~/.jdrc line 1: vim.bottom: - ctrl+a uses ctrl+a, which is the key of palette in the project window") {
 		t.Fatalf("conflicts: %v", conflicts)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/eutima/jelly-dev/internal/keymap"
 
+	"github.com/eutima/jelly-dev/internal/project"
 	"github.com/eutima/jelly-dev/internal/source"
 )
 
@@ -27,6 +28,9 @@ func (m ProjectModel) topBar() *bar {
 	result.add(barPart{" " + sanitize(filepath.Base(m.root)) + " ", m.theme.Footer.Bold(true)})
 	if branch := currentBranch(m.root); branch != "" { // plain ASCII: a symbol like ⎇ is drawn wider by some terminals and shifts what is clickable
 		result.add(barPart{"(" + sanitize(branch) + ") ", m.theme.Footer})
+	}
+	if owner, ok := project.NoteOwner(m.editor.Path()); ok { // the shown file is a note: say whose
+		result.add(barPart{" Note of " + sanitize(filepath.Base(owner)) + " ", m.theme.Header.Bold(true)})
 	}
 	result.add(barPart{" ", m.theme.Footer})
 	label := barPart{" Commands ", m.theme.Header}

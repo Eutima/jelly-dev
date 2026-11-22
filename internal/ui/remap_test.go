@@ -55,7 +55,7 @@ func TestProject_RemappedCommandsRunOnTheirNewKeysOnly(t *testing.T) {
 	if opened.tabs == nil || !strings.Contains(stripANSI(opened.View()), "Tabs (ctrl+j)") {
 		t.Fatalf("the new key opens the tab list, titled with it:\n%s", opened.View())
 	}
-	if after := pressKeyName(model, "alt+p").(ProjectModel); after.palette != nil {
+	if after := pressKeyName(model, "ctrl+a").(ProjectModel); after.palette != nil {
 		t.Fatal("the old palette key must do nothing")
 	}
 	palette := pressKeyName(model, "f2").(ProjectModel)
@@ -92,7 +92,7 @@ func TestProject_TheTopBarShowsAndClicksTheRemappedPaletteKey(t *testing.T) {
 func TestProject_UnboundCommandsHaveNoKeyAndNoHint(t *testing.T) {
 	remap(t, "palette = none\ndiff = none\n")
 	model, _ := newProjectFixture(t, 100, sampleFiles)
-	if after := pressKeyName(model, "alt+p").(ProjectModel); after.palette != nil {
+	if after := pressKeyName(model, "ctrl+a").(ProjectModel); after.palette != nil {
 		t.Fatal("an unbound command does nothing")
 	}
 	if first := strings.Split(stripANSI(model.View()), "\n")[0]; strings.Contains(first, "(") {

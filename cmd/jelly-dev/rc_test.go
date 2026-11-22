@@ -23,7 +23,7 @@ func rcOutput(t *testing.T, home, workDir string) (string, int) {
 
 func TestRC_PrintsTheDefaultsWhenNothingIsChanged(t *testing.T) {
 	out, code := rcOutput(t, t.TempDir(), t.TempDir())
-	if code != exitOK || !strings.Contains(out, "palette") || !strings.Contains(out, "= alt+p, f1") || !strings.Contains(out, "# default: show the command palette") {
+	if code != exitOK || !strings.Contains(out, "palette") || !strings.Contains(out, "= ctrl+a, f1") || !strings.Contains(out, "# default: show the command palette") {
 		t.Fatalf("code %d:\n%s", code, out)
 	}
 	if strings.Contains(out, "# ~/") || strings.Contains(out, "Lines that were not used") {

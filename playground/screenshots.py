@@ -51,7 +51,7 @@ ANSI = {
 
 # key names that are sent as they are; everything else is typed
 KEYS = {"enter": "\r", "esc": "\x1b", "tab": "\t", "down": "\x1b[B", "up": "\x1b[A", "right": "\x1b[C", "left": "\x1b[D",
-        "ctrl+t": "\x14", "ctrl+f": "\x06", "ctrl+g": "\x07", "ctrl+p": "\x10", "ctrl+e": "\x05", "space": " "}
+        "ctrl+t": "\x14", "ctrl+f": "\x06", "ctrl+g": "\x07", "ctrl+p": "\x10", "ctrl+o": "\x0f", "ctrl+e": "\x05", "space": " "}
 
 class Shot(NamedTuple):
     name: str  # file name below docs/screenshots

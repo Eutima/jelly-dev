@@ -86,9 +86,9 @@ func TestMergeFooter_ClicksRunTheCommands(t *testing.T) {
 	if merged.Result()[1] != "X" {
 		t.Fatalf("[→] must apply ours: %v", merged.Result())
 	}
-	merged = clickOn(t, model, model.View(), "[alt+p] commands").(MergeModel)
+	merged = clickOn(t, model, model.View(), "[ctrl+a] commands").(MergeModel)
 	if merged.palette == nil {
-		t.Fatal("[alt+p] must open the command palette")
+		t.Fatal("[ctrl+a] must open the command palette")
 	}
 }
 
@@ -444,7 +444,7 @@ func TestMergeFooter_IsOneLine_WithTheMainActionsAndThePalette(t *testing.T) {
 			t.Fatalf("width %d: the view has %d lines, want 24", width, got)
 		}
 		footer := footerText(view, 1)
-		for _, key := range []string{"[→]", "[←]", "[e]", "[alt+p]"} {
+		for _, key := range []string{"[→]", "[←]", "[e]", "[ctrl+a]"} {
 			if !strings.Contains(footer, key) {
 				t.Errorf("width %d: %s is gone from the footer:\n%s", width, key, footer)
 			}
@@ -458,7 +458,7 @@ func TestMergeFooter_IsOneLine_WithTheMainActionsAndThePalette(t *testing.T) {
 func TestMergePalette_RunsTheChosenAction(t *testing.T) {
 	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
 	model = mergePress(model, "n")
-	opened, _ := model.Update(keyMsg("alt+p"))
+	opened, _ := model.Update(keyMsg("ctrl+a"))
 	palette := opened.(MergeModel)
 	if palette.palette == nil || !strings.Contains(plainText(palette.View()), "Take both") {
 		t.Fatalf("the palette must list the actions:\n%s", palette.View())

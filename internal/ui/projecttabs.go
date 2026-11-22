@@ -114,6 +114,61 @@ func (m ProjectModel) askToClose(fromEditor bool) (tea.Model, tea.Cmd) {
 	return closeIt(m)
 }
 
+// closeAllTabs closes every file tab (the terminals stay) and gives the focus to the tree. A tab with changes asks first; answering
+// cancel stops there and keeps the tabs that are still open.
+func (m ProjectModel) closeAllTabs() (tea.Model, tea.Cmd) {
+	if i := m.firstModified(); i >= 0 {
+		m.selectTab(i)
+		again := func(next ProjectModel) (tea.Model, tea.Cmd) {
+			next.closeTab(next.tab) // saved or discarded: the tab goes, then the next one is asked
+			return next.closeAllTabs()
+		}
+		if blocked, asked := m.confirmUnsaved(again); asked {
+			return blocked, nil
+		}
+	}
+	for i := len(m.openEditors()) - 1; i >= 0; i-- {
+		m.closeTab(i)
+	}
+	m.focus = focusTree
+	return m.resizeEditor(), nil
+}
+
+// closeOtherTabs closes every file tab except the one that is shown now. A tab with changes asks first; answering cancel stops there.
+func (m ProjectModel) closeOtherTabs() (tea.Model, tea.Cmd) {
+	return m.closeTabsExcept(m.tab)
+}
+
+// closeTabsExcept closes all tabs but keep (an index that moves down as tabs before it go), then shows keep.
+func (m ProjectModel) closeTabsExcept(keep int) (tea.Model, tea.Cmd) {
+	for i := range m.openEditors() {
+		if i == keep || !m.openEditors()[i].Modified() {
+			continue
+		}
+		m.selectTab(i) // the dialog asks about the shown file
+		again := func(next ProjectModel) (tea.Model, tea.Cmd) {
+			next.closeTab(i) // saved or discarded: the tab goes, then the next one is asked
+			if i < keep {
+				return next.closeTabsExcept(keep - 1)
+			}
+			return next.closeTabsExcept(keep)
+		}
+		if blocked, asked := m.confirmUnsaved(again); asked {
+			return blocked, nil
+		}
+	}
+	for i := len(m.openEditors()) - 1; i >= 0; i-- {
+		if i != keep {
+			m.closeTab(i)
+			if i < keep {
+				keep--
+			}
+		}
+	}
+	m.selectTab(keep)
+	return m.resizeEditor(), nil
+}
+
 // quitAsking leaves the window after asking: first about every tab with changes, then (unless that was asked already)
 // whether to quit at all.
 func (m ProjectModel) quitAsking(asked bool) (tea.Model, tea.Cmd) {
@@ -160,12 +215,29 @@ func (m ProjectModel) tabNames() []string {
 		names[i] = filepath.Base(path)
 		for j, other := range all {
 			if j != i && other.Path() != "" && filepath.Base(other.Path()) == names[i] {
-				names[i] = m.relative(path)
+				names[i] = m.distinctName(path)
 				break
 			}
 		}
 	}
 	return names
+}
+
+// display is how a path is shown to the user: relative to the project, or complete for a file outside it (a note of another project)
+// instead of a row of ../.
+func (m ProjectModel) display(path string) string {
+	if rel := m.relative(path); rel != path && !strings.HasPrefix(rel, "..") {
+		return rel
+	}
+	return path
+}
+
+// distinctName names a file whose base name another tab has too: a note by its project, any other file by its path.
+func (m ProjectModel) distinctName(path string) string {
+	if owner, ok := project.NoteOwner(path); ok && owner != m.root {
+		return filepath.Base(owner) + "/" + filepath.Base(path)
+	}
+	return m.display(path)
 }
 
 // tabBar is the line above the editor: one tab per open file, the shown one highlighted; a click on the name shows the

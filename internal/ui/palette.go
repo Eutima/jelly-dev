@@ -9,7 +9,7 @@ import (
 	"github.com/eutima/jelly-dev/internal/config"
 )
 
-// The command palette opens with alt+p or f1 by default (a terminal sends ctrl+shift+p like ctrl+p, and Windows Terminal keeps it for
+// The command palette opens with ctrl+a or f1 by default (a terminal sends ctrl+shift+p like ctrl+p, and Windows Terminal keeps it for
 // its own palette); .jdrc changes that.
 
 // paletteClick is what the top bar button of the palette sends back when it is clicked.
@@ -58,12 +58,21 @@ func (m ProjectModel) paletteActions() []paletteAction {
 		{"Search text in the project", keys.Label(keymap.Grep), command("grep")},
 		{"Save file", keys.Label(keymap.Save), editorCommand("w")},
 		{"Save all files", ":wa", command("wa")},
+		{"Open the notes", ":note", command("note")},
+		{"Notes: choose the project of the notes", ":note project", command("note project")},
+		{"Copy the file path (relative to the project)", ":copypath", command("copypath")},
+		{"Copy the absolute file path", ":copypath abs", command("copypath abs")},
+		{"Refactor: rename the symbol under the cursor", ":refactor <name>", command("refactor")},
+		{"Refactor: rename this file", ":refactor file <name>", command("refactor file")},
+		{"Refactor: undo the last refactoring", ":refactor undo", command("refactor undo")},
 		{"Format file", ":format", editorCommand("format")},
 		{"Go to definition", "gd", navigate(navDefinition)},
 		{"Find references", "gr", navigate(navReferences)},
 		{"Next tab", "gt", command("tabnext")},
 		{"Previous tab", "gT", command("tabprev")},
 		{"Close tab", ":bd", command("bd")},
+		{"Close the other tabs", ":closeother", command("closeother")},
+		{"Close all tabs", ":closeall", command("closeall")},
 		{"Switch focus between tree and editor", keys.Label(keymap.Focus), func(m ProjectModel) (tea.Model, tea.Cmd) { return m.toggleFocus(), nil }},
 		{"New terminal tab", ":terminal new", command("terminal new")},
 		{"Open this project in a new window", ":window", command("window")},

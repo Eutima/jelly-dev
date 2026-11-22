@@ -158,6 +158,15 @@ func runIDE(args []string, stdout, stderr io.Writer, env environment) int {
 			}
 			return current.Session(root)
 		},
+		NoteRoot: func() string {
+			root, _ := project.NoteRoot(dir) // an unreadable file means: the notes of the open project (stderr would corrupt the screen)
+			return root
+		},
+		SetNoteRoot: func(root string) {
+			if err := project.SetNoteRoot(dir, root); err != nil {
+				fmt.Fprintf(stderr, "jd: cannot store the project of the notes: %v\n", err)
+			}
+		},
 		ReadClipboard:  env.readClipboard,
 		WriteClipboard: env.writeClipboard,
 		NewWindow:      newWindow,
@@ -249,4 +258,12 @@ func (w *windowNavigator) RememberFormatter(path string, choice lsp.FormatterCho
 
 func (w *windowNavigator) Complete(ctx context.Context, path, text string, row, col int) ([]lsp.CompletionItem, error) {
 	return w.current().Complete(ctx, path, text, row, col)
+}
+
+func (w *windowNavigator) Rename(ctx context.Context, path, text string, row, col int, newName string) (lsp.WorkspaceEdit, error) {
+	return w.current().Rename(ctx, path, text, row, col, newName)
+}
+
+func (w *windowNavigator) RenameFile(ctx context.Context, oldPath, newPath string) (lsp.WorkspaceEdit, error) {
+	return w.current().RenameFile(ctx, oldPath, newPath)
 }

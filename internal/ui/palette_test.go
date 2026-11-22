@@ -11,7 +11,7 @@ import (
 	"github.com/eutima/jelly-dev/internal/lsp"
 )
 
-var altP = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p"), Alt: true}
+var altP = tea.KeyMsg{Type: tea.KeyCtrlA}
 
 func sendKey(model ProjectModel, msg tea.KeyMsg) ProjectModel {
 	updated, cmd := model.Update(msg)
@@ -21,7 +21,7 @@ func sendKey(model ProjectModel, msg tea.KeyMsg) ProjectModel {
 func TestPalette_OpensFromTreeAndFromEditorInEveryMode(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
 	if got := sendKey(model, altP); got.palette == nil {
-		t.Fatal("alt+p must open the palette from the tree")
+		t.Fatal("ctrl+a must open the palette from the tree")
 	}
 	if got := sendKey(model, tea.KeyMsg{Type: tea.KeyF1}); got.palette == nil {
 		t.Fatal("f1 must open the palette too")
@@ -31,7 +31,7 @@ func TestPalette_OpensFromTreeAndFromEditorInEveryMode(t *testing.T) {
 	before := strings.Join(model.Editor().Lines(), "\n")
 	got := sendKey(model, altP)
 	if got.palette == nil || strings.Join(got.Editor().Lines(), "\n") != before {
-		t.Fatal("alt+p must open the palette from insert mode without typing")
+		t.Fatal("ctrl+a must open the palette from insert mode without typing")
 	}
 }
 
@@ -161,7 +161,7 @@ func TestPalette_ShowsShortcutColumnThenDescription(t *testing.T) {
 		}
 		column = start
 	}
-	if !strings.Contains(view, "[ctrl+p]") || !strings.Contains(view, "[alt+d]") {
+	if !strings.Contains(view, "[ctrl+o]") || !strings.Contains(view, "[alt+d]") {
 		t.Fatalf("shortcuts in brackets expected:\n%s", view)
 	}
 }

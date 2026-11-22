@@ -214,3 +214,27 @@ func (s *Session) Lines(showCursor bool) []string {
 	}
 	return lines
 }
+
+// Cells returns the text of the screen cell by cell: one string per column, "" for the right half of a wide character.
+// The selection of text works on it.
+func (s *Session) Cells() [][]string {
+	s.screenMu.Lock()
+	defer s.screenMu.Unlock()
+	width, height := s.screen.Width(), s.screen.Height()
+	rows := make([][]string, height)
+	for y := range height {
+		row := make([]string, width)
+		for x := range width {
+			if cell := s.screen.CellAt(x, y); cell != nil && cell.Width > 0 {
+				row[x] = cell.Content
+				if row[x] == "" {
+					row[x] = " "
+				}
+			} else if cell == nil {
+				row[x] = " "
+			}
+		}
+		rows[y] = row
+	}
+	return rows
+}

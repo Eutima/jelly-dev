@@ -231,8 +231,29 @@ func TestSearch_BackJumpReturnsToPlaceBeforeSearch(t *testing.T) {
 	if model.Editor().Path() != filepath.Join(fx.root, "src", "util", "needle.go") {
 		t.Fatalf("path %q", model.Editor().Path())
 	}
-	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlO})
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlB})
 	if row, _ := model.Editor().Cursor(); model.Editor().Path() != filepath.Join(fx.root, "src", "main.go") || row != 2 {
-		t.Fatalf("ctrl+o must return to the place before the search: %q row %d", model.Editor().Path(), row)
+		t.Fatalf("ctrl+b must return to the place before the search: %q row %d", model.Editor().Path(), row)
+	}
+}
+
+func TestSearch_CaseToggleMakesALowerCaseQueryCaseSensitive(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, searchFilesFixture)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlG})
+	model = projectSend(model, runeKeys("demo")...)
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	if view := stripANSI(model.View()); !strings.Contains(view, "README.md:1") {
+		t.Fatalf("smart case: a lower case query must find '# Demo':\n%s", view)
+	}
+	model = projectSend(model, keyMsg("alt+c"))
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	view := stripANSI(model.View())
+	if strings.Contains(view, "README.md:1") || !strings.Contains(view, "case") {
+		t.Fatalf("alt+c must make the search case sensitive:\n%s", view)
+	}
+	model = projectSend(model, keyMsg("alt+c"))
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	if view := stripANSI(model.View()); !strings.Contains(view, "README.md:1") {
+		t.Fatalf("a second alt+c must switch back to smart case:\n%s", view)
 	}
 }

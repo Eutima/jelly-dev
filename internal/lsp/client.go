@@ -106,12 +106,17 @@ func handshake(ctx context.Context, c *Client, root string) (*Client, error) {
 				"synchronization": map[string]any{"didSave": false},
 				"definition":      map[string]any{"linkSupport": false},
 				"references":      map[string]any{},
+				"rename":          map[string]any{"prepareSupport": false},
 				"completion": map[string]any{"completionItem": map[string]any{
 					"snippetSupport": false, "insertReplaceSupport": true, "documentationFormat": []string{"plaintext"},
 				}},
 			},
-			"workspace": map[string]any{"workspaceFolders": true, "configuration": true},
-			"window":    map[string]any{"workDoneProgress": true}, // servers then report what they are busy with (see waitReady)
+			"workspace": map[string]any{
+				"workspaceFolders": true, "configuration": true,
+				"workspaceEdit":  map[string]any{"documentChanges": true, "resourceOperations": []string{"rename"}},
+				"fileOperations": map[string]any{"willRename": true},
+			},
+			"window": map[string]any{"workDoneProgress": true}, // servers then report what they are busy with (see waitReady)
 		},
 	}
 	if err := c.call(ctx, "initialize", params, nil); err != nil {

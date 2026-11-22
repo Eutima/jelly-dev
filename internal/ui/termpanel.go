@@ -165,6 +165,7 @@ func (m ProjectModel) terminalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if session == nil {
 		return m, nil
 	}
+	m.termSel = nil
 	if msg.Paste {
 		session.Paste(string(msg.Runes))
 		return m, nil
@@ -175,6 +176,9 @@ func (m ProjectModel) terminalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // clickTerminal handles a click in the panel: a tab, the buttons of the header, anywhere else gives it the focus.
 func (m ProjectModel) clickTerminal(msg tea.MouseMsg, x, y int) (tea.Model, tea.Cmd) {
+	if updated, used := m.mouseInTerminal(msg, x, y); used {
+		return updated, nil
+	}
 	if !leftPress(msg) {
 		return m, nil
 	}
@@ -239,6 +243,9 @@ func (m ProjectModel) editorColumn() string {
 	}
 	width := max(m.editorWidth(), 1)
 	rows := session.Lines(m.focus == focusTerminal)
+	if m.termSel != nil && m.termSel.moved {
+		rows = m.highlightSelection(rows, session.Cells())
+	}
 	lines := []string{m.termHeader().render(width, m.theme.Footer)}
 	for y := 0; y < panel-1; y++ {
 		line := strings.Repeat(" ", width)
@@ -304,4 +311,23 @@ func panelLabel(command keymap.Command) string {
 		}
 	}
 	return ""
+}
+
+// highlightSelection draws the rows the selection touches in plain text with the selected cells marked; the other rows keep
+// their colours.
+func (m ProjectModel) highlightSelection(rows []string, cells [][]string) []string {
+	out := append([]string(nil), rows...)
+	_, y0, _, y1 := m.termSel.bounds()
+	for y := max(y0, 0); y <= y1 && y < len(out) && y < len(cells); y++ {
+		var line strings.Builder
+		for x, cell := range cells[y] {
+			if m.termSel.covers(x, y) {
+				line.WriteString(m.theme.Selected.Render(cell))
+			} else {
+				line.WriteString(cell)
+			}
+		}
+		out[y] = line.String()
+	}
+	return out
 }

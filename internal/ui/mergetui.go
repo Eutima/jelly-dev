@@ -381,6 +381,7 @@ func (m MergeModel) runCommand(command keymap.Command) (tea.Model, tea.Cmd) {
 		if assistant, ok := m.assistantFor(command); ok {
 			return m.askAssistant(assistant)
 		}
+		m.notice(assistantMissingNotice(command), true)
 	case keymap.MergeNext:
 		m.gotoChange(m.changeAfterCursor())
 	case keymap.MergePrev:

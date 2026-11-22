@@ -33,6 +33,14 @@ func assistantCommand(assistant ai.Assistant) keymap.Command {
 	return keymap.MergeClaude
 }
 
+// assistantMissingNotice explains why a command that starts an assistant does nothing: its CLI is not installed.
+func assistantMissingNotice(command keymap.Command) string {
+	if command == keymap.MergeCodex {
+		return "Codex is not available: the codex command was not found on PATH"
+	}
+	return "Claude is not available: the claude command was not found on PATH"
+}
+
 // assistantFor returns the assistant a command starts.
 func (m MergeModel) assistantFor(command keymap.Command) (ai.Assistant, bool) {
 	for _, assistant := range m.assistants {

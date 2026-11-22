@@ -45,7 +45,8 @@ type WelcomeModel struct {
 	newWindow     func(dir string) error
 	remove        func(path string)
 	outcome       *WelcomeOutcome
-	embedded      bool // shown inside another model: leaving it sets done instead of ending the program
+	title         string // replaces "Recent projects" above the list
+	embedded      bool   // shown inside another model: leaving it sets done instead of ending the program
 	done          bool
 }
 
@@ -65,6 +66,14 @@ func (m WelcomeModel) WithTheme(theme Theme) WelcomeModel {
 // the program but makes Done report true.
 func (m WelcomeModel) WithEmbedded() WelcomeModel {
 	m.embedded = true
+	return m
+}
+
+// WithChoice returns the screen for choosing a project for something other than opening it (the notes): it has its own title, never asks
+// where the project opens and does not start windows.
+func (m WelcomeModel) WithChoice(title string) WelcomeModel {
+	m.title = title
+	m.newWindow = nil
 	return m
 }
 
@@ -177,6 +186,9 @@ func (m WelcomeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.choose()
 	case "w":
+		if m.title != "" { // choosing a project for something else: nothing opens here
+			return m, nil
+		}
 		return m.openInWindow()
 	case "d", "delete":
 		if m.selected < len(m.entries) {
@@ -445,6 +457,9 @@ func (m WelcomeModel) hintBar() *bar {
 	if m.embedded {
 		hints = [][2]string{{"enter", "open"}, {"o", "open folder"}, {"d", "forget"}, {"q", "close"}}
 	}
+	if m.title != "" {
+		hints[0][1] = "choose"
+	}
 	for _, h := range hints {
 		result.command(h[0], h[1], len(m.entries) > 0 || h[0] == "o" || h[0] == "q", m.theme)
 	}
@@ -461,7 +476,7 @@ func (m WelcomeModel) View() string {
 	if m.typing {
 		return m.promptView(lines)
 	}
-	lines = append(lines, m.theme.Header.Render(padRight(" Recent projects", m.width)))
+	lines = append(lines, m.theme.Header.Render(padRight(m.heading(), m.width)))
 	for y := 0; y < m.bodyHeight(); y++ {
 		i := m.top + y
 		switch {
@@ -534,4 +549,12 @@ func relativeTime(t time.Time) string {
 		return fmt.Sprintf("%d h ago", int(age.Hours()))
 	}
 	return fmt.Sprintf("%d days ago", int(age.Hours()/24))
+}
+
+// heading is the title above the list of projects.
+func (m WelcomeModel) heading() string {
+	if m.title != "" {
+		return " " + m.title
+	}
+	return " Recent projects"
 }

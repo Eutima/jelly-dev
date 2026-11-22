@@ -58,6 +58,7 @@ type GitModel struct {
 	newRaw      string             // the text of the shown file as it is on disk (for edits: line ends and the final newline are kept)
 	undo        []string           // the texts the file had before each edit and revert of the shown file, newest last
 	editor      *diffEditor        // the full-screen editor, nil when closed
+	palette     *diffPalette       // the list of all actions, nil when closed
 	arrive      int                // after the load: 1 selects the first change, -1 the last (n and p crossing a file border)
 	ticking     bool               // the wobble animation is scheduled
 	frame       int                // current animation frame
@@ -307,6 +308,9 @@ func (m GitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.frame++
 		return m, jellyTick(m.interval)
 	case tea.MouseMsg:
+		if m.palette != nil {
+			return m.updatePalette(msg)
+		}
 		if m.editor != nil {
 			if leftPress(msg) {
 				if keys := rowKeysAt(m.editorFooterRows(), msg.X, msg.Y, m.width, m.height); keys != nil {
@@ -322,6 +326,9 @@ func (m GitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.forwardToDiff(msg)
 	case tea.KeyMsg:
+		if m.palette != nil {
+			return m.updatePalette(msg)
+		}
 		if m.editor != nil {
 			return m.handleEditorKey(msg)
 		}
@@ -329,6 +336,16 @@ func (m GitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 	}
 	return m, nil
+}
+
+// updatePalette passes a key or click to the open palette; a chosen action runs as if its key was pressed.
+func (m GitModel) updatePalette(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var command keymap.Command
+	m.palette, command = m.palette.update(msg, m.width, m.height)
+	if command == "" {
+		return m, nil
+	}
+	return runPaletteCommand(m, command)
 }
 
 func (m GitModel) forwardToDiff(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -348,6 +365,9 @@ func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		command = keymap.DiffQuit
 	}
 	switch command {
+	case keymap.DiffPalette:
+		m.palette = newDiffPalette(m.theme, m.paletteActions())
+		return m, nil
 	case keymap.DiffQuit:
 		m.abortLoad() // also stops a running git process
 		return m, tea.Quit
@@ -403,6 +423,14 @@ func (m GitModel) View() string {
 	if m.editor != nil {
 		return m.editorView()
 	}
+	if m.palette != nil {
+		return m.palette.picker.overlay(m.plainView(), m.width, m.height)
+	}
+	return m.plainView()
+}
+
+// plainView is the list next to the diff.
+func (m GitModel) plainView() string {
 	list := m.listView()
 	right := m.diff.View()
 	if message := m.paneMessage(); message != "" {
@@ -437,6 +465,7 @@ func (m GitModel) listFooterBar() *bar {
 		result.command(h[0], h[1], true, m.theme)
 	}
 	result.binding(keymap.DiffQuit, "quit", true, m.theme)
+	result.binding(keymap.DiffPalette, "commands", true, m.theme)
 	return result
 }
 

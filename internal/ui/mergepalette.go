@@ -45,8 +45,12 @@ func (m MergeModel) paletteActions() []mergePaletteAction {
 		{"Wrap long lines", keymap.MergeWrap, true},
 		{"Switch the pane", keymap.MergePane, m.width < threePaneWidth},
 	}
-	for _, assistant := range m.assistants {
-		actions = append(actions, mergePaletteAction{"Resolve with " + assistant.Name, assistantCommand(assistant), unresolved && !m.aiBusy})
+	// both assistants are always listed: one that cannot run says why when it is chosen (see runCommand)
+	for _, entry := range []struct {
+		name    string
+		command keymap.Command
+	}{{"Claude", keymap.MergeClaude}, {"Codex", keymap.MergeCodex}} {
+		actions = append(actions, mergePaletteAction{"Resolve with " + entry.name, entry.command, true})
 	}
 	return append(actions,
 		mergePaletteAction{"Save the result", keymap.MergeSave, true},

@@ -49,7 +49,7 @@ func TestTopBar_ShowsOnlyTheCommandsButton(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := strings.Split(model.View(), "\n")[0]
-	if !strings.Contains(first, "Commands") || !strings.Contains(first, "alt+p") {
+	if !strings.Contains(first, "Commands") || !strings.Contains(first, "ctrl+a") {
 		t.Fatalf("the top bar must offer the palette: %q", first)
 	}
 	for _, gone := range []string{"Project", "Terminal", "Diff"} {
@@ -266,14 +266,14 @@ func TestShortcuts_CtrlPOpensProjectsAndCtrlTTerminal(t *testing.T) {
 		model, _ := newProjectFixture(t, 100, sampleFiles)
 		model.hooks.Terminal = func(string) *exec.Cmd { return exec.Command("/bin/sh", "-c", "sleep 30") }
 		model = start(model)
-		model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlP})
+		model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlO})
 		if model.picker == nil {
 			// the editor hands the key over as a command: run it
 			updated, _ := model.runProjectCommand("project")
 			model = updated.(ProjectModel)
 		}
 		if model.picker == nil {
-			t.Fatalf("%s: ctrl+p must open the project list", name)
+			t.Fatalf("%s: ctrl+o must open the project list", name)
 		}
 	}
 	model, _ := newProjectFixture(t, 100, sampleFiles)

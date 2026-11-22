@@ -58,6 +58,7 @@ type SearchModel struct {
 	mode          searchMode
 	input         []rune
 	regex         bool
+	caseSensitive bool // off: smart case (a capital letter makes the query case sensitive)
 
 	files       []string
 	filesLoaded bool
@@ -148,9 +149,10 @@ func (m *SearchModel) startText() tea.Cmd {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
-	seq, root, files, regex := m.seq, m.root, m.files, m.regex
+	seq, root, files := m.seq, m.root, m.files
+	options := search.TextOptions{Regex: m.regex, CaseSensitive: m.caseSensitive}
 	return func() tea.Msg {
-		matches, truncated, err := search.Text(ctx, root, files, query, search.TextOptions{Regex: regex})
+		matches, truncated, err := search.Text(ctx, root, files, query, options)
 		return textResultMsg{seq: seq, matches: matches, truncated: truncated, err: err}
 	}
 }
@@ -223,6 +225,12 @@ func (m SearchModel) handleKey(msg tea.KeyMsg) (SearchModel, tea.Cmd) {
 		return m.switchMode()
 	case "ctrl+r":
 		m.regex = !m.regex
+		if m.mode == searchText && len(m.input) > 0 {
+			return m, m.scheduleText()
+		}
+		return m, nil
+	case "alt+c":
+		m.caseSensitive = !m.caseSensitive
 		if m.mode == searchText && len(m.input) > 0 {
 			return m, m.scheduleText()
 		}
@@ -378,9 +386,14 @@ func (m SearchModel) hintBar() *bar {
 	if m.regex {
 		regex = "regex on"
 	}
+	caseHint := "case"
+	if m.caseSensitive {
+		caseHint = "case on"
+	}
 	result.command("enter", "open", m.resultCount() > 0, m.theme)
 	result.command("tab", "files/text", true, m.theme)
 	result.command("ctrl+r", regex, m.mode == searchText, m.theme)
+	result.command("alt+c", caseHint, m.mode == searchText, m.theme)
 	result.command("↑↓", "choose", m.resultCount() > 0, m.theme)
 	result.command("esc", "close", true, m.theme)
 	return result
@@ -446,6 +459,9 @@ func (m SearchModel) inputLine() string {
 		if m.textCut {
 			status = fmt.Sprintf("first %d matches", len(m.textResults))
 		}
+	}
+	if m.mode == searchText && m.caseSensitive {
+		status = "case · " + status
 	}
 	if m.mode == searchText && m.regex {
 		status = "regex · " + status

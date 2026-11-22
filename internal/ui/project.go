@@ -63,6 +63,9 @@ type ProjectHooks struct {
 	Terminal func(dir string) *exec.Cmd
 	// Diff returns the command that shows the changes of the project in dir; nil starts `jd git`.
 	Diff func(dir string) *exec.Cmd
+	// NoteRoot returns the project whose notes `:note` opens ("" when none was chosen: the open project); SetNoteRoot stores the choice.
+	NoteRoot    func() string
+	SetNoteRoot func(root string)
 	// MergeTool returns the command that resolves the merge conflicts of the project in dir; nil runs `git mergetool` with jd.
 	MergeTool func(dir string) *exec.Cmd
 }
@@ -87,6 +90,7 @@ type ProjectModel struct {
 	toolStatus       string              // what the installation is doing now, shown while it runs
 	picker           *WelcomeModel       // the open list of recent projects, nil when closed
 	pickerOutcome    *WelcomeOutcome     // what the picker chose
+	pickingNotes     bool                // the picker chooses the project of the notes instead of switching to it
 	search           *SearchModel        // the open project search, nil when closed
 	knownFiles       []string            // the file list of the last search, shown at once the next time
 	name             *namePrompt         // the prompt for a new file name, nil when none is open
@@ -100,6 +104,7 @@ type ProjectModel struct {
 	terms            []*terminal.Session // the shells (tabs) of the panel under the editor
 	termActive       int                 // the tab that is shown
 	termShown        bool                // whether the panel is visible (hidden shells keep running)
+	termSel          *termSelection      // the text selected with the mouse in the panel, nil when none
 
 	status string
 	warn   bool
@@ -310,6 +315,8 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.picker = &picker
 		}
 		return m.resizeEditor(), nil
+	case refactorResultMsg:
+		return m.refactorResult(msg)
 	case toolsPendingMsg:
 		return m.startTools(msg)
 	case toolDoneMsg:
@@ -364,12 +371,20 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // openPicker opens the list of recent projects over the window.
 func (m ProjectModel) openPicker() (tea.Model, tea.Cmd) {
+	return m.openPickerTitled("")
+}
+
+// openPickerTitled opens the list of recent projects; with a title it only chooses a project (the notes), it does not open it.
+func (m ProjectModel) openPickerTitled(title string) (tea.Model, tea.Cmd) {
 	var entries []project.Entry
 	if m.hooks.Recent != nil {
 		entries = m.hooks.Recent()
 	}
 	picker, outcome := NewWelcomeModel(entries, m.hooks.NewWindow, m.hooks.Forget)
 	picker = picker.WithEmbedded().WithTheme(m.theme)
+	if title != "" {
+		picker = picker.WithChoice(title)
+	}
 	updated, _ := picker.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 	picker = updated.(WelcomeModel)
 	m.picker, m.pickerOutcome = &picker, outcome
@@ -386,6 +401,13 @@ func (m ProjectModel) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	chosen, inNewWindow := m.pickerOutcome.Path, m.pickerOutcome.NewWindow
 	m.picker, m.pickerOutcome = nil, nil
+	if m.pickingNotes {
+		m.pickingNotes = false
+		if chosen == "" {
+			return m, cmd
+		}
+		return m.chooseNoteProject(chosen)
+	}
 	if chosen == "" || chosen == m.root {
 		return m, cmd
 	}
@@ -701,6 +723,12 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 			return m.newTerminal()
 		}
 		return m.openTerminal()
+	case "refactor", "ref":
+		return m.refactorCommand(argument)
+	case "copypath", "cpath", "yankpath":
+		return m.copyPath(argument)
+	case "note", "notes":
+		return m.noteCommand(argument)
 	case "palette", "commands", "actions":
 		return m.openPalette()
 	case "tabs", "buffers", "ls":
@@ -715,6 +743,10 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 		return m.stepTab(-1)
 	case "bdelete", "bd", "tabclose", "tabc":
 		return m.closeTabAsking(m.tab)
+	case "closeall", "bda", "bdall", "tabcloseall", "tabca":
+		return m.closeAllTabs()
+	case "closeother", "bdother", "tabonly", "only", "on":
+		return m.closeOtherTabs()
 	case "wa", "wall":
 		return m.saveAll(), nil
 	case "qa", "qall":
@@ -828,6 +860,10 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.search != nil {
 		return m.updateSearch(msg)
+	}
+	if m.termSel != nil && m.termSel.dragging && !leftPress(msg) { // a drag goes on (and ends) wherever the pointer is
+		updated, _ := m.mouseInTerminal(msg, msg.X-m.editorOffset(), msg.Y-topBarHeight-m.editorHeight())
+		return updated, nil
 	}
 	if msg.Y < topBarHeight {
 		if leftPress(msg) {

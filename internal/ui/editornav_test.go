@@ -110,11 +110,11 @@ func TestEditor_JumpsToDefinitionInSameFileAndBack(t *testing.T) {
 	if len(nav.asked) != 1 || !strings.Contains(nav.texts[0], "helper()") {
 		t.Fatalf("the editor text must be sent: %v", nav.asked)
 	}
-	model, _ = projectKeys(model, "ctrl+o")
+	model, _ = projectKeys(model, "ctrl+b")
 	if row, col := model.Editor().Cursor(); row != 3 || col != 1 {
-		t.Fatalf("ctrl+o must return to where gd started, cursor %d,%d", row, col)
+		t.Fatalf("ctrl+b must return to where gd started, cursor %d,%d", row, col)
 	}
-	if model, _ = projectKeys(model, "ctrl+o"); !strings.Contains(stripANSI(model.View()), "Jump list is empty") {
+	if model, _ = projectKeys(model, "ctrl+b"); !strings.Contains(stripANSI(model.View()), "Jump list is empty") {
 		t.Fatalf("an empty jump list must be explained:\n%s", model.View())
 	}
 }
@@ -131,9 +131,9 @@ func TestProject_JumpsToDefinitionInOtherFileAndBack(t *testing.T) {
 	if row, col := model.Editor().Cursor(); row != 3 || col != 5 || model.focus != focusProjectEdit {
 		t.Fatalf("cursor %d,%d focus %d", row, col, model.focus)
 	}
-	model, _ = projectKeys(model, "ctrl+o")
+	model, _ = projectKeys(model, "ctrl+b")
 	if model.Editor().Path() != filepath.Join(root, "main.go") {
-		t.Fatalf("ctrl+o must return to the first file: %q", model.Editor().Path())
+		t.Fatalf("ctrl+b must return to the first file: %q", model.Editor().Path())
 	}
 	if row, col := model.Editor().Cursor(); row != 3 || col != 1 {
 		t.Fatalf("cursor %d,%d", row, col)

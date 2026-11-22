@@ -37,6 +37,7 @@ type DiffModel struct {
 	noticeWarn  bool
 	footerMin   int // the footer has at least this many lines (a git view keeps both footers equally high)
 	theme       Theme
+	palette     *diffPalette // the list of all actions, nil when closed
 
 	width, height int
 	offset        int // first visible row
@@ -107,6 +108,9 @@ func (m DiffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.clamp()
 	case tea.MouseMsg:
+		if m.palette != nil {
+			return m.updatePalette(msg)
+		}
 		if leftPress(msg) {
 			if keys := m.footerKeys(msg.X, msg.Y); keys != nil {
 				return replay(m, keys)
@@ -120,9 +124,22 @@ func (m DiffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.clamp()
 	case tea.KeyMsg:
+		if m.palette != nil {
+			return m.updatePalette(msg)
+		}
 		return m.handleKey(msg)
 	}
 	return m, nil
+}
+
+// updatePalette passes a key or click to the open palette; a chosen action runs as if its key was pressed.
+func (m DiffModel) updatePalette(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var command keymap.Command
+	m.palette, command = m.palette.update(msg, m.width, m.height)
+	if command == "" {
+		return m, nil
+	}
+	return runPaletteCommand(m, command)
 }
 
 func (m DiffModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -132,6 +149,9 @@ func (m DiffModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case command == keymap.DiffQuit || key == "ctrl+c": // ctrl+c is the way out whatever diff.quit is bound to
 		return m, tea.Quit
+	case command == keymap.DiffPalette:
+		m.palette = newDiffPalette(m.theme, m.paletteActions())
+		return m, nil
 	case command == keymap.DiffSplit:
 		m.showUnified = !m.showUnified
 		if m.current >= 0 {
@@ -217,6 +237,9 @@ func (m DiffModel) View() string {
 		out.WriteByte('\n')
 	}
 	out.WriteString(m.footer())
+	if m.palette != nil {
+		return m.palette.picker.overlay(out.String(), m.width, m.height)
+	}
 	return out.String()
 }
 
@@ -254,6 +277,7 @@ func (m DiffModel) footerBar() *bar {
 	result.command("j/k", "scroll", true, m.theme)
 	result.binding(keymap.DiffSplit, "split/unified", true, m.theme)
 	result.binding(keymap.DiffQuit, "quit", true, m.theme)
+	result.binding(keymap.DiffPalette, "commands", true, m.theme)
 	if m.editable {
 		result.binding(keymap.DiffRevert, "revert", m.current >= 0, m.theme)
 		result.binding(keymap.DiffEdit, "edit", true, m.theme)

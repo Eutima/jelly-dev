@@ -2,6 +2,12 @@
 
 <p align="center"><img src="https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/jelly-dev-logo.png" alt="Jelly-Dev logo" width="384"></p>
 
+<p align="center">
+  <a href="https://github.com/Eutima/jelly-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/github/check-runs/Eutima/jelly-dev/master?nameFilter=test&label=test" alt="test"></a>
+  <a href="https://github.com/Eutima/jelly-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/github/check-runs/Eutima/jelly-dev/master?nameFilter=build&label=build" alt="build"></a>
+  <a href="https://github.com/Eutima/jelly-dev/actions/workflows/release.yml"><img src="https://github.com/Eutima/jelly-dev/actions/workflows/release.yml/badge.svg?branch=master" alt="release"></a>
+</p>
+
 **A terminal IDE with a JetBrains-style diff and merge UI.** A project tree, a vim-style editor with language servers, a shell
 panel and a command palette, plus side-by-side diffs, a three-pane `git mergetool` and conflict resolution with Claude or Codex.
 One static binary, one command: `jd`.
@@ -47,7 +53,7 @@ Then reload the shell (`exec "$SHELL" -l`, or open a new terminal) and check it:
 Taken from the [playground](playground/README.md) examples (`python3 playground/screenshots.py` makes them again).
 
 ![The project window](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide.png)
-*The project window: file tree, file tabs and a vim-style editor with syntax colours; `ctrl+p` projects, `ctrl+t` terminal, `shift+tab` tabs, `ctrl+f` and `ctrl+g` search.*
+*The project window: file tree, file tabs and a vim-style editor with syntax colours; `ctrl+o` projects, `ctrl+t` terminal, `shift+tab` tabs, `ctrl+f` and `ctrl+g` search.*
 
 ![A shell in a panel under the editor (several tabs), like in VS Code.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide-terminal.png)
 *A shell in a panel under the editor (several tabs), like in VS Code.*
@@ -85,18 +91,21 @@ file in its project (the git root, else its folder); a name that does not exist 
 projects, and for each one the file and cursor that were open, is kept in `<user config dir>/jd/projects.json`
 (`JD_CONFIG_DIR` changes the folder), so the next `jd` continues where you stopped.
 
-**Command palette**: `alt+p` (or `f1`, or a click on *Commands* in the top bar; the same key closes it again) opens a searchable list of
+**Command palette**: `ctrl+a` (or `f1`, or a click on *Commands* in the top bar; the same key closes it again) opens a searchable list of
 all actions with their shortcuts: switch project, terminal, git diff, find file, search text, save, format, `gd`/`gr`, tabs, focus, theme,
 tools, quit. Type to narrow it, `enter` or a click runs the entry, `esc` closes it. The bars show nothing else: the top bar has the project,
-the branch and *Commands*, and the footers only the mode and position and `[alt+p] commands`. (`ctrl+shift+p` cannot be used: a terminal
+the branch and *Commands*, and the footers only the mode and position and `[ctrl+a] commands`. (`ctrl+shift+p` cannot be used: a terminal
 sends it as `ctrl+p`, and Windows Terminal keeps it for its own palette.)
+
+The diff views (`jd git`, the *Diff* of the window and `jd diff`) have the same palette on `ctrl+a` or `f1` (the `diff.palette` command in `.jdrc`): next and
+previous change, split or unified, and, where the file can be changed, revert, edit and undo.
 
 **Merge conflicts**: when the project is in a merge with unresolved conflicts, the top bar shows `! N conflicts (:mergetool)`. A click, `:mergetool`
 or the palette entry runs `git mergetool` with jd as the tool (whatever git is configured with): one merge view per conflicting file, the result
 is staged when you save. The window looks again after the merge tool ends and now and then while you type.
 
 **Top bar and shortcuts**: *Diff* shows the git changes of the project as in `jd git` (`alt+d`, `D` in the tree or `:diff`; `q` returns to
-the editor; save first, the diff shows what is on disk). `ctrl+p` works in the tree and in the editor's normal mode (`ctrl+t` and `alt+d` everywhere) (`ctrl+o` is the way
+the editor; save first, the diff shows what is on disk). `ctrl+o` works in the tree and in the editor's normal mode (`ctrl+t` and `alt+d` everywhere) (`ctrl+b` is the way
 back after `gd`/`gr`). *Terminal* opens a shell in the project in a panel under the editor, like VS Code. Everything you type goes
 to the shell; `ctrl+]` (or a click on the editor) gives the focus back, `ctrl+t` (also from the editor and the tree, where it shows the panel) or the
 palette entry hides the panel (the shells keep running). The panel has **tabs**, one shell each: `[+]` (or `:terminal new`, or *New terminal* in the
@@ -106,7 +115,7 @@ like on Linux and macOS; on an older Windows it runs in place of the window unti
 
 **File tabs**: every file you open from the tree, a search or `gd`/`gr` gets a tab above the editor (an open file is shown, not
 opened twice); each tab keeps its own text, undo history and cursor. `gt` / `gT` (or `:tabn` / `:tabp`, `:bn` / `:bp`) show the next /
-previous tab, a click on a name shows it, a click on `×` (or `:bd`, `:tabclose`) closes it. `:q`, `:wq` and `ctrl+d` close the tab, the
+previous tab, a click on a name shows it, a click on `×` (or `:bd`, `:tabclose`) closes it; `:closeother` (`:tabonly`) closes all tabs but the shown one, `:closeall` (`:bda`) closes every tab and moves to the tree (tabs with changes ask first). `:q`, `:wq` and `ctrl+d` close the tab, the
 last one leaves (`ctrl+d` closes a saved tab at once and asks only when it has unsaved changes); `:wa` writes all files, `:qa` leaves when nothing is unsaved and `:qa!` anyway. The open tabs come back with the project.
 The footers and bars adapt to the width: on a narrow terminal the last commands lose their label (the `[key]` stays clickable) and then
 drop out, the first ones stay.
@@ -124,7 +133,7 @@ merge view has one footer line and a compact one below 10 lines.
 **Unsaved changes**: closing a tab or switching project asks *Save / Discard / Cancel* (`s`, `d`, `c`,
 `←/→` and `enter`, or a click).
 
-**Switching projects**: `ctrl+p` (or `P` in the tree), `:project` (without a folder) or `:projects` / `:recent` open the list of
+**Switching projects**: `ctrl+o` (or `P` in the tree), `:project` (without a folder) or `:projects` / `:recent` open the list of
 recent projects; `enter` opens the chosen one and asks *new window?* (`y`: a new window, `n`: this window, `esc`: back), `o` lets you type a folder (with `tab`
 completion; the same question follows, and a folder that does not exist is offered for creation first), `d`
 forgets an entry, `esc` closes the list. `:project <folder>` switches this window directly (the folder may be relative to the project or start
@@ -168,13 +177,30 @@ end of the file, an empty `/` repeats the last pattern, and `:noh` removes the h
 **Search** (`ctrl+f` file names, `ctrl+g` file content; in the tree also `/`; `:find [name]`, `:grep [text]`): a full-screen search over
 the project. `tab` switches between the two. File names are matched fuzzily (`uied` finds `internal/ui/editor.go`; several words must all
 match; names rank above paths). Content search starts while you type (smart case: lower case ignores case, a capital letter makes it
-case sensitive; `ctrl+r` switches to regular expressions) and lists `file:line  text` with the match highlighted. `enter` or a click
+case sensitive; `alt+c` makes every query case sensitive; `ctrl+r` switches to regular expressions) and lists `file:line  text` with the match highlighted. `enter` or a click
 opens the file at the match, `esc` (or `ctrl+d`) closes. `node_modules`, `.venv`, `venv`, `__pycache__`, `.tox`, `.gradle`, `.idea`,
 `.git`, caches and everything in the project's `.gitignore` or an optional `.jdignore` (same patterns) are skipped, as are binary
 files and files over 1 MiB.
 
+**Notes**: `:note [name]` (or *Open the notes* in the palette) opens a note, by default `notes`, as a Markdown file in an editor tab; `:w` saves it
+as `<project>/.jd/notes/<name>.md`. The notes belong to the project you chose with `:note project` (the project list opens, only to choose: it never asks about a new window; the choice is stored
+in the config folder), whichever project the window shows, so one place keeps your notes while you work in another project. Without a choice they
+belong to the open project. The top bar says *Note of <project>* while a note is shown. Add `.jd/` to the `.gitignore` of a project whose notes are private.
+
+**Copy the file path**: `:copypath` puts the path of the shown file, relative to the project, on the clipboard; `:copypath abs` the absolute path
+(both are in the palette).
+
+**Refactoring** (needs a language server that renames; `:format` and `gd` use the same ones): `:refactor <new name>` renames the symbol under the
+cursor (method, variable, type...) in every file of the project, `:refactor file <new name>` renames the file of the shown tab (the extension stays
+when you leave it out; the server also updates the imports where it can). jd asks first and lists how many edits and files are involved; save your
+changes before (the files are changed on disk). `:refactor undo` reverts the latest refactoring, also after jd was restarted: the old texts are kept in
+`<project>/.jd/refactor-journal.json` (the last 20; it holds whole files, so keep `.jd/` in your `.gitignore`). An undo is refused when one of the files was changed after the refactoring, so later work is
+never overwritten. Edits outside the project folder are never applied.
+
+**Select text in the terminal**: press and drag in the terminal panel to select text; letting go copies it to the clipboard.
+
 **Language servers** (started when first needed, per project): `gd` jumps to the definition of the symbol under the cursor, `gr` lists
-its references (`j`/`k`, `enter` or a click jump), `ctrl+o` returns to where the last jump started (also after a search jump), also
+its references (`j`/`k`, `enter` or a click jump), `ctrl+b` returns to where the last jump started (also after a search jump), also
 across files; so do `ctrl+c` and `ctrl+d` in normal mode, one step at a time, and only when there is no jump left to undo `ctrl+d` closes the
 window (`ctrl+c` does nothing) (unsaved changes block going back to another file, E37). `:format` (`:fmt`) formats the file as one undoable change: with the file type's formatter command when installed (Go: `gofmt`;
 HTML, CSS, SCSS, JavaScript, TypeScript, JSON: `prettier`; Python: `black`), otherwise with the language server (Java is formatted
@@ -251,9 +277,9 @@ Keys in the merge view (conflicts; the defaults, see "Shortcuts and .jdrc"):
 | `u` | undo |
 | `ctrl+s` (or `s`) | save (when every conflict is resolved) |
 | `q` | quit |
-| `alt+p` (or `f1`) | command palette: every action above in a searchable list |
+| `ctrl+a` (or `f1`) | command palette: every action above in a searchable list |
 
-The footer of the merge view is one line, `[→] ours  [←] theirs  [e] edit  [alt+p] commands`; everything else is in the palette.
+The footer of the merge view is one line, `[→] ours  [←] theirs  [e] edit  [ctrl+a] commands`; everything else is in the palette.
 
 Merge: `jd merge <base> <local> <remote> <merged>` shows ours | result | theirs. Non-conflicting changes are
 merged automatically; conflicts start with the base lines. The result pane has a line cursor:

@@ -4,21 +4,21 @@
 #          space  comma  hash  or a single character. In the vim.* commands a key sequence is keys separated by spaces (g g).
 
 # ide: the project window (keys need ctrl, alt, shift or a function key: bare letters belong to the editor and the shell)
-palette       = alt+p, f1              # default: show the command palette
+palette       = ctrl+a, f1             # default: show the command palette
 tabs          = shift+tab, alt+t       # default: switch tab (files and terminals); shift+tab only in the tree and the editor's normal mode, alt+t everywhere
 terminal      = ctrl+t                 # default: show or hide the terminal panel
-projects      = ctrl+p                 # default: switch project
+projects      = ctrl+o                 # default: switch project
 find          = ctrl+f                 # default: find a file by name
 grep          = ctrl+g                 # default: search text in the project
 diff          = alt+d                  # default: show the git diff
 focus         = ctrl+e                 # default: switch focus between the tree and the editor
 leaveterminal = ctrl+]                 # default: give the focus back from the terminal panel to the editor
 closeterminal = alt+w                  # default: end the shown terminal tab
-back          = ctrl+o                 # default: go back to where the last jump started
+back          = ctrl+b                 # default: go back to where the last jump started
 save          = ctrl+s                 # default: save the file (in every editor mode)
 
 # merge: the three-way merge view
-merge.palette    = alt+p, f1              # default: show the command palette
+merge.palette    = ctrl+a, f1             # default: show the command palette
 merge.next       = n, tab                 # default: next change
 merge.prev       = p, shift+tab           # default: previous change
 merge.ours       = right                  # default: add ours to the change (again: remove it)
@@ -44,13 +44,14 @@ merge.claude     = a                      # default: let Claude resolve the open
 merge.codex      = c                      # default: let Codex resolve the open conflicts
 
 # diff: the diff, git and directory views
-diff.next   = down, tab              # default: next change (or file)
-diff.prev   = up, shift+tab          # default: previous change (or file)
-diff.split  = t                      # default: switch between the split and the unified view
-diff.revert = r, backspace, delete   # default: revert the selected change
-diff.edit   = e, enter               # default: edit the file
-diff.undo   = u                      # default: undo the last revert or edit
-diff.quit   = q, esc, ctrl+c, ctrl+d # default: quit
+diff.next    = down, tab              # default: next change (or file)
+diff.prev    = up, shift+tab          # default: previous change (or file)
+diff.split   = t                      # default: switch between the split and the unified view
+diff.revert  = r, backspace, delete   # default: revert the selected change
+diff.edit    = e, enter               # default: edit the file
+diff.undo    = u                      # default: undo the last revert or edit
+diff.quit    = q, esc, ctrl+c, ctrl+d # default: quit
+diff.palette = ctrl+a, f1             # default: show the command palette
 
 # vim: the editor's normal and visual mode (a key sequence is keys separated by spaces: g g)
 vim.left         = h, left, backspace     # default: move left
