@@ -72,6 +72,7 @@ type SearchModel struct {
 	seq         int
 	cancel      context.CancelFunc
 	sel, top    int
+	preview     *previewCache // the file the code preview shows
 
 	done   bool       // the search was left
 	choice *lsp.Place // the place the user chose, when there is one
@@ -79,7 +80,7 @@ type SearchModel struct {
 
 // newSearch opens the search in a mode with a start query.
 func newSearch(theme Theme, root string, mode searchMode, query string, width, height int, known []string) (SearchModel, tea.Cmd) {
-	m := SearchModel{theme: theme, root: root, mode: mode, input: []rune(query), width: width, height: height}
+	m := SearchModel{theme: theme, root: root, mode: mode, input: []rune(query), width: width, height: height, preview: &previewCache{}}
 	if known != nil { // the last list is shown at once while a fresh one is read
 		m.files, m.filesLoaded = known, true
 	}
@@ -108,7 +109,7 @@ func (m SearchModel) Files() []string {
 }
 
 func (m SearchModel) bodyHeight() int {
-	return max(m.height-searchTop-(len(m.inputRows())-1)-searchAir-len(m.footerRows()), 1)
+	return max(m.height-searchTop-(len(m.inputRows())-1)-m.previewHeight()-searchAir-len(m.footerRows()), 1)
 }
 
 // footerRows are the hints as wrapped bars.
@@ -433,6 +434,7 @@ func (m SearchModel) View() string {
 		shown = append(shown, strings.Repeat(" ", m.width))
 	}
 	lines = append(lines, shown...)
+	lines = append(lines, m.previewRows()...)
 	lines = append(lines, strings.Repeat(" ", m.width))
 	lines = append(lines, renderRowLines(m.footerRows(), m.width, m.theme.Footer)...)
 	return strings.Join(lines[:min(len(lines), m.height)], "\n")

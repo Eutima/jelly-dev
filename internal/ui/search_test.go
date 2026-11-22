@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -292,5 +294,128 @@ func TestSearch_AltFDoesNothingInTheTextTab(t *testing.T) {
 	model = projectSend(model, keyMsg("alt+f"))
 	if model.search.containsOnly {
 		t.Error("alt+f changed the file name matching from the text tab")
+	}
+}
+
+// previewFixture is a file of 30 lines (line N reads "line N") with one hit, in a window high enough for the preview.
+func previewFixture(t *testing.T, hitLine int) ProjectModel {
+	t.Helper()
+	var lines []string
+	for i := 1; i <= 30; i++ {
+		text := "line " + strconv.Itoa(i)
+		if i == hitLine {
+			text = "the needle is here"
+		}
+		lines = append(lines, text)
+	}
+	model, _ := newProjectFixture(t, 100, map[string]string{"src/big.go": strings.Join(lines, "\n") + "\n"})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	model = updated.(ProjectModel)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlG})
+	model = projectSend(model, runeKeys("needle")...)
+	return projectSend(model, searchTickMsg{seq: model.search.seq})
+}
+
+func TestSearch_PreviewShowsFiveLinesAroundTheSelectedMatch(t *testing.T) {
+	view := stripANSI(previewFixture(t, 15).View())
+	for _, want := range []string{"src/big.go:15", "10 │ line 10", "14 │ line 14", "15 │ the needle is here", "16 │ line 16", "20 │ line 20"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("the preview lacks %q:\n%s", want, view)
+		}
+	}
+	for _, not := range []string{"9 │ line 9", "21 │ line 21"} {
+		if strings.Contains(view, not) {
+			t.Errorf("the preview shows %q, which is more than five lines away:\n%s", not, view)
+		}
+	}
+}
+
+func TestSearch_PreviewClampsAtTheStartOfTheFile(t *testing.T) {
+	view := stripANSI(previewFixture(t, 2).View())
+	if !strings.Contains(view, "1 │ line 1") || !strings.Contains(view, "7 │ line 7") || strings.Contains(view, "8 │ line 8") {
+		t.Errorf("a hit on line 2 shows lines 1 to 7:\n%s", view)
+	}
+}
+
+func TestSearch_PreviewIsOnlyInTheTextTabAndNeedsRoom(t *testing.T) {
+	model := previewFixture(t, 15)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyTab}) // the files tab
+	if view := stripANSI(model.View()); strings.Contains(view, "14 │ line 14") {
+		t.Errorf("the files tab shows a preview:\n%s", view)
+	}
+	small, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+	model = small.(ProjectModel)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyTab}) // back to the text tab
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	if view := stripANSI(model.View()); strings.Contains(view, "14 │ line 14") {
+		t.Errorf("a window of 12 lines shows a preview:\n%s", view)
+	}
+}
+
+func TestSearch_PreviewWrapsALongLineWithoutCutting(t *testing.T) {
+	long := strings.Repeat("0123456789", 20)
+	model, _ := newProjectFixture(t, 100, map[string]string{"a.txt": "one\nneedle " + long + "\nthree\n"})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 60, Height: 40})
+	model = updated.(ProjectModel)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlG})
+	model = projectSend(model, runeKeys("needle")...)
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	view := stripANSI(model.View())
+	if strings.Contains(view, "…") || strings.Count(view, "9") != 40 { // 20 in the result row and 20 in the preview
+		t.Errorf("the long line is cut or doubled (%d nines, want 40):\n%s", strings.Count(view, "9"), view)
+	}
+}
+
+func TestSearch_PreviewSaysSoWhenTheFileIsGoneOrChanged(t *testing.T) {
+	model, fx := newProjectFixture(t, 100, map[string]string{"a.txt": "one\ntwo needle\nthree\n"})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	model = updated.(ProjectModel)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlG})
+	model = projectSend(model, runeKeys("needle")...)
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	if view := stripANSI(model.View()); !strings.Contains(view, "2 │ two needle") {
+		t.Fatalf("no preview before the file changes:\n%s", view)
+	}
+	if err := os.WriteFile(filepath.Join(fx.root, "a.txt"), []byte("short\n"), 0o644); err != nil { // the hit line is gone
+		t.Fatal(err)
+	}
+	if view := stripANSI(model.View()); !strings.Contains(view, "the file changed: search again") || strings.Contains(view, "two needle\n") && strings.Contains(view, "2 │") {
+		t.Errorf("a shrunk file must not show stale lines:\n%s", view)
+	}
+	if err := os.Remove(filepath.Join(fx.root, "a.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if view := stripANSI(model.View()); !strings.Contains(view, "cannot read the file") {
+		t.Errorf("a deleted file must say so:\n%s", view)
+	}
+}
+
+func TestSearch_PreviewOfAHugeLineStaysSmall(t *testing.T) {
+	huge := strings.Repeat("x", 500000) + "needle" + strings.Repeat("y", 400000)
+	model, _ := newProjectFixture(t, 100, map[string]string{"min.js": "a\n" + huge + "\nb\n"})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	model = updated.(ProjectModel)
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlG})
+	model = projectSend(model, runeKeys("needle")...)
+	model = projectSend(model, searchTickMsg{seq: model.search.seq})
+	start := time.Now()
+	view := stripANSI(model.View())
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("drawing the preview of a huge line took %v", elapsed)
+	}
+	if !strings.Contains(view, "needle") || strings.Count(view, "\n") > 40 {
+		t.Errorf("the match must stay visible and the view inside the window:\n%.2000s", view)
+	}
+}
+
+func TestExpandPreviewText_KeepsTheColumnWithTabsAndAroundALongLine(t *testing.T) {
+	runes, col := expandPreviewText("\tfoo", 1)
+	if string(runes) != "    foo" || col != 4 {
+		t.Errorf("got %q at %d, want the tab as four spaces and the match at 4", string(runes), col)
+	}
+	long := strings.Repeat("a", 10000) + "X" + strings.Repeat("b", 10000)
+	runes, col = expandPreviewText(long, 10000)
+	if len(runes) != previewLineRunes || runes[col] != 'X' {
+		t.Errorf("kept %d runes, match at %d: %q", len(runes), col, string(runes[max(col-2, 0):min(col+3, len(runes))]))
 	}
 }
