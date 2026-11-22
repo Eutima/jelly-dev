@@ -51,7 +51,7 @@ ANSI = {
 
 # key names that are sent as they are; everything else is typed
 KEYS = {"enter": "\r", "esc": "\x1b", "tab": "\t", "down": "\x1b[B", "up": "\x1b[A", "right": "\x1b[C", "left": "\x1b[D",
-        "ctrl+t": "\x14", "ctrl+f": "\x06", "ctrl+g": "\x07", "ctrl+p": "\x10", "ctrl+o": "\x0f", "ctrl+e": "\x05", "space": " "}
+        "ctrl+t": "\x14", "ctrl+f": "\x06", "ctrl+g": "\x07", "ctrl+p": "\x10", "ctrl+o": "\x0f", "ctrl+e": "\x05", "ctrl+a": "\x01", "space": " "}
 
 class Shot(NamedTuple):
     name: str  # file name below docs/screenshots
@@ -62,6 +62,7 @@ class Shot(NamedTuple):
     size: tuple  # columns and rows of the terminal
     env: dict = {}  # extra environment of jd
     first_start: bool = False  # keep the first-start setup on (it is skipped otherwise): the question is what is shown
+    jdrc: str = ""  # the text of a ~/.jdrc of the throw-away home
 
 
 # every screenshot
@@ -75,6 +76,12 @@ SHOTS = [
     Shot("ide-terminal", "jd repo-changes   (ctrl+t: terminal)", "repo-changes", ["."],
      ["down", "down", "down", "down", "enter", "ctrl+t", "~ls docs", "enter", "~git status -s | head -4", "enter"], (118, 32), {}),
     Shot("ide-search", "jd repo-changes   (ctrl+g: search in files)", "repo-changes", ["."], ["ctrl+g", "~func"], (118, 30), {}),
+    Shot("palette", "jd repo-changes   (ctrl+a: command palette)", "repo-changes", ["."], ["down", "down", "down", "down", "enter", "ctrl+a"], (118, 30), {}),
+    Shot("palette-diff", "jd git   (ctrl+a: command palette of the diff)", "repo-changes", ["git"], ["ctrl+a"], (118, 28), {}),
+    Shot("notes", "jd repo-changes   (:note: notes of a project)", "repo-changes", ["."],
+     ["down", "down", "down", "down", "enter", "~:note ideas", "enter", "i", "~# Ideas", "enter", "enter", "~- palette in the diff", "enter", "~- refactor with undo", "esc"], (118, 30), {}),
+    Shot("jdrc", "~/.jdrc   (jd checks the file and tells what is wrong)", "repo-changes", ["."], [], (118, 8), {},
+         jdrc="palette = ctrl+q, f1\nfind = ctrl+g\ntabz = ctrl+j\nvim.bottom = G G\n"),
     Shot("addlang", "jd repo-changes   (:addlang: add a language)", "repo-changes", ["."], ["tab", "~:addlang", "enter"], (118, 30), {}),
     # a terminal with 16 colours: jd chooses the ansi theme by itself (no fixed backgrounds, reverse video for what is highlighted)
     Shot("ansi-theme", "jd repo-changes   (a 16 colour terminal: the ansi theme)", "repo-changes", ["."], ["down", "down", "down", "down", "enter"], (118, 30), {"TERM": "xterm-color", "COLORTERM": ""}),
@@ -121,6 +128,8 @@ def capture(shot, cwd, pause=0.7):
     if not shot.first_start:
         env["JD_SKIP_SETUP"] = "1"  # no first-start question, no installer
     env.update(shot.env)
+    if shot.jdrc:
+        Path(home, ".jdrc").write_text(shot.jdrc)
     pid, fd = pty.fork()
     if pid == 0:
         try:
@@ -180,10 +189,20 @@ def render(screen, title, path):
     width, height = screen.columns * width_cell + 2 * pad, screen.lines * height_cell + 2 * pad + bar
     image = Image.new("RGB", (width, height), BACKGROUND)
     draw = ImageDraw.Draw(image)
+    # a Linux (GNOME style) window: the title centred in the header bar, minimise, maximise and close at the right
     draw.rectangle((0, 0, width, bar), fill=CHROME)
-    for i, dot in enumerate([(237, 106, 94), (245, 191, 79), (97, 197, 84)]):
-        draw.ellipse((14 + i * 22, 10, 26 + i * 22, 22), fill=dot)
     draw.text((width // 2 - regular.getlength(title) / 2, 7), title, font=regular, fill=(160, 163, 170))
+    for i, symbol in enumerate(["min", "max", "close"]):
+        cx, cy = width - 24 - (2 - i) * 30, bar // 2
+        draw.ellipse((cx - 10, cy - 10, cx + 10, cy + 10), fill=(60, 63, 68))
+        glyph = (190, 192, 198)
+        if symbol == "min":
+            draw.line((cx - 5, cy + 3, cx + 5, cy + 3), fill=glyph, width=2)
+        elif symbol == "max":
+            draw.rectangle((cx - 5, cy - 5, cx + 5, cy + 5), outline=glyph, width=2)
+        else:
+            draw.line((cx - 5, cy - 5, cx + 5, cy + 5), fill=glyph, width=2)
+            draw.line((cx - 5, cy + 5, cx + 5, cy - 5), fill=glyph, width=2)
     for y in range(screen.lines):
         line = screen.buffer[y]
         for x in range(screen.columns):

@@ -61,6 +61,18 @@ Taken from the [playground](playground/README.md) examples (`python3 playground/
 ![Search in the files of the project (`ctrl+g`), file names with `ctrl+f`.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide-search.png)
 *Search in the files of the project (`ctrl+g`), file names with `ctrl+f`.*
 
+![The command palette](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/palette.png)
+*The command palette (`ctrl+a` or `f1`, also in the diff and merge views): every action with its shortcut, type to narrow the list.*
+
+![Notes](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/notes.png)
+*Notes (`:note [name]`): a Markdown file in an editor tab, kept per project in `.jd/notes/`; the top bar says which project the note belongs to (`:note project` chooses it).*
+
+![A palette in the diff](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/palette-diff.png)
+*The diff views have a palette as well: next and previous change, split or unified, revert, edit and undo.*
+
+![A mistake in ~/.jdrc](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/jdrc.png)
+*Every shortcut can be changed in `~/.jdrc` (or `.jdrc` in a project; `jd rc` prints the defaults): jd checks the file and tells what is wrong before it starts.*
+
 ![Three-way merge (`jd merge`, also git's merge tool)](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/merge.png)
 *Three-way merge (`jd merge`, also git's merge tool): ours, result and theirs, per conflict `→` ours, `←` theirs, `b` both, `e` edit.*
 
@@ -99,6 +111,13 @@ sends it as `ctrl+p`, and Windows Terminal keeps it for its own palette.)
 
 The diff views (`jd git`, the *Diff* of the window and `jd diff`) have the same palette on `ctrl+a` or `f1` (the `diff.palette` command in `.jdrc`): next and
 previous change, split or unified, and, where the file can be changed, revert, edit and undo.
+
+**Diff against branches, revisions and worktrees** (from the palette or with `:` commands; the diff view is `jd git`, `q` returns):
+`:diff <revision>` or `:diff <a>..<b>` (also `:diff --staged`) takes any revision git knows (`main`, `v1.2`, `HEAD~3`, `origin/dev`, a commit hash);
+`:diffrev` lists the branches, remote branches, tags and the latest commits to choose from; `:diffrevs` chooses the two sides one after the
+other; `:difffile` compares only the file of the shown tab with a revision; `:diffworktree [dir]` compares the project with another working tree of
+the repository (a list of `git worktree list`, or any folder) as a directory diff, the other tree being the old side. A revision that does not
+exist is a message, not an empty screen. As in `jd git`, the new side is the working tree, so changes can be reverted and edited there.
 
 **Merge conflicts**: when the project is in a merge with unresolved conflicts, the top bar shows `! N conflicts (:mergetool)`. A click, `:mergetool`
 or the palette entry runs `git mergetool` with jd as the tool (whatever git is configured with): one merge view per conflicting file, the result

@@ -81,6 +81,10 @@ func (m ProjectModel) paletteActions() []paletteAction {
 			m.say("Tree refreshed", false)
 			return m, nil
 		}},
+		{"Diff against a branch, tag or commit", ":diffrev", command("diffrev")},
+		{"Diff between two revisions", ":diffrevs", command("diffrevs")},
+		{"Diff this file against a revision", ":difffile", command("difffile")},
+		{"Diff against another worktree", ":diffworktree", command("diffworktree")},
 		{"Add a language (install its tools)", ":addlang", command("addlang")},
 		{"Install missing tools", ":tools", command("tools")},
 		{"Quit", ":qa", command("qa")},

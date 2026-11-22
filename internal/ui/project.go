@@ -66,6 +66,8 @@ type ProjectHooks struct {
 	// NoteRoot returns the project whose notes `:note` opens ("" when none was chosen: the open project); SetNoteRoot stores the choice.
 	NoteRoot    func() string
 	SetNoteRoot func(root string)
+	// Self returns the command that runs this program with arguments in dir (the diff views); nil runs the executable itself.
+	Self func(dir string, args ...string) *exec.Cmd
 	// MergeTool returns the command that resolves the merge conflicts of the project in dir; nil runs `git mergetool` with jd.
 	MergeTool func(dir string) *exec.Cmd
 }
@@ -97,6 +99,7 @@ type ProjectModel struct {
 	dlg              *unsavedDialog      // the question about unsaved changes, nil when none is open
 	palette          *commandPalette     // the list of all actions, nil when closed
 	tabs             *tabSwitcher        // the list of all tabs, nil when closed
+	revs             *revPicker          // the list of revisions or worktrees to compare with, nil when closed
 	conflicts        []string            // the files with unresolved merge conflicts
 	conflictsChecked time.Time           // when they were looked for last
 	pick             *formatPick         // the list of formatters to choose from, nil when closed
@@ -524,6 +527,9 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.tabs != nil {
 		return m.updateTabSwitcher(msg)
 	}
+	if m.revs != nil {
+		return m.updateRevPicker(msg)
+	}
 	if m.pick != nil {
 		return m.updateFormatPicker(msg)
 	}
@@ -734,7 +740,15 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 	case "tabs", "buffers", "ls":
 		return m.openTabSwitcher()
 	case "diff", "changes":
-		return m.showDiff()
+		return m.diffCommand(argument)
+	case "diffrev", "diffbranch":
+		return m.diffAgainst()
+	case "diffrevs", "diffbetween":
+		return m.diffBetween()
+	case "difffile":
+		return m.diffFile()
+	case "diffworktree", "diffwt":
+		return m.diffWorktree(argument)
 	case "mergetool", "merge", "conflicts":
 		return m.startMergeTool()
 	case "tabnext", "tabn", "bnext", "bn":
@@ -849,6 +863,9 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.tabs != nil {
 		return m.updateTabSwitcher(msg)
 	}
+	if m.revs != nil {
+		return m.updateRevPicker(msg)
+	}
 	if m.pick != nil {
 		return m.updateFormatPicker(msg)
 	}
@@ -945,6 +962,9 @@ func (m ProjectModel) View() string {
 	}
 	if m.tabs != nil {
 		return m.tabs.picker.overlay(screen, m.width, m.height)
+	}
+	if m.revs != nil {
+		return m.revs.picker.overlay(screen, m.width, m.height)
 	}
 	if m.pick != nil {
 		return m.pick.picker.overlay(screen, m.width, m.height)
