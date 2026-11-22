@@ -477,6 +477,9 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.focus == focusTerminal && m.termPanelHeight() > 0 {
 		return m.terminalKey(msg)
 	}
+	if msg.String() == "alt+d" { // the diff, from the tree and from the editor alike
+		return m.showDiff()
+	}
 	if m.focus == focusTree {
 		switch msg.String() {
 		case "P", "ctrl+p":
@@ -546,7 +549,7 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab", "i":
 		m.focus = focusProjectEdit
 		return m.resizeEditor(), nil
-	case "ctrl+c", "ctrl+d":
+	case "ctrl+d": // ctrl+c does not close
 		return m.askToClose(false)
 	case "q":
 		if i := m.firstModified(); i >= 0 {

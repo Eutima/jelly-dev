@@ -146,6 +146,18 @@ jd install-git [--apply] [--local]    print (or write) the git diff/merge tool s
 With `jd` as git's tools: `git difftool`, `git difftool --dir-diff` and `git mergetool`.
 
 Keys in the diff views: `↓`/`↑` next/previous change (in `jd git` and directory diffs with the diff pane focused, past the last or first change of a file they open the next or previous file), `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, `q` quit.
+In `jd git` (and the *Diff* of the project window) the new side is the working tree, so changes can be undone and edited there, like
+in the merge view. With the diff pane focused (not for `--staged`, two revisions, deleted files or conflicts):
+
+| Key | Action |
+|---|---|
+| `r` / `backspace` | revert the selected change: its lines go back to the old text (select a change with `↓` first) |
+| `e` / `enter` | open the vim-style editor on the file (the cursor is on the selected change); `:w` or `ctrl+s` saves and stays, `:wq` saves and leaves, `:q` leaves (refuses while unsaved), `:q!` discards |
+| `u` | undo the last revert or edit of this file (history is kept until you select another file) |
+
+Every step is written to the file at once. Nothing is written when the file changed on disk meanwhile (select it again to reload it), and
+line ends (CRLF) and a missing final newline are kept.
+
 Keys in the merge view (conflicts):
 
 | Key | Action |
@@ -183,7 +195,7 @@ projects, and for each one the file and cursor that were open, is kept in `<user
 (`JD_CONFIG_DIR` changes the folder), so the next `jd` continues where you stopped.
 
 **Top bar**: the first line of the project window has the buttons *Project* (`ctrl+p`), *Terminal* (`ctrl+t`) and, in a git
-repository only, *Diff* (the git changes of the project as in `jd git`, `D` in the tree or `:diff`; `q` returns to the editor; save
+repository only, *Diff* (the git changes of the project as in `jd git`, `alt+d`, `D` in the tree or `:diff`; `q` returns to the editor; save
 first, the diff shows what is on disk). `ctrl+p` and `ctrl+t` work in the tree and in the editor's normal mode (`ctrl+o` is the way
 back after `gd`/`gr`). *Terminal* opens a shell in the project in a panel under the editor, like VS Code. Everything you type goes
 to the shell; `ctrl+]` (or a click on the editor) gives the focus back, `ctrl+t` or the *Terminal* button hides the panel (the shells
@@ -220,11 +232,11 @@ Terminal when it runs in **WSL** or Windows, Terminal.app on macOS, and on Linux
 (for example `JD_TERMINAL="kitty"`) to choose another one; jd and the folder are appended to it. The value is split at spaces (no quoting), so a path with spaces needs a wrapper script. Where no terminal can be started (a container, an ssh session) a project
 opens in the current window instead.
 
-Closing: `ctrl+d` (like `ctrl+c`) from the tree and from the editor's normal mode always asks first, even when nothing changed: a box
+Closing: `ctrl+d` from the tree and from the editor's normal mode always asks first, even when nothing changed: a box
 asks *Quit Jelly-Dev?* (from the editor with several tabs: *Close <file>?*), `y` or `enter` closes, `n` or `esc` stays, and pressing
 `ctrl+d` again also closes. A file with unsaved changes asks *Save / Discard / Cancel* instead, for every changed tab when quitting.
-After a jump (`gd`, `gr`) `ctrl+c` and `ctrl+d` still go back first; in insert mode `ctrl+c` only returns to normal mode, and in the
-terminal panel both belong to the shell. `:q`, `:wq` and `q` in the tree are explicit and close without the box.
+After a jump (`gd`, `gr`) `ctrl+c` and `ctrl+d` still go back first. `ctrl+c` and `esc` never close anything (`ctrl+c` only returns to
+normal mode, like `esc`); only `ctrl+d`, `:wq`, `:q` and `q` in the tree close. In the terminal panel both belong to the shell. `:q`, `:wq` and `q` in the tree are explicit and close without the box.
 
 Welcome screen "open folder" (`o`): type a path and press `tab` to complete it (a single match completes the whole folder, several
 matches complete their common part, further presses walk through them; `shift+tab` goes back). The matching folders are listed
@@ -255,8 +267,8 @@ files and files over 1 MiB.
 
 **Language servers** (started when first needed, per project): `gd` jumps to the definition of the symbol under the cursor, `gr` lists
 its references (`j`/`k`, `enter` or a click jump), `ctrl+o` returns to where the last jump started (also after a search jump), also
-across files; so do `ctrl+c` and `ctrl+d` in normal mode, one step at a time, and only when there is no jump left to undo they close the
-window (unsaved changes block going back to another file, E37). `:format` (`:fmt`) formats the file as one undoable change: with the file type's formatter command when installed (Go: `gofmt`;
+across files; so do `ctrl+c` and `ctrl+d` in normal mode, one step at a time, and only when there is no jump left to undo `ctrl+d` closes the
+window (`ctrl+c` does nothing) (unsaved changes block going back to another file, E37). `:format` (`:fmt`) formats the file as one undoable change: with the file type's formatter command when installed (Go: `gofmt`;
 HTML, CSS, SCSS, JavaScript, TypeScript, JSON: `prettier`; Python: `black`), otherwise with the language server (Java is formatted
 by jdtls). When no formatter is found for the file (no server for the file type, a server that cannot format, a missing server), a
 searchable list of formatters opens (gofmt, goimports, prettier, black, ruff, shfmt, clang-format, rustfmt, jq, xmllint, yamlfmt, taplo ...;

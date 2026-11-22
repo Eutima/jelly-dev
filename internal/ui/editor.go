@@ -32,8 +32,7 @@ type EditorModel struct {
 	left     int // first screen column shown
 	showNums bool
 
-	syntax    [][]SyntaxSpan
-	syntaxRev int
+	syntax *syntaxCache // the colors of the text; a pointer, because View (a value receiver) fills it and the model is copied on every key
 
 	status string
 	warn   bool
@@ -53,7 +52,7 @@ type EditorModel struct {
 	quitArmed bool // ctrl+d warned about unsaved changes; the next one quits
 }
 
-// CloseRequestMsg tells the project window that ctrl+c or ctrl+d was pressed in the editor's normal mode: the window decides
+// CloseRequestMsg tells the project window that ctrl+d was pressed in the editor's normal mode: the window decides
 // what closes and asks first.
 type CloseRequestMsg struct{}
 
@@ -64,7 +63,7 @@ type ExCommandMsg struct{ Command string }
 func NewEditorModel(doc editor.Document) EditorModel {
 	buffer := vimbuf.New(doc.Lines, nil)
 	buffer.PassUnknownEx(true)
-	m := EditorModel{theme: DarkTheme(), doc: doc, vim: buffer, showNums: true, syntaxRev: -1}
+	m := EditorModel{theme: DarkTheme(), doc: doc, vim: buffer, showNums: true, syntax: newSyntaxCache()}
 	if doc.New && doc.Path != "" {
 		m.notice(fmt.Sprintf("\"%s\" [New]", doc.Path), false)
 	}
@@ -143,6 +142,20 @@ func (m EditorModel) footerRows() []*bar { return m.footerBar().wrap(m.width, ed
 
 // Update implements tea.Model.
 func (m EditorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if tick, ok := msg.(syntaxTickMsg); ok {
+		if tick.cache != m.syntax { // the tick of another file
+			return m, nil
+		}
+		return m, m.syntax.tick(m.doc.Path, m.vim)
+	}
+	model, cmd := m.update(msg)
+	if updated, ok := model.(EditorModel); ok {
+		return model, tea.Batch(cmd, updated.syntax.schedule(updated.vim))
+	}
+	return model, cmd
+}
+
+func (m EditorModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -166,6 +179,10 @@ func (m EditorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m EditorModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.notice("", false)
+	if msg.String() == "ctrl+s" { // like :w, in every mode: the editor stays as it is (an insert stays an insert)
+		m.save("")
+		return m, nil
+	}
 	if m.list != nil {
 		return m.handleListKey(msg)
 	}
@@ -188,11 +205,11 @@ func (m EditorModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key := msg.String(); (key == "ctrl+d" || key == "ctrl+c") && m.vim.Mode() == vimbuf.Normal && m.vim.Pending() == "" && len(m.jumps) > 0 {
 		return m.jumpBack()
 	}
-	// ctrl+d and ctrl+c close the editor from normal mode. In the project window (forwardEx) the key becomes a
+	// ctrl+d closes the editor from normal mode (ctrl+c never closes: it only returns to normal mode, like in vim). In the project window (forwardEx) the key becomes a
 	// CloseRequestMsg and the window asks before it closes anything. Standing alone the editor closes at once when nothing
 	// changed, otherwise the first press warns and the second one quits without saving. In the other modes ctrl+c still
 	// returns to normal mode and ctrl+d keeps its vim meaning.
-	if key := msg.String(); (key == "ctrl+d" || key == "ctrl+c") && m.vim.Mode() == vimbuf.Normal && m.vim.Pending() == "" {
+	if msg.String() == "ctrl+d" && m.vim.Mode() == vimbuf.Normal && m.vim.Pending() == "" {
 		if m.forwardEx { // in the project window: it asks before it closes
 			return m, func() tea.Msg { return CloseRequestMsg{} }
 		}
@@ -326,7 +343,7 @@ func (m EditorModel) opened(doc editor.Document) EditorModel {
 		m.vim.SetClipboard(m.clipboard)
 	}
 	m.vim.SetPage(m.bodyHeight())
-	m.top, m.left, m.syntaxRev = 0, 0, -1
+	m.top, m.left, m.syntax = 0, 0, newSyntaxCache()
 	if doc.New {
 		m.notice(fmt.Sprintf("\"%s\" [New]", doc.Path), false)
 	} else {
@@ -453,10 +470,7 @@ func (m EditorModel) View() string {
 	if m.width == 0 {
 		return ""
 	}
-	if m.syntaxRev != m.vim.Revision() {
-		m.syntax = highlightLines([]string{m.doc.Path}, m.vim.Lines())
-		m.syntaxRev = m.vim.Revision()
-	}
+	syntax := m.syntax.spansFor(m.doc.Path, m.vim)
 	var out strings.Builder
 	title := " " + filepath.Base(m.doc.Path)
 	if m.doc.Path == "" {
@@ -476,7 +490,8 @@ func (m EditorModel) View() string {
 	numWidth, textWidth := m.numberWidth(), m.textWidth()
 	row, col := m.vim.Cursor()
 	popup, popupFrom, popupX, popupWidth := m.popupPlacement()
-	for y := 0; y < m.textHeight(); y++ {
+	height := m.textHeight() // once: it lays out the footer, which is not cheap
+	for y := 0; y < height; y++ {
 		i := m.top + y
 		if i >= m.vim.LineCount() {
 			if index := y - popupFrom; popup != nil && index >= 0 && index < len(popup) { // the popup reaches below the text
@@ -505,8 +520,8 @@ func (m EditorModel) View() string {
 			from, to = f, t
 		}
 		var spans []SyntaxSpan
-		if i < len(m.syntax) {
-			spans = m.syntax[i]
+		if i < len(syntax) {
+			spans = syntax[i]
 		}
 		runes := []rune(m.vim.Line(i))
 		lineStyles := styles

@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/eutima/jelly-dev/internal/editor"
 	"github.com/eutima/jelly-dev/internal/lsp"
 	"github.com/eutima/jelly-dev/internal/vimbuf"
 )
@@ -355,7 +356,15 @@ func TestEditor_CtrlCAndCtrlDGoBackAfterAJumpInsteadOfClosing(t *testing.T) {
 		if row, col := model.Editor().Cursor(); row != 3 || col != 1 {
 			t.Fatalf("key %v: cursor %d,%d", key, row, col)
 		}
-		// nothing left to go back to: now the key closes the tab, and with the last tab the window
+		// nothing left to go back to: ctrl+c does nothing, ctrl+d closes the tab, and with the last tab the window
+		if key == tea.KeyCtrlC {
+			updated, cmd = model.Update(tea.KeyMsg{Type: key})
+			model = settleProject(updated.(ProjectModel), cmd)
+			if model.dlg != nil || isQuit(cmd) {
+				t.Fatal("ctrl+c must not close anything")
+			}
+			key = tea.KeyCtrlD
+		}
 		updated, cmd = model.Update(tea.KeyMsg{Type: key})
 		model = settleProject(updated.(ProjectModel), cmd)
 		if model.dlg == nil || len(model.openEditors()) != 2 {
@@ -433,4 +442,111 @@ func TestEditor_CtrlCStillLeavesInsertModeAndPopupsAfterAJump(t *testing.T) {
 func row(model ProjectModel) int {
 	r, _ := model.Editor().Cursor()
 	return r
+}
+
+func listEditor(t *testing.T) EditorModel {
+	t.Helper()
+	model := NewEditorModel(editor.Document{Path: "/p/x.go", Lines: []string{"x"}})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	model = updated.(EditorModel).WithNavigator(nil, "/p")
+	model.list = &placeList{title: "5 references", places: []lsp.Place{
+		{Path: "/p/models.py", Row: 0, Text: "class Login(Model):"},
+		{Path: "/p/views.py", Row: 9, Text: "user = Login.objects.get()"},
+		{Path: "/p/api/serializers.py", Row: 3, Text: "model = Login"},
+		{Path: "/p/views.py", Row: 20, Text: "return Response(login)"},
+		{Path: "/p/tests/test_views.py", Row: 5, Text: "Login.objects.create()"},
+	}}
+	return model
+}
+
+func listKeys(model EditorModel, keys ...string) EditorModel {
+	for _, key := range keys {
+		var msg tea.KeyMsg
+		switch key {
+		case "enter":
+			msg = tea.KeyMsg{Type: tea.KeyEnter}
+		case "esc":
+			msg = tea.KeyMsg{Type: tea.KeyEsc}
+		case "backspace":
+			msg = tea.KeyMsg{Type: tea.KeyBackspace}
+		default:
+			msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
+		}
+		updated, _ := model.Update(msg)
+		model = updated.(EditorModel)
+	}
+	return model
+}
+
+func TestPlaceList_SlashSearchFollowsPatternAndEnterKeepsIt(t *testing.T) {
+	model := listKeys(listEditor(t), "/", "s", "e", "r", "i")
+	if model.list.sel != 2 || !model.list.searching {
+		t.Fatalf("while typing the selection follows the first match: sel=%d searching=%v", model.list.sel, model.list.searching)
+	}
+	model = listKeys(model, "enter")
+	if model.list.sel != 2 || model.list.searching || model.list.last != "seri" {
+		t.Fatalf("enter keeps the match: sel=%d searching=%v last=%q", model.list.sel, model.list.searching, model.list.last)
+	}
+}
+
+func TestPlaceList_SlashSearchEscGoesBack_AndFindsFileNamesAndLineNumbers(t *testing.T) {
+	model := listEditor(t)
+	model.list.sel = 1
+	model = listKeys(model, "/", "t", "e", "s", "t", "esc")
+	if model.list.sel != 1 || model.list.searching {
+		t.Fatalf("esc must return to the place the search started from: sel=%d", model.list.sel)
+	}
+	model = listKeys(model, "/", "t", "e", "s", "t", "_", "enter")
+	if model.list.sel != 4 {
+		t.Fatalf("the search sees the file name: sel=%d", model.list.sel)
+	}
+	model = listKeys(model, "/", ":", "2", "1", "enter")
+	if model.list.sel != 3 {
+		t.Fatalf("the search sees the line number: sel=%d", model.list.sel)
+	}
+}
+
+func TestPlaceList_NAndNMoveThroughMatchesAndWrap(t *testing.T) {
+	model := listKeys(listEditor(t), "/", "v", "i", "e", "w", "s", "enter") // views.py (1), views.py (3), test_views.py (4)
+	if model.list.sel != 1 {
+		t.Fatalf("first match after the start: %d", model.list.sel)
+	}
+	model = listKeys(model, "n")
+	if model.list.sel != 3 {
+		t.Fatalf("n: %d", model.list.sel)
+	}
+	model = listKeys(model, "n", "n")
+	if model.list.sel != 1 {
+		t.Fatalf("n wraps around: %d", model.list.sel)
+	}
+	model = listKeys(model, "N")
+	if model.list.sel != 4 {
+		t.Fatalf("N goes back and wraps: %d", model.list.sel)
+	}
+}
+
+func TestPlaceList_SearchIsSmartCase_AndSurvivesBrokenRegex(t *testing.T) {
+	model := listKeys(listEditor(t), "/", "L", "o", "g", "i", "n", "enter") // upper case: exact
+	if model.list.sel != 0 {                                                // the search starts at the selected place, which matches
+		t.Fatalf("exact case: %d", model.list.sel)
+	}
+	model = listKeys(model, "/", "e", "(", "l", "o", "g", "i", "n", "enter") // "e(login" is no regex: searched as text
+	if model.list.sel != 3 {
+		t.Fatalf("a pattern that is no regex is searched as text: %d", model.list.sel)
+	}
+	model = listKeys(model, "/", "n", "o", "p", "e", "enter")
+	if model.list.sel != 3 || !strings.Contains(model.View(), "Pattern not found") {
+		t.Fatalf("no match keeps the selection and says so: sel=%d", model.list.sel)
+	}
+}
+
+func TestPlaceList_SearchPromptIsShownInTheListTitle(t *testing.T) {
+	model := listKeys(listEditor(t), "/", "v", "i")
+	if !strings.Contains(model.View(), "/vi") {
+		t.Fatalf("the typed pattern must be visible:\n%s", model.View())
+	}
+	model = listKeys(model, "backspace", "backspace", "backspace")
+	if model.list.searching {
+		t.Fatal("backspace on an empty prompt leaves it")
+	}
 }

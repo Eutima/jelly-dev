@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/eutima/jelly-dev/internal/editor"
+	"github.com/eutima/jelly-dev/internal/vimbuf"
 )
 
 func newEditorForTest(t *testing.T, text string) (EditorModel, string) {
@@ -200,8 +201,24 @@ func TestEditor_NewFileIsCreatedOnWrite(t *testing.T) {
 	}
 }
 
-func TestEditor_QuitsWithCtrlD_LikeCtrlC(t *testing.T) {
-	for _, key := range []tea.KeyType{tea.KeyCtrlD, tea.KeyCtrlC} {
+func TestEditor_CtrlCNeverQuitsInNormalMode(t *testing.T) {
+	model, _ := newEditorForTest(t, "a\nb\n")
+	for i := 0; i < 2; i++ {
+		updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+		if isQuit(cmd) {
+			t.Fatal("ctrl+c must not close the editor")
+		}
+		model = updated.(EditorModel)
+	}
+	model, _ = typeEditor(model, "x")
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if isQuit(cmd) || !updated.(EditorModel).vim.Modified() {
+		t.Fatal("ctrl+c must neither close nor discard")
+	}
+}
+
+func TestEditor_QuitsWithCtrlD(t *testing.T) {
+	for _, key := range []tea.KeyType{tea.KeyCtrlD} {
 		model, _ := newEditorForTest(t, "a\nb\n")
 		_, cmd := model.Update(tea.KeyMsg{Type: key})
 		if !isQuit(cmd) {
@@ -365,5 +382,32 @@ func TestEditor_SearchPromptJumpsAndHighlights(t *testing.T) {
 	model, _ = typeEditor(model, "/zzz<cr>")
 	if !model.warn || !strings.Contains(model.status, "E486") {
 		t.Fatalf("a missing pattern must warn: %q", model.status)
+	}
+}
+
+func TestEditor_CtrlSSavesInEveryMode_AndKeepsTheMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.txt")
+	if err := os.WriteFile(path, []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := editor.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := NewEditorModel(doc)
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 60, Height: 10})
+	model = updated.(EditorModel)
+	for _, key := range []tea.KeyMsg{{Type: tea.KeyRunes, Runes: []rune("i")}, {Type: tea.KeyRunes, Runes: []rune("X")}} {
+		updated, _ = model.Update(key)
+		model = updated.(EditorModel)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	model = updated.(EditorModel)
+	data, _ := os.ReadFile(path)
+	if string(data) != "Xone\n" {
+		t.Fatalf("file = %q", data)
+	}
+	if model.vim.Modified() || model.vim.Mode() != vimbuf.Insert {
+		t.Fatalf("saved and still inserting expected: modified=%v mode=%v", model.vim.Modified(), model.vim.Mode())
 	}
 }

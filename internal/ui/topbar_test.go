@@ -241,8 +241,16 @@ func TestTerminalTabs_OpenSwitchAndClose(t *testing.T) {
 	}
 }
 
-func TestClose_CtrlCAndCtrlDAlwaysAskFirst(t *testing.T) {
-	for _, key := range []tea.KeyType{tea.KeyCtrlC, tea.KeyCtrlD} {
+func TestClose_CtrlCDoesNotCloseFromTheTree(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, sampleFiles)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if isQuit(cmd) || updated.(ProjectModel).dlg != nil {
+		t.Fatal("ctrl+c must neither close nor ask")
+	}
+}
+
+func TestClose_CtrlDAlwaysAsksFirst(t *testing.T) {
+	for _, key := range []tea.KeyType{tea.KeyCtrlD} {
 		model, _ := newProjectFixture(t, 100, sampleFiles) // the tree has the focus, nothing is modified
 		updated, cmd := model.Update(tea.KeyMsg{Type: key})
 		asked := updated.(ProjectModel)
@@ -320,6 +328,57 @@ func TestClose_InTheSaveDialogCtrlCAndCtrlDBothCancel(t *testing.T) {
 		got := after.(ProjectModel)
 		if got.dlg != nil || isQuit(cmd) || !got.Editor().Modified() {
 			t.Fatalf("key %v in the save dialog must cancel and keep the changes", key)
+		}
+	}
+}
+
+func TestCurrentBranch_ReadsHeadOfRepositoryAndWorktree(t *testing.T) {
+	root := t.TempDir()
+	if got := currentBranch(root); got != "" {
+		t.Fatalf("outside a repository there is no branch, got %q", got)
+	}
+	gitDir := filepath.Join(root, ".git")
+	if err := os.Mkdir(gitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, text string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(gitDir, "HEAD"), "ref: refs/heads/feature/x\n")
+	sub := filepath.Join(root, "pkg")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := currentBranch(sub); got != "feature/x" {
+		t.Fatalf("branch = %q", got)
+	}
+	write(filepath.Join(gitDir, "HEAD"), "0123456789abcdef\n")
+	if got := currentBranch(root); got != "0123456" {
+		t.Fatalf("detached HEAD = %q", got)
+	}
+	worktree := t.TempDir()
+	write(filepath.Join(worktree, ".git"), "gitdir: "+gitDir+"\n")
+	write(filepath.Join(gitDir, "HEAD"), "ref: refs/heads/main\n")
+	if got := currentBranch(worktree); got != "main" {
+		t.Fatalf("worktree branch = %q", got)
+	}
+}
+
+func TestProject_AltDRunsDiffFromTreeAndEditor(t *testing.T) {
+	for _, focus := range []int{focusTree, focusProjectEdit} {
+		model, _ := newProjectFixture(t, 100, sampleFiles)
+		if err := os.Mkdir(filepath.Join(model.root, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		called := false
+		model.hooks.Diff = func(string) *exec.Cmd { called = true; return exec.Command("true") }
+		model.focus = focus
+		_, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}, Alt: true})
+		if cmd == nil || !called {
+			t.Fatalf("alt+d must start the diff (focus %d)", focus)
 		}
 	}
 }

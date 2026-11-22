@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -26,10 +27,14 @@ type externalDoneMsg struct {
 // topBar is the line above the panes: the project name and the buttons to switch project, open a terminal and show the diff.
 func (m ProjectModel) topBar() *bar {
 	result := &bar{}
-	result.add(barPart{" " + sanitize(filepath.Base(m.root)) + "  ", m.theme.Footer.Bold(true)})
+	result.add(barPart{" " + sanitize(filepath.Base(m.root)) + " ", m.theme.Footer.Bold(true)})
+	if branch := currentBranch(m.root); branch != "" {
+		result.add(barPart{"⎇ " + sanitize(branch) + " ", m.theme.Footer})
+	}
+	result.add(barPart{" ", m.theme.Footer})
 	buttons := [][3]string{{actionProject, "Project", "ctrl+p"}, {actionTerminal, "Terminal", "ctrl+t"}}
 	if inGitRepository(m.root) { // there is nothing to diff outside a repository
-		buttons = append(buttons, [3]string{actionDiff, "Diff", "D"})
+		buttons = append(buttons, [3]string{actionDiff, "Diff", "alt+d"})
 	}
 	for _, button := range buttons {
 		label := barPart{" " + button[1] + " ", m.theme.Header}
@@ -116,4 +121,51 @@ func inGitRepository(dir string) bool {
 		}
 		dir = parent
 	}
+}
+
+// currentBranch returns the branch checked out in the repository of dir ("" outside a repository), or the short commit id when HEAD
+// is detached. It reads .git/HEAD instead of running git, because the top bar is drawn on every key press.
+func currentBranch(dir string) string {
+	for {
+		gitPath := filepath.Join(dir, ".git")
+		if info, err := os.Stat(gitPath); err == nil {
+			return branchFromGit(gitPath, info.IsDir())
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+// branchFromGit reads HEAD of a .git folder, or of the folder a .git file ("gitdir: <path>", used by worktrees) points to.
+func branchFromGit(gitPath string, isDir bool) string {
+	gitDir := gitPath
+	if !isDir {
+		data, err := os.ReadFile(gitPath) // #nosec G304 -- a .git entry of the user's own project
+		if err != nil {
+			return ""
+		}
+		target, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir: ")
+		if !ok {
+			return ""
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(gitPath), target)
+		}
+		gitDir = target
+	}
+	head, err := os.ReadFile(filepath.Join(gitDir, "HEAD")) // #nosec G304 -- see above
+	if err != nil {
+		return ""
+	}
+	text := strings.TrimSpace(string(head))
+	if branch, ok := strings.CutPrefix(text, "ref: refs/heads/"); ok {
+		return branch
+	}
+	if len(text) > 7 {
+		return text[:7]
+	}
+	return text
 }

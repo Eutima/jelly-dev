@@ -54,6 +54,9 @@ type GitModel struct {
 	loadSeq     int                // number of the current load; results of older loads are discarded
 	loadCtx     context.Context    // context of the current load; kept so Init can start the first load
 	cancelLoad  context.CancelFunc // cancels the running load; nil when none
+	newRaw      string             // the text of the shown file as it is on disk (for edits: line ends and the final newline are kept)
+	undo        []string           // the texts the file had before each edit and revert of the shown file, newest last
+	editor      *diffEditor        // the full-screen editor, nil when closed
 	arrive      int                // after the load: 1 selects the first change, -1 the last (n and p crossing a file border)
 	ticking     bool               // the wobble animation is scheduled
 	frame       int                // current animation frame
@@ -68,6 +71,7 @@ type loadedMsg struct {
 	index   int
 	diff    DiffModel
 	message string // set instead of a meaningful diff when the file cannot be shown
+	newText string // the text of the new side as loaded
 }
 
 // NewGitModel builds the viewer; the diff of the first file is loaded in the background (see Init).
@@ -173,7 +177,7 @@ func (m GitModel) loadCmd(ctx context.Context, seq, index int) tea.Cmd {
 		if ctx.Err() != nil {
 			return cancelled // skip the expensive highlighting
 		}
-		return loadedMsg{seq: seq, index: index, diff: model.WithHighlight(file.Path, file.OldPath)}
+		return loadedMsg{seq: seq, index: index, newText: newText, diff: model.WithHighlight(file.Path, file.OldPath)}
 	}
 }
 
@@ -189,6 +193,8 @@ func (m *GitModel) applyLoaded(msg loadedMsg) tea.Cmd {
 	}
 	m.loadedFile = msg.index
 	m.message = msg.message
+	m.newRaw, m.undo, m.editor = msg.newText, nil, nil
+	msg.diff.editable = msg.message == "" && m.fileEditable(m.files[msg.index])
 	m.diff = m.sizedDiff(msg.diff)
 	if m.arrive != 0 {
 		m.diff.gotoHunk(map[bool]int{true: 0, false: -1}[m.arrive > 0])
@@ -269,6 +275,10 @@ func (m GitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.diff = m.sizedDiff(m.diff)
 		m.ensureVisible()
+		if m.editor != nil {
+			m.editor.vim.SetPage(m.editorBodyHeight())
+			m.keepEditorVisible()
+		}
 		return m, nil
 	case loadedMsg:
 		cmd := m.applyLoaded(msg)
@@ -281,6 +291,14 @@ func (m GitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.frame++
 		return m, jellyTick(m.interval)
 	case tea.MouseMsg:
+		if m.editor != nil {
+			if leftPress(msg) {
+				if keys := rowKeysAt(m.editorFooterRows(), msg.X, msg.Y, m.width, m.height); keys != nil {
+					return replay(m, keys)
+				}
+			}
+			return m, nil
+		}
 		if leftPress(msg) {
 			if keys := m.footerKeys(msg.X, msg.Y); keys != nil {
 				return replay(m, keys)
@@ -288,6 +306,10 @@ func (m GitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.forwardToDiff(msg)
 	case tea.KeyMsg:
+		if m.editor != nil {
+			return m.handleEditorKey(msg)
+		}
+		m.say("", false)
 		return m.handleKey(msg)
 	}
 	return m, nil
@@ -310,6 +332,12 @@ func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "t":
 		return m.forwardToDiff(msg)
+	case "r":
+		return m.revertChange()
+	case "u":
+		return m.undoEdit()
+	case "e":
+		return m.openEditor()
 	}
 	if m.focus == focusDiff {
 		switch key {
@@ -320,6 +348,10 @@ func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc", "left", "h":
 			m.focus = focusList
 			return m, nil
+		case "enter":
+			return m.openEditor()
+		case "backspace", "delete":
+			return m.revertChange()
 		}
 		return m.forwardToDiff(msg)
 	}
@@ -350,6 +382,9 @@ func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m GitModel) View() string {
 	if m.width == 0 {
 		return ""
+	}
+	if m.editor != nil {
+		return m.editorView()
 	}
 	list := m.listView()
 	right := m.diff.View()

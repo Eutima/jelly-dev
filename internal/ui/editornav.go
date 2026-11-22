@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -71,6 +72,12 @@ type placeList struct {
 	origin lsp.Place
 	sel    int
 	top    int
+
+	searching bool   // the search prompt is open: keys go to the pattern
+	query     string // the pattern being typed
+	last      string // the pattern of the last confirmed search (n and N repeat it)
+	backward  bool   // the last search went upwards (?)
+	from      int    // the selected place before the search started (esc goes back to it)
 }
 
 const maxListHeight = 10
@@ -242,7 +249,23 @@ func (m EditorModel) handleJump(msg JumpMsg) EditorModel {
 // handleListKey runs the keys of the open place list.
 func (m EditorModel) handleListKey(msg tea.KeyMsg) (EditorModel, tea.Cmd) {
 	list := m.list
+	if list.searching {
+		m.searchKey(msg)
+		m.keepListVisible()
+		return m, nil
+	}
 	switch msg.String() {
+	case "/", "?":
+		list.searching, list.query, list.from, list.backward = true, "", list.sel, msg.String() == "?"
+	case "n", "N":
+		if list.last == "" {
+			m.notice("E35: No previous search pattern", true)
+			break
+		}
+		backward := list.backward != (msg.String() == "N")
+		if !m.selectMatch(list.last, list.sel, backward, false) {
+			m.notice("E486: Pattern not found: "+list.last, true)
+		}
 	case "esc", "q", "ctrl+c", "ctrl+d":
 		m.list = nil
 		m.scrollToCursor()
@@ -259,6 +282,91 @@ func (m EditorModel) handleListKey(msg tea.KeyMsg) (EditorModel, tea.Cmd) {
 	}
 	m.keepListVisible()
 	return m, nil
+}
+
+// searchKey edits the pattern of the search prompt of the place list. The selection follows the pattern while it is typed;
+// enter keeps it, esc goes back to where the search started.
+func (m *EditorModel) searchKey(msg tea.KeyMsg) {
+	list := m.list
+	switch msg.Type {
+	case tea.KeyEsc, tea.KeyCtrlC, tea.KeyCtrlD:
+		list.searching, list.sel = false, list.from
+		return
+	case tea.KeyEnter:
+		list.searching = false
+		if list.query == "" {
+			return
+		}
+		list.last = list.query
+		if !m.selectMatch(list.last, list.from, list.backward, true) {
+			list.sel = list.from
+			m.notice("E486: Pattern not found: "+list.last, true)
+		}
+		return
+	case tea.KeyBackspace, tea.KeyCtrlH:
+		if list.query == "" { // like vim: backspace on an empty prompt leaves it
+			list.searching, list.sel = false, list.from
+			return
+		}
+		runes := []rune(list.query)
+		list.query = string(runes[:len(runes)-1])
+	case tea.KeyRunes:
+		list.query += string(msg.Runes)
+	case tea.KeySpace:
+		list.query += " "
+	default:
+		return
+	}
+	if list.query != "" {
+		m.selectMatch(list.query, list.from, list.backward, true)
+	} else {
+		list.sel = list.from
+	}
+}
+
+// selectMatch selects the next place (from the selected one, wrapping around) whose text matches the pattern; with inclusive
+// the start place itself counts. It reports whether there was a match.
+func (m *EditorModel) selectMatch(pattern string, start int, backward, inclusive bool) bool {
+	list := m.list
+	matches := patternMatcher(pattern)
+	step := 1
+	if backward {
+		step = -1
+	}
+	count := len(list.places)
+	first := 1 // the start place is the last candidate unless it counts at once
+	if inclusive {
+		first = 0
+	}
+	for offset := first; offset < first+count; offset++ {
+		index := ((start+step*offset)%count + count) % count
+		if matches(m.listEntry(list.places[index])) {
+			list.sel = index
+			return true
+		}
+	}
+	return false
+}
+
+// patternMatcher returns the test of a search pattern like vim's default: a regular expression (the text itself when the
+// pattern is not one), ignoring case unless the pattern has an upper case letter (smartcase).
+func patternMatcher(pattern string) func(string) bool {
+	fold := pattern == strings.ToLower(pattern)
+	if re, err := regexp.Compile(pattern); err == nil {
+		if fold {
+			re = regexp.MustCompile("(?i)" + pattern)
+		}
+		return re.MatchString
+	}
+	if fold {
+		return func(text string) bool { return strings.Contains(strings.ToLower(text), pattern) }
+	}
+	return func(text string) bool { return strings.Contains(text, pattern) }
+}
+
+// listEntry is the text of a place as the list shows it, and as the search sees it.
+func (m EditorModel) listEntry(place lsp.Place) string {
+	return fmt.Sprintf("%s:%d  %s", m.shortPath(place.Path), place.Row+1, strings.TrimSpace(sanitize(place.Text)))
 }
 
 // openListed jumps to the selected place of the list.
@@ -284,14 +392,24 @@ func (m *EditorModel) keepListVisible() {
 func (m EditorModel) listLines() []string {
 	list := m.list
 	height := m.listHeight()
-	lines := []string{m.theme.Header.Render(padRight(" "+list.title+"  [enter] open  [j/k] choose  [esc] close", m.width))}
+	title := " " + list.title + "  [enter] open  [j/k] choose  [/] search  [esc] close"
+	if list.searching {
+		prefix := "/"
+		if list.backward {
+			prefix = "?"
+		}
+		title = " " + prefix + list.query + "▏  (enter keeps the match, esc cancels)"
+	} else if list.last != "" {
+		title = " " + list.title + "  /" + list.last + "  [n/N] next/previous  [enter] open  [/] search  [esc] close"
+	}
+	lines := []string{m.theme.Header.Render(padRight(title, m.width))}
 	for i := list.top; i < len(list.places) && len(lines) < height; i++ {
 		place := list.places[i]
 		style := m.theme.Equal
 		if i == list.sel {
 			style = m.theme.Selected
 		}
-		lines = append(lines, style.Render(padRight(fmt.Sprintf(" %s:%d  %s", m.shortPath(place.Path), place.Row+1, strings.TrimSpace(sanitize(place.Text))), m.width)))
+		lines = append(lines, style.Render(padRight(" "+m.listEntry(place), m.width)))
 	}
 	return lines
 }

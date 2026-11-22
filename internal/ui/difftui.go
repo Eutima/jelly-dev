@@ -28,7 +28,12 @@ type DiffModel struct {
 	unifiedAt   []int // first unified row of each change
 	oldLines    []string
 	newLines    []string
+	changes     []diff.Block // the changed blocks, one per hunk (what revert and edit work on)
 	showUnified bool
+	editable    bool   // the new side is a file that can be changed: the footer offers revert, edit and undo
+	canUndo     bool   // there is a step to take back
+	notice      string // shown in the footer instead of the position
+	noticeWarn  bool
 	footerMin   int // the footer has at least this many lines (a git view keeps both footers equally high)
 	theme       Theme
 
@@ -45,9 +50,20 @@ func NewDiffModel(leftTitle, rightTitle string, oldLines, newLines []string) Dif
 	return DiffModel{
 		leftTitle: leftTitle, rightTitle: rightTitle,
 		rows: rows, hunkStarts: hunkStarts, unified: unified, unifiedAt: unifiedStarts(unified),
-		oldLines: oldLines, newLines: newLines,
+		oldLines: oldLines, newLines: newLines, changes: changeBlocks(blocks),
 		theme: DarkTheme(), current: -1,
 	}
+}
+
+// changeBlocks returns the blocks that differ, in the order of the hunk numbers.
+func changeBlocks(blocks []diff.Block) []diff.Block {
+	var changes []diff.Block
+	for _, block := range blocks {
+		if block.Kind == diff.Change {
+			changes = append(changes, block)
+		}
+	}
+	return changes
 }
 
 // unifiedStarts returns the index of the first row of each change.
@@ -220,9 +236,21 @@ func (m DiffModel) footerBar() *bar {
 		}
 	}
 	result := &bar{}
-	result.add(barPart{" " + position + "   ", m.theme.Footer})
+	switch {
+	case m.notice != "" && m.noticeWarn:
+		result.add(barPart{" ! " + m.notice + "   ", m.theme.Header.Background(m.theme.Footer.GetBackground())})
+	case m.notice != "":
+		result.add(barPart{" " + m.notice + "   ", m.theme.Header})
+	default:
+		result.add(barPart{" " + position + "   ", m.theme.Footer})
+	}
 	for _, h := range [][2]string{{"↑↓", "next/prev change"}, {"j/k", "scroll"}, {"t", "split/unified"}, {"q", "quit"}} {
 		result.command(h[0], h[1], true, m.theme)
+	}
+	if m.editable {
+		result.command("r", "revert", m.current >= 0, m.theme)
+		result.command("e", "edit", true, m.theme)
+		result.command("u", "undo", m.canUndo, m.theme)
 	}
 	return result
 }

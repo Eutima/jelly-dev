@@ -3,10 +3,14 @@ package ui
 import (
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/eutima/jelly-dev/internal/vimbuf"
 )
 
 const (
@@ -135,4 +139,63 @@ func lineSpans(spans [][]SyntaxSpan, number int) []SyntaxSpan {
 		return nil
 	}
 	return spans[number-1]
+}
+
+// syntaxCache keeps the colors of a text for the revision of the buffer they were computed for. Highlighting a whole file takes
+// far longer than drawing it (100 ms and more for a big file), and the screen is drawn after every key: so the colors are
+// computed once per revision, and while the user is typing the old colors stay on screen and are replaced when typing pauses.
+type syntaxCache struct {
+	revision    int
+	spans       [][]SyntaxSpan
+	scheduled   bool      // a syntaxTickMsg is on its way
+	scheduledAt time.Time // when it was scheduled: a tick that never arrives (the tab was hidden) must not leave the colors stale
+	seen        int       // the revision when the tick was scheduled
+}
+
+const (
+	syntaxDelay   = 150 * time.Millisecond // typing must pause this long before the colors are computed again
+	syntaxMaxWait = time.Second            // after this long stale colors are replaced even without the tick
+)
+
+// syntaxTickMsg tells an editor that typing may have paused: it refreshes the colors when nothing was typed since.
+type syntaxTickMsg struct{ cache *syntaxCache }
+
+func newSyntaxCache() *syntaxCache { return &syntaxCache{revision: -1} }
+
+// spansFor returns the colors of the buffer: the cached ones while the buffer has changed but a refresh is about to happen,
+// else colors computed now.
+func (c *syntaxCache) spansFor(path string, buffer *vimbuf.Buffer) [][]SyntaxSpan {
+	if c.revision != buffer.Revision() {
+		if c.scheduled && c.spans != nil && time.Since(c.scheduledAt) < syntaxMaxWait {
+			return c.spans
+		}
+		c.refresh(path, buffer)
+	}
+	return c.spans
+}
+
+func (c *syntaxCache) refresh(path string, buffer *vimbuf.Buffer) {
+	c.spans = highlightLines([]string{path}, buffer.Lines())
+	c.revision = buffer.Revision()
+}
+
+// schedule returns the command that refreshes the colors after typing paused, nil when they are current or a refresh is due.
+func (c *syntaxCache) schedule(buffer *vimbuf.Buffer) tea.Cmd {
+	if c.scheduled || c.revision == buffer.Revision() || c.revision < 0 {
+		return nil
+	}
+	c.scheduled, c.scheduledAt, c.seen = true, time.Now(), buffer.Revision()
+	return tea.Tick(syntaxDelay, func(time.Time) tea.Msg { return syntaxTickMsg{cache: c} })
+}
+
+// tick handles the end of a delay: typing went on (wait again) or paused (refresh).
+func (c *syntaxCache) tick(path string, buffer *vimbuf.Buffer) tea.Cmd {
+	c.scheduled = false
+	if c.seen != buffer.Revision() {
+		return c.schedule(buffer)
+	}
+	if c.revision != buffer.Revision() {
+		c.refresh(path, buffer)
+	}
+	return nil
 }
