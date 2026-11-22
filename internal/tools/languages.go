@@ -21,6 +21,9 @@ type Language struct {
 	ID    string // what the user types: python, html, ...
 	Name  string
 	Tools []string // names of Defaults()
+	// OptIn languages are only installed when they are named: "all", the installer without a choice and the first-start question leave
+	// them out, because their language servers need a big runtime (.NET, PowerShell) that most machines do not have.
+	OptIn bool
 }
 
 // Languages are all the languages jd knows tools for, in the order they are shown.
@@ -40,6 +43,8 @@ func Languages() []Language {
 		{ID: "c", Name: "C", Tools: []string{"clangd", "clang-format"}},
 		{ID: "cpp", Name: "C++", Tools: []string{"clangd", "clang-format"}},
 		{ID: "java", Name: "Java", Tools: []string{"jdtls"}},
+		{ID: "csharp", Name: "C# (.NET)", Tools: []string{"csharp-ls"}, OptIn: true},
+		{ID: "powershell", Name: "PowerShell", Tools: []string{"powershell-editor-services"}, OptIn: true},
 	}
 }
 
@@ -48,8 +53,8 @@ func DefaultLanguages() []string {
 	return []string{"python", "html", "css", "json", "yaml", "docker", "compose"}
 }
 
-// ParseLanguages turns "python,html css" (or "all") into language ids, in the order of Languages, without doubles. An
-// unknown name is an error that lists the known ones.
+// ParseLanguages turns "python,html css" (or "all") into language ids, in the order of Languages, without doubles. "all" means every
+// language except the opt-in ones, which have to be named. An unknown name is an error that lists the known ones.
 func ParseLanguages(list string) ([]string, error) {
 	fields := strings.FieldsFunc(strings.ToLower(list), func(r rune) bool { return r == ',' || r == ' ' || r == ';' })
 	known := Languages()
@@ -60,7 +65,9 @@ func ParseLanguages(list string) ([]string, error) {
 		}
 		if field == "all" {
 			for _, l := range known {
-				want[l.ID] = true
+				if !l.OptIn {
+					want[l.ID] = true
+				}
 			}
 			continue
 		}
@@ -82,11 +89,13 @@ func ParseLanguages(list string) ([]string, error) {
 	return ids, nil
 }
 
-// AllLanguages returns the ids of every language.
+// AllLanguages returns the ids of every language that "all" stands for (not the opt-in ones).
 func AllLanguages() []string {
 	ids := make([]string, 0, len(Languages()))
 	for _, l := range Languages() {
-		ids = append(ids, l.ID)
+		if !l.OptIn {
+			ids = append(ids, l.ID)
+		}
 	}
 	return ids
 }

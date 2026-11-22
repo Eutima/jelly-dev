@@ -31,6 +31,8 @@ const (
 	Download
 	// Rustup tools are installed with rustup component add.
 	Rustup
+	// Dotnet tools are installed with dotnet tool update (into ~/.local/bin); they need the .NET SDK.
+	Dotnet
 	// System tools come from the package manager of the machine and need root rights: jd only says how (the installer does it).
 	System
 )
@@ -80,6 +82,8 @@ func Defaults() []Tool {
 		{Name: "rust-analyzer", Binary: "rust-analyzer", Kind: Rustup, Packages: []string{"rust-analyzer"}, Purpose: "language server for Rust"},
 		{Name: "rustfmt", Binary: "rustfmt", Kind: Rustup, Packages: []string{"rustfmt"}, Purpose: "formatter for Rust"},
 		{Name: "jdtls", Binary: "jdtls", Kind: Download, Purpose: "language server for Java"},
+		{Name: "csharp-ls", Binary: "csharp-ls", Kind: Dotnet, Packages: []string{"csharp-ls"}, Purpose: "language server for C# (needs the .NET SDK)"},
+		{Name: "powershell-editor-services", Binary: "powershell-editor-services", Kind: Download, Purpose: "language server for PowerShell (needs PowerShell 7, pwsh)"},
 		{Name: "prettier", Binary: "prettier", Kind: NPM, Packages: []string{"prettier"}, Purpose: "formatter for HTML, CSS, JavaScript, TypeScript, JSON and YAML"},
 		{Name: "black", Binary: "black", Kind: Python, Packages: []string{"black"}, Purpose: "formatter for Python"},
 	}
@@ -213,6 +217,8 @@ func (e Env) Install(ctx context.Context, t Tool) error {
 		err = e.installDownload(ctx, t)
 	case Rustup:
 		err = e.installRustup(ctx, t)
+	case Dotnet:
+		err = e.installDotnet(ctx, t)
 	case System:
 		err = &ManualInstallError{Tool: t.Name, Hint: t.Hint}
 	default:
@@ -286,8 +292,19 @@ func (e Env) installDownload(ctx context.Context, t Tool) error {
 	switch t.Name {
 	case "jdtls":
 		return e.installJdtls(ctx, t)
+	case "powershell-editor-services":
+		return e.installPses(ctx, t)
 	}
 	return fmt.Errorf("%s: %w", t.Name, errNoTool)
+}
+
+// installDotnet installs a .NET tool (the C# language server) into ~/.local/bin; "dotnet tool update" also installs a tool that is missing.
+// The .NET SDK itself is not installed by jd: it is big, and a machine that wants C# has it.
+func (e Env) installDotnet(ctx context.Context, t Tool) error {
+	if _, err := e.need(t, "the .NET SDK (dotnet)", "dotnet"); err != nil {
+		return err
+	}
+	return e.Run(ctx, nil, "dotnet", "tool", "update", "--tool-path", e.BinDir(), t.Packages[0])
 }
 
 // installRustup installs a component of the Rust toolchain; without a toolchain the stable one is installed first.
@@ -320,6 +337,8 @@ func (e Env) Update(ctx context.Context, t Tool) error {
 		return e.installDownload(ctx, t)
 	case Rustup:
 		return e.updateRustup(ctx, t)
+	case Dotnet:
+		return e.installDotnet(ctx, t) // dotnet tool update installs a missing tool and updates an installed one
 	case System:
 		return &ManualInstallError{Tool: t.Name, Hint: t.Hint, Update: true}
 	}

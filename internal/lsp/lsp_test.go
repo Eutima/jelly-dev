@@ -691,3 +691,37 @@ func TestParseWorkspaceEdit_RefusesFileDeletion_AndReadsChangesMap(t *testing.T)
 		t.Fatalf("null: %+v, %v", edit, err)
 	}
 }
+
+func TestSpecFor_KnowsCSharpAndPowerShellFiles(t *testing.T) {
+	servers := DefaultServers()
+	for file, want := range map[string][2]string{
+		"src/Program.cs":  {"csharp-ls", "csharp"},
+		"Script.CSX":      {"csharp-ls", "csharp"},
+		"tools/Build.ps1": {"powershell-editor-services", "powershell"},
+		"Module.psm1":     {"powershell-editor-services", "powershell"},
+		"Module.psd1":     {"powershell-editor-services", "powershell"},
+	} {
+		spec, id, ok := specFor(servers, file)
+		if !ok || spec.Name != want[0] || id != want[1] {
+			t.Errorf("%s: got %s %s %v, want %v", file, spec.Name, id, ok, want)
+		}
+	}
+}
+
+func TestRootFor_FindsTheFolderOfAProjectFileByPattern(t *testing.T) {
+	root := t.TempDir()
+	app := filepath.Join(root, "src", "App")
+	if err := os.MkdirAll(filepath.Join(app, "Models"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(app, "App.csproj"), []byte("<Project/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	spec, _, _ := specFor(DefaultServers(), "x.cs")
+	if got := rootFor(spec, root, filepath.Join(app, "Models", "User.cs")); got != app {
+		t.Errorf("rootFor = %s, want %s (the folder with App.csproj)", got, app)
+	}
+	if got := rootFor(spec, root, filepath.Join(root, "other", "x.cs")); got != root {
+		t.Errorf("without a project file the project root counts, got %s", got)
+	}
+}

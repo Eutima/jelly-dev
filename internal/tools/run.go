@@ -2,6 +2,7 @@ package tools
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -31,6 +32,15 @@ const (
 var (
 	jdtlsURL    = "https://download.eclipse.org/jdtls/milestones/" + jdtlsVersion + "/" + jdtlsFile
 	jdtlsSHA256 = "b1f2abe0b3cccb462cf64fb4a5587c7d09df60cf8be7748b152cbd89d018bdc4"
+)
+
+// psesVersion and psesURL/psesSHA256 pin the PowerShell Editor Services download (the language server of PowerShell) to one release; raise
+// them together (the checksum is the one of the release asset). They are variables so tests can pin the archive they build.
+const psesVersion = "4.7.0"
+
+var (
+	psesURL    = "https://github.com/PowerShell/PowerShellEditorServices/releases/download/v" + psesVersion + "/PowerShellEditorServices.zip"
+	psesSHA256 = "5084f0326cc88539e9d880b08f6c52ce5be4672bb8ecee8921e35f8895a6b9d7"
 )
 
 // runCommand runs an installer command; its error message ends with the first line of its output.
@@ -181,4 +191,63 @@ func extractTarGz(archive, dir string) error {
 			}
 		}
 	}
+}
+
+// extractZip unpacks a zip archive into dir; entries that would leave dir are refused.
+func extractZip(archive, dir string) error {
+	zr, err := zip.OpenReader(archive)
+	if err != nil {
+		return err
+	}
+	defer zr.Close()
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	if len(zr.File) > maxArchiveEntries {
+		return fmt.Errorf("archive has more than %d entries", maxArchiveEntries)
+	}
+	unpacked := uint64(0)
+	for _, entry := range zr.File {
+		if unpacked += entry.UncompressedSize64; unpacked > maxUnpacked {
+			return fmt.Errorf("archive unpacks to more than %d MiB", maxUnpacked>>20)
+		}
+		target := filepath.Join(root, filepath.FromSlash(entry.Name))
+		if target != root && !strings.HasPrefix(target, root+string(os.PathSeparator)) {
+			return fmt.Errorf("archive entry %q is outside the target folder", entry.Name)
+		}
+		if entry.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		if !entry.Mode().IsRegular() {
+			continue // links and devices are not unpacked
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		if err := extractZipFile(entry, target); err != nil {
+			return fmt.Errorf("unpack %s: %w", entry.Name, err)
+		}
+	}
+	return nil
+}
+
+func extractZipFile(entry *zip.File, target string) error {
+	in, err := entry.Open()
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, entry.Mode()&0o777|0o600)
+	if err != nil {
+		return err
+	}
+	if err := copyLimited(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }

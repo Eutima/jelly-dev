@@ -88,10 +88,10 @@ func TestInstallLSP_WithoutLanguagesUsesTheChosenOnesAndAllMeansAll(t *testing.T
 	if code := run([]string{"install-lsp"}, &stdout, &stderr, lspEnv(dir, fake)); code != exitOK || strings.Join(fake.asked[0], ",") != "python" {
 		t.Fatalf("the chosen languages: code %d, %v, %s", code, fake.asked, stderr.String())
 	}
-	if code := run([]string{"install-tools", "--all"}, &stdout, &stderr, lspEnv(dir, fake)); code != exitOK || len(fake.asked[1]) != len(tools.Languages()) {
+	if code := run([]string{"install-tools", "--all"}, &stdout, &stderr, lspEnv(dir, fake)); code != exitOK || len(fake.asked[1]) != len(tools.AllLanguages()) {
 		t.Fatalf("--all (and the alias install-tools) installs every language: code %d, %v", code, fake.asked)
 	}
-	if saved, _ := tools.LoadLanguages(dir); len(saved) != len(tools.Languages()) {
+	if saved, _ := tools.LoadLanguages(dir); len(saved) != len(tools.AllLanguages()) {
 		t.Fatalf("--all is remembered: %v", saved)
 	}
 }

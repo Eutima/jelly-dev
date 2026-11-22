@@ -18,7 +18,7 @@ type ServerSpec struct {
 	Extensions  []string          `json:"extensions"`            // with the dot, e.g. ".go"
 	LanguageID  string            `json:"languageId,omitempty"`  // for all extensions of this server
 	LanguageIDs map[string]string `json:"languageIds,omitempty"` // per extension, wins over LanguageID
-	RootMarkers []string          `json:"rootMarkers,omitempty"` // files that mark the root of a project, e.g. "go.mod"
+	RootMarkers []string          `json:"rootMarkers,omitempty"` // files that mark the root of a project, e.g. "go.mod" or "*.csproj"
 	// OutermostRoot starts the server in the outermost folder with a marker (below the project root) instead of the nearest one. Python
 	// projects need it: a Django project has a requirements.txt in every app, but its imports (and the uses of a class) span the apps.
 	OutermostRoot bool `json:"outermostRoot,omitempty"`
@@ -27,7 +27,7 @@ type ServerSpec struct {
 	Formatter []string `json:"formatter,omitempty"`
 }
 
-// DefaultServers are the servers the installer sets up. Where a formatter command is listed it formats with priority when
+// DefaultServers are the servers the installer sets up (C# and PowerShell only when asked for). Where a formatter command is listed it formats with priority when
 // it is installed; Java has none because jdtls formats Java itself, and so do the servers of the other languages when
 // their formatter is missing.
 func DefaultServers() []ServerSpec {
@@ -64,6 +64,9 @@ func DefaultServers() []ServerSpec {
 		},
 		{Name: "rust-analyzer", Command: []string{"rust-analyzer"}, Extensions: []string{".rs"}, LanguageID: "rust", RootMarkers: []string{"Cargo.toml", "rust-project.json"}, Formatter: []string{"rustfmt", "--emit=stdout", "--edition=2021"}}, // the edition is fixed: rustfmt reads none from stdin
 		{Name: "jdtls", Command: []string{"jdtls"}, Extensions: []string{".java"}, LanguageID: "java", RootMarkers: []string{"pom.xml", "build.gradle", "build.gradle.kts"}},
+		// the servers of the opt-in languages (C#, PowerShell): they work once the user has installed them (jd install-lsp csharp powershell)
+		{Name: "csharp-ls", Command: []string{"csharp-ls"}, Extensions: []string{".cs", ".csx"}, LanguageID: "csharp", RootMarkers: []string{"*.sln", "*.slnx", "*.csproj", "global.json"}},
+		{Name: "powershell-editor-services", Command: []string{"powershell-editor-services"}, Extensions: []string{".ps1", ".psm1", ".psd1"}, LanguageID: "powershell"},
 	}
 }
 
@@ -152,7 +155,7 @@ func rootFor(spec ServerSpec, projectRoot, path string) string {
 	found := ""
 	for dir := filepath.Dir(path); strings.HasPrefix(dir, projectRoot); dir = filepath.Dir(dir) {
 		for _, marker := range spec.RootMarkers {
-			if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
+			if hasMarker(dir, marker) {
 				if !spec.OutermostRoot {
 					return dir
 				}
@@ -168,4 +171,14 @@ func rootFor(spec ServerSpec, projectRoot, path string) string {
 		return found
 	}
 	return projectRoot
+}
+
+// hasMarker tells whether a folder holds a root marker: a file name, or a pattern with * or ? ("*.csproj").
+func hasMarker(dir, marker string) bool {
+	if strings.ContainsAny(marker, "*?[") {
+		matches, err := filepath.Glob(filepath.Join(dir, marker))
+		return err == nil && len(matches) > 0
+	}
+	_, err := os.Stat(filepath.Join(dir, marker))
+	return err == nil
 }

@@ -9,7 +9,8 @@
 #   JD_DEPS              dependency groups to handle, comma separated (default basics,terminal,runtimes,lsp)
 #   JD_DRY_RUN=1         print what would be installed instead of installing it
 #   JD_LANGS=<ids>       languages to install language servers and formatters for, comma separated: python html css json yaml docker compose
-#                        javascript angular go rust c cpp java, all, or none (default: all; jd asks on its first start)
+#                        javascript angular go rust c cpp java, all, or none (default: all; jd asks on its first start). csharp and
+#                        powershell are installed only when they are named: all and the default leave them out
 #   JD_BIN=<path>        jd is already installed there (pip, jd runs this script itself on its first start): do not download
 #                        jd; the dependencies are installed, git is configured and the PATH of new shells gets the tool folders
 #   JD_USER_RUNTIMES=1   install Go, Node.js, a JDK and Rust below ~/.local even when system packages could be installed (without
@@ -210,6 +211,13 @@ deps_terminal() {
 lang_enabled() {
     [ -n "${JD_LANGS:-}" ] || return 0
     case ",$(printf '%s' "$JD_LANGS" | tr ' ;' ',,' | tr '[:upper:]' '[:lower:]')," in *",$1,"* | *",all,"*) return 0 ;; esac
+    return 1
+}
+
+# lang_explicit tells whether a language is named in JD_LANGS: "all", and no JD_LANGS at all, do not count. It is for the opt-in languages
+# (C#, PowerShell), whose servers need a big runtime that most machines do not have.
+lang_explicit() {
+    case ",$(printf '%s' "${JD_LANGS:-}" | tr ' ;' ',,' | tr '[:upper:]' '[:lower:]')," in *",$1,"*) return 0 ;; esac
     return 1
 }
 
@@ -515,6 +523,19 @@ lsp_rust() {
         problem "rust-analyzer and rustfmt could not be installed (rustup component add rust-analyzer rustfmt)"
 }
 
+# lsp_opt_in lets jd install the language server of an opt-in language (jd install-lsp <language>): C# needs the .NET SDK (dotnet) and
+# PowerShell needs PowerShell 7 (pwsh); jd says so when they are missing. Neither is installed by this script.
+lsp_opt_in() {
+    jd_cmd=${JD_BIN:-$install_dir/jd}
+    if [ -n "${JD_DRY_RUN:-}" ]; then
+        log "[dry-run] $jd_cmd install-lsp $1"
+        return 0
+    fi
+    [ -x "$jd_cmd" ] || { problem "the $1 language server is installed by jd, which is not at $jd_cmd"; return 0; }
+    log "install  $1 language server (jd install-lsp $1)"
+    run "$jd_cmd" install-lsp "$1" || problem "the $1 language server could not be installed (jd install-lsp $1)"
+}
+
 deps_lsp() {
     lang_enabled go && lsp_gopls
     lang_enabled python && npm_tool "pyright (Python)" pyright-langserver pyright
@@ -529,6 +550,8 @@ deps_lsp() {
     lang_enabled python && python_tool "black (Python formatter)" black black
     any_lang c cpp && python_tool "clang-format (C and C++ formatter)" clang-format clang-format
     lang_enabled rust && lsp_rust
+    ! lang_explicit csharp || lsp_opt_in csharp
+    ! lang_explicit powershell || lsp_opt_in powershell
     return 0
 }
 

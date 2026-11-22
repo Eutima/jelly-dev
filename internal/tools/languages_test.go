@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,8 +17,8 @@ func TestParseLanguages_KeepsTheCatalogOrderAndKnowsAll(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got, []string{"python", "html", "css"}) {
 		t.Fatalf("order of the catalog, no doubles: %v %v", got, err)
 	}
-	if all, _ := ParseLanguages("all"); len(all) != len(Languages()) {
-		t.Fatalf("all names every language: %v", all)
+	if all, _ := ParseLanguages("all"); len(all) != len(Languages())-2 || slices.Contains(all, "csharp") || slices.Contains(all, "powershell") {
+		t.Fatalf("all names every language but the opt-in ones (C#, PowerShell): %v", all)
 	}
 	if none, err := ParseLanguages("NONE"); err != nil || len(none) != 0 || none == nil {
 		t.Fatalf("none names no language, in any case: %#v %v", none, err)

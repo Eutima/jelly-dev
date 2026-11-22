@@ -13,7 +13,7 @@ import (
 func languagesModel(t *testing.T) (LanguagesModel, *LanguagesOutcome) {
 	t.Helper()
 	m, outcome := NewLanguagesModel(tools.Languages(), tools.DefaultLanguages())
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 	return updated.(LanguagesModel), outcome
 }
 
@@ -60,8 +60,8 @@ func TestLanguages_ToggleAllNoneAndSkip(t *testing.T) {
 		t.Fatalf("space toggles the entry under the cursor: %v", got)
 	}
 	m = languageKeys(m, "a")
-	if len(m.checkedIDs()) != len(tools.Languages()) {
-		t.Fatalf("a checks everything: %v", m.checkedIDs())
+	if len(m.checkedIDs()) != len(tools.AllLanguages()) {
+		t.Fatalf("a checks every language but the opt-in ones: %v", m.checkedIDs())
 	}
 	m = languageKeys(m, "n", "enter")
 	if outcome.Skipped || len(outcome.Chosen) != 0 {
@@ -96,9 +96,9 @@ func TestLanguages_AClickTogglesAndTheHintsAreClickable(t *testing.T) {
 			x = r.from + 1
 		}
 	}
-	updated, _ = m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: x, Y: 19})
+	updated, _ = m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: x, Y: m.height - 1})
 	m = updated.(LanguagesModel)
-	if len(m.checkedIDs()) != len(tools.Languages()) {
+	if len(m.checkedIDs()) != len(tools.AllLanguages()) {
 		t.Fatalf("a click on [a] all checks everything: %v", m.checkedIDs())
 	}
 	_ = outcome

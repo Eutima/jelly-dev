@@ -289,7 +289,7 @@ the ones for the file type come first, missing ones are dim): type to narrow it,
 for that file type once its result was applied (`formatters.json` in the config folder; delete the entry there to forget it), `esc` cancels. `ctrl+space` (or `ctrl+n`) in insert mode opens the completion popup with the server's
 suggestions and the words of the file as a fallback: typing narrows it, `ctrl+n`/`ctrl+p` or the arrows choose, `tab` or `enter`
 accept, `esc` closes it. Defaults: gopls (Go), typescript-language-server (JavaScript, TypeScript, JSX), pyright (Python),
-vscode-html/css/json-language-server, jdtls (Java); the installer sets them up. Add or change servers in
+vscode-html/css/json-language-server, jdtls (Java); the installer sets them up. Two more are **opt-in**, installed only when you name them (`jd install-lsp csharp powershell`, or `:addlang`): csharp-ls for C# (`.cs`; needs the .NET SDK, installed with `dotnet tool` into `~/.local/bin`) and PowerShell Editor Services for PowerShell (`.ps1`, `.psm1`, `.psd1`; needs PowerShell 7, `pwsh`; downloaded as a pinned release). jd installs neither .NET nor PowerShell and says so when `dotnet` or `pwsh` is missing. Add or change servers in
 `<config dir>/jd/lsp.json`: `{"servers": [{"name": "rust", "command": ["rust-analyzer"], "extensions": [".rs"], "languageId": "rust",
 "rootMarkers": ["Cargo.toml"], "formatter": ["rustfmt", "--emit", "stdout"]}]}` (an entry with the name of a default replaces it).
 
@@ -558,7 +558,7 @@ which needs no root rights:
 jd install-lsp --list                 # the languages, the chosen ones marked, and which tools are installed
 jd install-lsp go java                # install the server and the formatter of Go and Java and add them to the chosen ones
 jd install-lsp                        # install what is missing for the chosen languages
-jd install-lsp --all                  # every language
+jd install-lsp --all                  # every language except the opt-in ones (C#, PowerShell: name them)
 jd install-lsp --update               # bring the installed tools of the chosen languages to their newest versions
 jd install-lsp --update go python     # the same for the named languages (missing tools are installed)
 ```
@@ -569,7 +569,7 @@ it": choosing it brings its language server and formatter to their newest versio
 upgrade, `rustup update` for Rust; `clangd` comes from your package manager and is updated there). Rust uses `rustup` (`rustup component add rust-analyzer
 rustfmt`), C and C++ use `clangd` from your package manager and `clang-format` (pipx). A missing runtime (Node.js, Python, Go, a JDK,
 rustup) is reported; `jd setup` installs those. The installer script takes the same
-choice as `JD_LANGS=python,html,css,json,yaml,docker,compose` (also `all` or `none`).
+choice as `JD_LANGS=python,html,css,json,yaml,docker,compose` (also `all` or `none`; `csharp` and `powershell` only when named, `all` leaves them out).
 
 **Python environments**: the Python language server (pyright) is told which interpreter belongs to the project, so imports of the
 project's packages resolve in a plain venv, with uv and with the normal system Python. In this order: `JD_PYTHON` (the interpreter

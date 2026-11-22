@@ -315,6 +315,16 @@ expect "a second run adds nothing twice" "$out" "count: 1"
 out=$(tmp=$(mktemp -d); HOME=$tmp PATH="$tmp/.local/bin:/usr/bin" JD_INSTALL_NO_MAIN=1 JD_BIN=$tmp/.local/bin/jd sh -c ". '$here/install.sh'; add_to_path; ls -A '$tmp' | grep -c profile; rm -rf '$tmp'" 2>&1)
 expect "nothing is written when the folder is on the PATH already" "$out" "0"
 
+# ---- C# and PowerShell are opt-in: installed only when named --------------------------------------------------------------
+out=$(FAKE_LANGS=all plan apt-get "git xclip xterm python3 pipx" "basics,lsp")
+expect_not "all leaves C# out" "$out" "install-lsp csharp"
+expect_not "all leaves PowerShell out" "$out" "install-lsp powershell"
+out=$(plan apt-get "git xclip xterm python3 pipx" "basics,lsp")
+expect_not "no language choice leaves C# out" "$out" "install-lsp csharp"
+out=$(FAKE_LANGS=csharp,powershell plan apt-get "git xclip xterm python3 pipx" "basics,lsp")
+expect "a named C# gets its server through jd" "$out" "install-lsp csharp"
+expect "a named PowerShell gets its server through jd" "$out" "install-lsp powershell"
+
 # ---- rustup-init is started under its own name ("tmp.Ab12" from mktemp made it believe it was a proxy called tmp) ---------------
 # shellcheck disable=SC1091,SC2329,SC2034,SC2016 # install.sh is sourced; the fakes replace functions of install.sh
 out=$(
