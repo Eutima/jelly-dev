@@ -1,32 +1,50 @@
-# Jelly Dev
+# Jelly-Dev
 
-<p align="center"><img src="https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/jelly-dev-logo.png" alt="Jelly Dev logo" width="384"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/jelly-dev-logo.png" alt="Jelly-Dev logo" width="384"></p>
 
-A terminal diff and merge tool with a JetBrains-style UI: side-by-side panes, colored change blocks and
-word-level highlights. It diffs files, directories and the clipboard, shows `git diff` and acts as a three-pane
-`git mergetool`, optionally with Claude or Codex resolving the conflicts. The command is `jd`.
+**A terminal IDE with a JetBrains-style diff and merge UI.** A project tree, a vim-style editor with language servers, a shell
+panel and a command palette, plus side-by-side diffs, a three-pane `git mergetool` and conflict resolution with Claude or Codex.
+One static binary, one command: `jd`.
 
-- Type: tool
-- Tier: 1
-- Owner: Roy
-- License: MIT
-- Stack: Go + Bubble Tea (deliberate deviation from the Python tool default)
+Linux · macOS · Windows · `pip install jelly-dev`
+
+[Install](#install) · [Screenshots](#screenshots) · [The IDE](#the-ide) · [Diff, git and directories](#diff-git-and-directories) · [Merge](#merge) · [Command line](#command-line) · [Installer and tools](#installer-and-tools)
+
+## Install
+
+The installers fetch the latest release and check it against the SHA-256 checksum published with it (an integrity check, not a
+signature). They put `jd` on your PATH, install the tools the IDE needs and make `jd` git's diff and merge tool.
+
+**Linux**
+
+```
+curl -fsSL https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/install.sh | sh
+```
+
+**macOS** (missing tools are installed with Homebrew when it is installed; the installer does not install Homebrew itself)
+
+```
+curl -fsSL https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/install.sh | sh
+```
+
+**Windows** (PowerShell)
+
+```
+irm https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/install.ps1 | iex
+```
+
+**pip** (Linux glibc/musl including Alpine, macOS 11 or newer, Windows; x86-64 and arm64)
+
+```
+pip install jelly-dev      # puts the jd command on the PATH; pipx install jelly-dev works too
+```
+
+Then reload the shell (`exec "$SHELL" -l`, or open a new terminal) and check it: `jd --version`. Start the IDE with `jd` or
+`jd <folder>`. What the installer does, the tools and the options are under [Installer and tools](#installer-and-tools).
 
 ## Screenshots
 
 Taken from the [playground](playground/README.md) examples (`python3 playground/screenshots.py` makes them again).
-
-![Compare two files](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/diff.png)
-*Compare two files: side by side, with syntax colours and word-level highlights (`t` switches to the unified view, `↓`/`↑` jump between the changes).*
-
-![`jd git`](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/git.png)
-*`jd git`: the changes of a git repository, a file list next to the diff of the selected file.*
-
-![Compare two directories (`jd <dir-a> <dir-b>`)](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/directories.png)
-*Compare two directories (`jd <dir-a> <dir-b>`): every added, removed and changed file.*
-
-![Three-way merge (`jd merge`, also git's merge tool)](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/merge.png)
-*Three-way merge (`jd merge`, also git's merge tool): ours, result and theirs, per conflict `→` ours, `←` theirs, `b` both, `e` edit.*
 
 ![The project window](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide.png)
 *The project window: file tree, file tabs and a vim-style editor with syntax colours; `ctrl+p` projects, `ctrl+t` terminal, `ctrl+f` and `ctrl+g` search.*
@@ -37,6 +55,18 @@ Taken from the [playground](playground/README.md) examples (`python3 playground/
 ![Search in the files of the project (`ctrl+g`), file names with `ctrl+f`.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide-search.png)
 *Search in the files of the project (`ctrl+g`), file names with `ctrl+f`.*
 
+![Three-way merge (`jd merge`, also git's merge tool)](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/merge.png)
+*Three-way merge (`jd merge`, also git's merge tool): ours, result and theirs, per conflict `→` ours, `←` theirs, `b` both, `e` edit.*
+
+![Compare two files](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/diff.png)
+*Compare two files: side by side, with syntax colours and word-level highlights (`t` switches to the unified view, `↓`/`↑` jump between the changes).*
+
+![`jd git`](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/git.png)
+*`jd git`: the changes of a git repository, a file list next to the diff of the selected file.*
+
+![Compare two directories (`jd <dir-a> <dir-b>`)](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/directories.png)
+*Compare two directories (`jd <dir-a> <dir-b>`): every added, removed and changed file.*
+
 ![A 16 colour terminal: the ansi theme](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ansi-theme.png)
 *A terminal with 16 colours: jd chooses the `ansi` theme by itself, drawn in reverse video so that it is readable in any palette.*
 
@@ -46,149 +76,7 @@ Taken from the [playground](playground/README.md) examples (`python3 playground/
 ![The first start asks which languages to install language servers and formatters for.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/languages.png)
 *The first start asks which languages to install language servers and formatters for.*
 
-## Install
-
-Latest release, checked against the SHA-256 checksum published with it (an integrity check, not a signature):
-
-```
-curl -fsSL https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/install.sh | sh   # Linux, macOS
-irm https://raw.githubusercontent.com/Eutima/jelly-dev/master/scripts/install.ps1 | iex        # Windows (PowerShell)
-```
-
-Or with pip (any platform with a wheel: Linux glibc/musl including Alpine, macOS 11 or newer, Windows; x86-64 and arm64):
-
-```
-pip install jelly-dev      # puts the jd command on the PATH; pipx install jelly-dev works too
-```
-
-The wheel carries the same static binary as the release (no download at install time). A wheel cannot run code when it is
-installed, so jd runs the installer script itself the first time it starts interactively (`jd` or `jd <folder>`): the script
-that is part of the release, the same as `curl ... | sh`, without downloading jd again. It installs the tools the IDE needs
-(the groups below, through your package manager and `sudo` unless you are root) and makes jd git's diff and merge tool
-(overwriting existing values). It says so before it starts and runs only once; `jd setup` runs it again. `JD_SKIP_SETUP=1` skips
-it, `JD_SKIP_DEPS=1`, `JD_SKIP_GIT_CONFIG=1`, `JD_DEPS` and `JD_DRY_RUN=1` work as for the installer.
-Releases are published by the workflow `pypi` (`.github/workflows/pypi.yml`).
-
-The installer:
-
-- puts `jd` in `~/.local/bin` (Windows: `%LOCALAPPDATA%\Programs\jelly-dev`) and removes an old `jelly-dev` binary there;
-- adds that directory to your PATH (Linux/macOS: your shell profile; Windows: the user PATH). Reload the shell
-  (`exec "$SHELL" -l`, or open a new terminal) so `jd` is found and tab-completes;
-- checks the tools the IDE needs and **installs what is missing, without asking** (see below);
-- runs `jd install-git --apply`, making `jd` the global `diff.tool` and `merge.tool` of git (overwrites existing values).
-
-Dependencies (groups, all on by default; choose with `JD_DEPS=basics,terminal,runtimes,lsp`, skip with `JD_SKIP_DEPS=1`,
-preview with `JD_DRY_RUN=1`):
-
-| Group | Linux / macOS | Windows |
-|---|---|---|
-| `basics` | git; on Linux a clipboard tool (wl-clipboard or xclip) | git (winget) |
-| `terminal` | a terminal emulator for new windows (xterm if none is found); in WSL Windows Terminal (`wt.exe`, via winget) | Windows Terminal |
-| `runtimes` | Go, Node.js + npm, Python (pip, pipx), a JDK (also installed when `lsp` is chosen: the servers need them) | Go, Node.js, JDK 21, Python |
-| `lsp` | gopls (`go install`), pyright, typescript-language-server (JavaScript and TypeScript), vscode-langservers-extracted (HTML, CSS, JSON), the Angular language server and the formatter prettier (`npm -g`, into `~/.local`), the formatter black (pipx or `pip --user`), jdtls (download) | the same |
-
-System packages are installed with apt, dnf, pacman, zypper, apk or brew (through `sudo` unless you are root) and winget on
-Windows. A tool that cannot be installed is reported at the end; jd itself works without them (the language servers are
-used by the IDE from milestone 2 on). jdtls is downloaded from download.eclipse.org over
-HTTPS as one pinned milestone (1.63.0) and verified against its SHA-256 before it is unpacked; a download that differs is
-refused.
-
-**Languages**: the language servers and formatters are installed per language: `python`, `html`, `css`, `json`, `yaml`, `docker` (Dockerfile), `compose` (Docker Compose), `javascript`
-(JavaScript and TypeScript), `angular`, `go`, `rust`, `c`, `cpp` (C++), `java`. The first time jd starts in a terminal it asks which ones you work
-with (nothing is checked beforehand; `space` toggles, `a` all, `n` none, `enter` installs, `esc` chooses no language, `ctrl+c` means "not now" and it asks again
-at the next start) and remembers the answer in `languages.json` in the config folder. Only the tools of those languages (and the runtimes they need) are installed, by the
-installer script, and later by the IDE when it starts (`:tools` installs what is missing). Change it any time from the command line,
-which needs no root rights:
-
-```
-jd install-lsp --list                 # the languages, the chosen ones marked, and which tools are installed
-jd install-lsp go java                # install the server and the formatter of Go and Java and add them to the chosen ones
-jd install-lsp                        # install what is missing for the chosen languages
-jd install-lsp --all                  # every language
-jd install-lsp --update               # bring the installed tools of the chosen languages to their newest versions
-jd install-lsp --update go python     # the same for the named languages (missing tools are installed)
-```
-
-In the IDE `:addlang` (also `:language`) opens a searchable list of all languages: pick one and its language server **and** its
-formatter are installed (and the language is added to the chosen ones); a language that is installed already shows "enter updates
-it": choosing it brings its language server and formatter to their newest versions (npm and `go install` fetch the latest, pipx or pip
-upgrade, `rustup update` for Rust; `clangd` comes from your package manager and is updated there). Rust uses `rustup` (`rustup component add rust-analyzer
-rustfmt`), C and C++ use `clangd` from your package manager and `clang-format` (pipx). A missing runtime (Node.js, Python, Go, a JDK,
-rustup) is reported; `jd setup` installs those. The installer script takes the same
-choice as `JD_LANGS=python,html,css,json,yaml,docker,compose` (also `all` or `none`).
-
-**Python environments**: the Python language server (pyright) is told which interpreter belongs to the project, so imports of the
-project's packages resolve in a plain venv, with uv and with the normal system Python. In this order: `JD_PYTHON` (the interpreter
-itself), an environment that is active when jd starts (`VIRTUAL_ENV`: venv, virtualenv, `uv run`/activated uv environments, poetry
-shell), the uv environment `UV_PROJECT_ENVIRONMENT`, `.venv`, `venv` or `env` in the project (`uv sync`, `uv venv`,
-`python -m venv .venv`, poetry or pdm in the project; for a project with several Python folders also the one at the top), an active
-conda environment, and for a uv project (`uv.lock`, or `[tool.uv]` in `pyproject.toml`) what `uv python find` says. Without any of
-them the Python on the PATH is used. A `pyrightconfig.json` or `[tool.pyright]` with its own `venv` takes precedence in pyright.
-
-Options (environment variables): `JELLY_DEV_VERSION` (for example `v0.2.0`) picks a release, `INSTALL_DIR` changes
-the target, `JD_SKIP_GIT_CONFIG=1` leaves the git configuration alone.
-
-Check it: `jd --version`.
-
-## Usage
-
-```
-jd <file-a> <file-b>                  compare two files, or two directories
-jd --clip <file>                      compare a file with the clipboard (--clip-left: clipboard on the left)
-jd git [--staged] [<rev> | <a>..<b>]  browse the changes of the current git repository
-jd merge <base> <local> <remote> <merged>   three-way merge (what git mergetool calls)
-jd merge <file-a> <file-b>            merge b into a without git; the result is written to a
-jd merge <dir-a> <dir-b>              the same for two directories
-jd [<folder> | <file>]                open the project window (no argument: the most recent project)
-jd install-git [--apply] [--local]    print (or write) the git diff/merge tool settings
-```
-
-With `jd` as git's tools: `git difftool`, `git difftool --dir-diff` and `git mergetool`.
-
-Keys in the diff views: `↓`/`↑` next/previous change (in `jd git` and directory diffs with the diff pane focused, past the last or first change of a file they open the next or previous file), `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, `q` quit.
-In `jd git` (and the *Diff* of the project window) the new side is the working tree, so changes can be undone and edited there, like
-in the merge view. With the diff pane focused (not for `--staged`, two revisions, deleted files or conflicts):
-
-| Key | Action |
-|---|---|
-| `r` / `backspace` | revert the selected change: its lines go back to the old text (select a change with `↓` first) |
-| `e` / `enter` | open the vim-style editor on the file (the cursor is on the selected change); `:w` or `ctrl+s` saves and stays, `:wq` saves and leaves, `:q` leaves (refuses while unsaved), `:q!` discards |
-| `u` | undo the last revert or edit of this file (history is kept until you select another file) |
-
-Every step is written to the file at once. Nothing is written when the file changed on disk meanwhile (select it again to reload it), and
-line ends (CRLF) and a missing final newline are kept.
-
-Keys in the merge view (conflicts):
-
-| Key | Action |
-|---|---|
-| `n` / `p` | next / previous change |
-| `→` / `←` | add ours / theirs to the change and stay on it (like `»` / `«`); the other arrow adds the second side (= both); the same arrow again removes the side |
-| `x` | ignore both sides of an open conflict: keep the lines the result pane shows now (the base; nothing in `jd merge a b`), mark it resolved and stay on it |
-| `backspace` / `delete` | cancel the decision for the change (unresolved again) |
-| `o` / `t` / `b` / `r` | take ours / theirs / both / base and jump to the next conflict |
-| `ctrl+o` / `ctrl+t` | take ours / theirs for all open conflicts |
-| `m` | auto-resolve conflicts that are none in fact (whitespace, different words) |
-| `a` / `c` | let Claude / Codex resolve all open conflicts (if the CLI is installed) |
-| `e` / `enter`, `i`, `d` | open the vim-style editor on the change under the cursor (`i`: on a new line below), delete the line |
-| `w` | wrap long lines (default) or cut them with `…` |
-| `u` | undo |
-| `ctrl+s` (or `s`) | save (when every conflict is resolved) |
-| `q` | quit |
-| `alt+p` (or `f1`) | command palette: every action above in a searchable list |
-
-The footer of the merge view is one line, `[→] ours  [←] theirs  [e] edit  [alt+p] commands`; everything else is in the palette.
-
-The commands in the footers are written as `[key] action` and can be clicked (when they are not dimmed): a click does what the key
-does. This works in the diff, git, directory and merge views, and for the editor commands (`[:w]`, `[:q]`, ...); the one-line
-footer of very small terminals is not clickable.
-
-Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage error. A merge exits 0 only after saving.
-
-`playground/` has sample files, two directory trees, merge inputs and a script that creates git repositories with
-local changes and with a merge stopped on conflicts: see `playground/README.md`.
-
-## Project window (work in progress)
+## The IDE
 
 `jd` with no argument opens the **most recent project** (a folder) in the project window: the file tree on the left and a
 vim-style editor on the right; with no history it shows a welcome screen with the recent projects (`enter` open here,
@@ -262,7 +150,7 @@ cannot leave the project. `d` asks first, and the question starts on *No*. `ctrl
 
 Editor: normal, insert and visual mode with the keys listed under "Merge" (the same engine), line numbers, syntax highlighting,
 scrolling, `:w [file]`, `:wq`, `:x`, `:q`, `:q!`, `:e[!] file`, `:set nu|nonu`, `:{n}`. Files are written atomically with
-their line endings. Planned (branch `feature/vim-ide`): tabs and splits, the rest of vim, diagnostics, a terminal panel.
+their line endings. Not yet: splits, diagnostics and the rest of vim.
 
 **Search in the open file** like vim: `/pattern` forwards, `?pattern` backwards (a regular expression; a pattern that is none is searched
 literally; start it with `\c` to ignore case), `enter` jumps, `n` / `N` repeat in the same / the opposite direction and wrap around the
@@ -305,14 +193,7 @@ language server (it finds `typescript` and `@angular/language-service` in the pr
 moves between the editor and other programs (WSL and Windows use PowerShell, macOS pbcopy/pbpaste, Linux wl-clipboard, xclip or
 xsel). Text pasted by the terminal is inserted as text, never run as vim commands. `ctrl+d` leaves insert and visual mode like `ctrl+c`.
 
-## Details
-
-### Status
-
-Done: file diff, word-level highlights, unified view, clipboard compare, git changes, directory diff, three-pane
-merge, git tool setup, themes (dark, light, mono), syntax highlighting. Releases are published automatically.
-
-### Diff, clipboard, git and directories
+## Diff, git and directories
 
 Usage: `jd <file-a> <file-b>`. Flags must come before file names.
 Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage error.
@@ -328,7 +209,41 @@ files and `.git` directories are skipped.
 Keys (diff): `↓`/`↑` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, mouse wheel, `q` quit.
 The mouse is captured for wheel scrolling; hold Shift while dragging to select text in most terminals.
 
-### Merge
+Keys in the diff views: `↓`/`↑` next/previous change (in `jd git` and directory diffs with the diff pane focused, past the last or first change of a file they open the next or previous file), `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, `q` quit.
+In `jd git` (and the *Diff* of the project window) the new side is the working tree, so changes can be undone and edited there, like
+in the merge view. With the diff pane focused (not for `--staged`, two revisions, deleted files or conflicts):
+
+| Key | Action |
+|---|---|
+| `r` / `backspace` | revert the selected change: its lines go back to the old text (select a change with `↓` first) |
+| `e` / `enter` | open the vim-style editor on the file (the cursor is on the selected change); `:w` or `ctrl+s` saves and stays, `:wq` saves and leaves, `:q` leaves (refuses while unsaved), `:q!` discards |
+| `u` | undo the last revert or edit of this file (history is kept until you select another file) |
+
+Every step is written to the file at once. Nothing is written when the file changed on disk meanwhile (select it again to reload it), and
+line ends (CRLF) and a missing final newline are kept.
+
+## Merge
+
+Keys in the merge view (conflicts):
+
+| Key | Action |
+|---|---|
+| `n` / `p` | next / previous change |
+| `→` / `←` | add ours / theirs to the change and stay on it (like `»` / `«`); the other arrow adds the second side (= both); the same arrow again removes the side |
+| `x` | ignore both sides of an open conflict: keep the lines the result pane shows now (the base; nothing in `jd merge a b`), mark it resolved and stay on it |
+| `backspace` / `delete` | cancel the decision for the change (unresolved again) |
+| `o` / `t` / `b` / `r` | take ours / theirs / both / base and jump to the next conflict |
+| `ctrl+o` / `ctrl+t` | take ours / theirs for all open conflicts |
+| `m` | auto-resolve conflicts that are none in fact (whitespace, different words) |
+| `a` / `c` | let Claude / Codex resolve all open conflicts (if the CLI is installed) |
+| `e` / `enter`, `i`, `d` | open the vim-style editor on the change under the cursor (`i`: on a new line below), delete the line |
+| `w` | wrap long lines (default) or cut them with `…` |
+| `u` | undo |
+| `ctrl+s` (or `s`) | save (when every conflict is resolved) |
+| `q` | quit |
+| `alt+p` (or `f1`) | command palette: every action above in a searchable list |
+
+The footer of the merge view is one line, `[→] ours  [←] theirs  [e] edit  [alt+p] commands`; everything else is in the palette.
 
 Merge: `jd merge <base> <local> <remote> <merged>` shows ours | result | theirs. Non-conflicting changes are
 merged automatically; conflicts start with the base lines. The result pane has a line cursor:
@@ -393,7 +308,111 @@ after saving.
 Use as git tool: `jd install-git` prints the `git config` commands, `--apply` writes them (`--local` for
 the current repository only), then use `git difftool` and `git mergetool`.
 
-### Build from source and test
+## Command line
+
+```
+jd <file-a> <file-b>                  compare two files, or two directories
+jd --clip <file>                      compare a file with the clipboard (--clip-left: clipboard on the left)
+jd git [--staged] [<rev> | <a>..<b>]  browse the changes of the current git repository
+jd merge <base> <local> <remote> <merged>   three-way merge (what git mergetool calls)
+jd merge <file-a> <file-b>            merge b into a without git; the result is written to a
+jd merge <dir-a> <dir-b>              the same for two directories
+jd [<folder> | <file>]                open the project window (no argument: the most recent project)
+jd install-git [--apply] [--local]    print (or write) the git diff/merge tool settings
+```
+
+With `jd` as git's tools: `git difftool`, `git difftool --dir-diff` and `git mergetool`.
+
+Exit codes: 0 ok (also when there are no differences), 1 runtime error, 2 usage error. A merge exits 0 only after saving.
+
+The commands in the footers are written as `[key] action` and can be clicked (when they are not dimmed): a click does what the key
+does. This works in the diff, git, directory and merge views, and for the editor commands (`[:w]`, `[:q]`, ...); the one-line
+footer of very small terminals is not clickable.
+
+`playground/` has sample files, two directory trees, merge inputs and a script that creates git repositories with
+local changes and with a merge stopped on conflicts: see `playground/README.md`.
+
+## Installer and tools
+
+The wheel carries the same static binary as the release (no download at install time). A wheel cannot run code when it is
+installed, so jd runs the installer script itself the first time it starts interactively (`jd` or `jd <folder>`): the script
+that is part of the release, the same as `curl ... | sh`, without downloading jd again. It installs the tools the IDE needs
+(the groups below, through your package manager and `sudo` unless you are root) and makes jd git's diff and merge tool
+(overwriting existing values). It says so before it starts and runs only once; `jd setup` runs it again. `JD_SKIP_SETUP=1` skips
+it, `JD_SKIP_DEPS=1`, `JD_SKIP_GIT_CONFIG=1`, `JD_DEPS` and `JD_DRY_RUN=1` work as for the installer.
+Releases are published by the workflow `pypi` (`.github/workflows/pypi.yml`).
+
+The installer:
+
+- puts `jd` in `~/.local/bin` (Windows: `%LOCALAPPDATA%\Programs\jelly-dev`) and removes an old `jelly-dev` binary there;
+- adds that directory to your PATH (Linux/macOS: your shell profile; Windows: the user PATH). Reload the shell
+  (`exec "$SHELL" -l`, or open a new terminal) so `jd` is found and tab-completes;
+- checks the tools the IDE needs and **installs what is missing, without asking** (see below);
+- runs `jd install-git --apply`, making `jd` the global `diff.tool` and `merge.tool` of git (overwrites existing values).
+
+Dependencies (groups, all on by default; choose with `JD_DEPS=basics,terminal,runtimes,lsp`, skip with `JD_SKIP_DEPS=1`,
+preview with `JD_DRY_RUN=1`):
+
+| Group | Linux / macOS | Windows |
+|---|---|---|
+| `basics` | git; on Linux a clipboard tool (wl-clipboard or xclip) | git (winget) |
+| `terminal` | a terminal emulator for new windows (xterm if none is found); in WSL Windows Terminal (`wt.exe`, via winget) | Windows Terminal |
+| `runtimes` | Go, Node.js + npm, Python (pip, pipx), a JDK (also installed when `lsp` is chosen: the servers need them) | Go, Node.js, JDK 21, Python |
+| `lsp` | gopls (`go install`), pyright, typescript-language-server (JavaScript and TypeScript), vscode-langservers-extracted (HTML, CSS, JSON), the Angular language server and the formatter prettier (`npm -g`, into `~/.local`), the formatter black (pipx or `pip --user`), jdtls (download) | the same |
+
+System packages are installed with apt, dnf, pacman, zypper, apk or brew (through `sudo` unless you are root) and winget on
+Windows. A tool that cannot be installed is reported at the end; jd itself works without them (the language servers are
+used by the IDE from milestone 2 on). jdtls is downloaded from download.eclipse.org over
+HTTPS as one pinned milestone (1.63.0) and verified against its SHA-256 before it is unpacked; a download that differs is
+refused.
+
+**Languages**: the language servers and formatters are installed per language: `python`, `html`, `css`, `json`, `yaml`, `docker` (Dockerfile), `compose` (Docker Compose), `javascript`
+(JavaScript and TypeScript), `angular`, `go`, `rust`, `c`, `cpp` (C++), `java`. The first time jd starts in a terminal it asks which ones you work
+with (nothing is checked beforehand; `space` toggles, `a` all, `n` none, `enter` installs, `esc` chooses no language, `ctrl+c` means "not now" and it asks again
+at the next start) and remembers the answer in `languages.json` in the config folder. Only the tools of those languages (and the runtimes they need) are installed, by the
+installer script, and later by the IDE when it starts (`:tools` installs what is missing). Change it any time from the command line,
+which needs no root rights:
+
+```
+jd install-lsp --list                 # the languages, the chosen ones marked, and which tools are installed
+jd install-lsp go java                # install the server and the formatter of Go and Java and add them to the chosen ones
+jd install-lsp                        # install what is missing for the chosen languages
+jd install-lsp --all                  # every language
+jd install-lsp --update               # bring the installed tools of the chosen languages to their newest versions
+jd install-lsp --update go python     # the same for the named languages (missing tools are installed)
+```
+
+In the IDE `:addlang` (also `:language`) opens a searchable list of all languages: pick one and its language server **and** its
+formatter are installed (and the language is added to the chosen ones); a language that is installed already shows "enter updates
+it": choosing it brings its language server and formatter to their newest versions (npm and `go install` fetch the latest, pipx or pip
+upgrade, `rustup update` for Rust; `clangd` comes from your package manager and is updated there). Rust uses `rustup` (`rustup component add rust-analyzer
+rustfmt`), C and C++ use `clangd` from your package manager and `clang-format` (pipx). A missing runtime (Node.js, Python, Go, a JDK,
+rustup) is reported; `jd setup` installs those. The installer script takes the same
+choice as `JD_LANGS=python,html,css,json,yaml,docker,compose` (also `all` or `none`).
+
+**Python environments**: the Python language server (pyright) is told which interpreter belongs to the project, so imports of the
+project's packages resolve in a plain venv, with uv and with the normal system Python. In this order: `JD_PYTHON` (the interpreter
+itself), an environment that is active when jd starts (`VIRTUAL_ENV`: venv, virtualenv, `uv run`/activated uv environments, poetry
+shell), the uv environment `UV_PROJECT_ENVIRONMENT`, `.venv`, `venv` or `env` in the project (`uv sync`, `uv venv`,
+`python -m venv .venv`, poetry or pdm in the project; for a project with several Python folders also the one at the top), an active
+conda environment, and for a uv project (`uv.lock`, or `[tool.uv]` in `pyproject.toml`) what `uv python find` says. Without any of
+them the Python on the PATH is used. A `pyrightconfig.json` or `[tool.pyright]` with its own `venv` takes precedence in pyright.
+
+Options (environment variables): `JELLY_DEV_VERSION` (for example `v0.2.0`) picks a release, `INSTALL_DIR` changes
+the target, `JD_SKIP_GIT_CONFIG=1` leaves the git configuration alone.
+
+## Configuration
+
+Environment variables (see `.env.example`):
+
+- `JELLY_DEV_THEME`: `auto` (default), `dark`, `light`, `ansi`, `contrast` or `mono`. `auto` looks at the terminal: no colours gives `mono`
+  (bold = added, strikethrough = deleted, reverse video = changed words), 16 colours gives `ansi`, 256 or more colours gives `dark` or
+  `light` by the background of the terminal. `ansi` sets no fixed background (a terminal with 16 colours maps colours to its own palette, which
+  can turn text into grey on grey): bars and selections are drawn in reverse video, changes in foreground colours of the palette.
+  `contrast` is the same without any dim text, bold where it matters. `:theme <name>` in the IDE switches at once (`:theme` lists them).
+- `NO_COLOR`: any non-empty value selects `mono` unless `JELLY_DEV_THEME` is set.
+
+## Build, test and release
 
 ```
 go build -o bin/jd ./cmd/jelly-dev
@@ -415,14 +434,6 @@ the diff, clipboard, git, directory and merge views (in the merge view the resul
 choice): monokai colors in the dark theme, github colors in the light theme, none in mono. Changed words keep their
 own highlight. Files over 512 KiB and files without a known lexer are not highlighted.
 
-### Known limitations of the terminal UI
-
-- On terminals that do not answer the background-color query (some serial consoles and test harnesses) every start,
-  including `jd --version`, waits about 5 seconds. This comes from bubbletea v1 (it queries the terminal while
-  initializing) and goes away on terminals such as xterm, iTerm2, kitty, Alacritty, WezTerm; tmux and screen are skipped.
-
-### Build and release
-
 `jd --version` (or `jd version`, only as the sole argument; use `./version` for a file of that name) prints the
 version. A plain `go build` reports the version Go records for the build (a pseudo-version with the commit, or `dev`
 without build information, or the tag when installed with `go install ...@vX.Y.Z`); release builds get the version
@@ -442,20 +453,21 @@ Every push to `master` runs the tests (`.github/workflows/release.yml`) and then
 (`feat` = minor, `fix`/`perf` = patch, `!` or `BREAKING CHANGE` = major) and GoReleaser publishes the archives and
 `checksums.txt` to GitHub. Pushes with only `chore`, `docs`, `test`, `ci` or `refactor` commits create no release.
 
-### Config
+## Limitations
 
-Environment variables (see `.env.example`):
-
-- `JELLY_DEV_THEME`: `auto` (default), `dark`, `light`, `ansi`, `contrast` or `mono`. `auto` looks at the terminal: no colours gives `mono`
-  (bold = added, strikethrough = deleted, reverse video = changed words), 16 colours gives `ansi`, 256 or more colours gives `dark` or
-  `light` by the background of the terminal. `ansi` sets no fixed background (a terminal with 16 colours maps colours to its own palette, which
-  can turn text into grey on grey): bars and selections are drawn in reverse video, changes in foreground colours of the palette.
-  `contrast` is the same without any dim text, bold where it matters. `:theme <name>` in the IDE switches at once (`:theme` lists them).
-- `NO_COLOR`: any non-empty value selects `mono` unless `JELLY_DEV_THEME` is set.
-
-### Known limitations
-
+- On terminals that do not answer the background-color query (some serial consoles and test harnesses) every start,
+  including `jd --version`, waits about 5 seconds. This comes from bubbletea v1 (it queries the terminal while
+  initializing) and goes away on terminals such as xterm, iTerm2, kitty, Alacritty, WezTerm; tmux and screen are skipped.
 - A missing trailing newline at the end of a file is not shown as a difference.
 - Binary detection only checks for NUL bytes (UTF-16 files are shown as garbage); files and git blobs are limited to 64 MiB.
 - While a file loads in the list views a wobbling jelly is shown; slow operations before the UI opens (listing a large directory or repository, reading the clipboard) show a small jelly wave on stderr after 300 ms (only on an interactive terminal).
 - In git mode files load in the background ("Loading ..." is shown); selecting another file cancels the load in progress, including a running `git` process, so only the latest selection is loaded. Plain `jd a b` still reads both files before the UI opens.
+
+## Project info
+
+- Type: tool
+- Tier: 1
+- Owner: Roy
+- License: MIT
+- Stack: Go + Bubble Tea (deliberate deviation from the Python tool default)
+- Status: file, clipboard, git and directory diff, three-pane merge, the project IDE, git tool setup, themes (dark, light, ansi, contrast, mono), syntax highlighting. Releases are published automatically.
