@@ -237,7 +237,7 @@ expect "an unknown CPU gets no rustup" "$out" "no installer for linux/armv7l"
 expect_not "an unknown CPU downloads nothing" "$out" "download https"
 
 # every pinned runtime has a well formed checksum and a URL for its platform
-# shellcheck disable=SC1091,SC2329,SC2034
+# shellcheck disable=SC1091,SC2329,SC2034,SC2154
 pinned() {
     (
         JD_INSTALL_NO_MAIN=1
@@ -255,7 +255,7 @@ pinned() {
                 case $asset_url in https://*) ;; *) echo "BADURL $name $combo" ;; esac
             done
         done
-        echo done
+        echo "done"
     )
 }
 out=$(pinned)
@@ -269,7 +269,7 @@ out=$(env -u HOME -u INSTALL_DIR JD_INSTALL_NO_MAIN=1 sh -c ". '$here/install.sh
 expect "HOME unset is reported" "$out" "HOME is not set"
 
 # add_to_path (also for the pip case): folders the shell lacks are added to the profiles, once, and the export line is printed
-# shellcheck disable=SC1091,SC2329,SC2034
+# shellcheck disable=SC1091,SC2329,SC2034,SC2154
 path_run() { # path_run <PATH> [JD_BIN]
     (
         tmp=$(mktemp -d)

@@ -3,6 +3,7 @@ package ui
 import (
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,7 +23,7 @@ func remap(t *testing.T, text string) {
 	if len(problems) != 0 {
 		t.Fatalf("the test mapping has problems: %v", problems)
 	}
-	before := keys
+	before := Keys()
 	UseKeys(mapping)
 	t.Cleanup(func() { UseKeys(before) })
 }
@@ -282,4 +283,22 @@ func TestMerge_TheUnsavedQuitMessageNamesTheKeysInForce(t *testing.T) {
 	if !strings.Contains(stripANSI(armed.View()), "press ctrl+x again (or ctrl+c)") {
 		t.Fatalf("the remapped message:\n%s", armed.View())
 	}
+}
+
+func TestUseKeys_IsSafeWhenWindowsStartAtTheSameTime(t *testing.T) {
+	before := Keys()
+	t.Cleanup(func() { UseKeys(before) })
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 100 {
+				UseKeys(before)
+				_ = keys.Label(keymap.Palette)
+				_ = Keys()
+			}
+		}()
+	}
+	wg.Wait()
 }

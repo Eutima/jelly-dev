@@ -2,19 +2,51 @@ package ui
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/eutima/jelly-dev/internal/keymap"
 )
 
-// keys is the mapping of commands to shortcuts in force. It is the default one until main installs what the .jdrc files say; it never
-// changes while jd runs, which is why a package variable is enough (the models are values built in many places).
-var keys = keymap.Default()
+// keyMap holds the mapping of commands to shortcuts in force and hands out reads and the one replacement safely: windows (and tests) may
+// start at the same time, and UseKeys is called by each.
+type keyMap struct {
+	mu      sync.RWMutex
+	mapping keymap.Map
+}
+
+func (k *keyMap) get() keymap.Map {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	return k.mapping
+}
+
+func (k *keyMap) Is(command keymap.Command, key string) bool { return k.get().Is(command, key) }
+func (k *keyMap) Lookup(scope keymap.Scope, key string) (keymap.Command, bool) {
+	return k.get().Lookup(scope, key)
+}
+func (k *keyMap) Label(command keymap.Command) string  { return k.get().Label(command) }
+func (k *keyMap) Key(command keymap.Command) string    { return k.get().Key(command) }
+func (k *keyMap) Keys(command keymap.Command) []string { return k.get().Keys(command) }
+func (k *keyMap) Sequences(command keymap.Command) []keymap.Sequence {
+	return k.get().Sequences(command)
+}
+func (k *keyMap) Sequence(command keymap.Command) keymap.Sequence { return k.get().Sequence(command) }
+func (k *keyMap) Entries(scope keymap.Scope) []keymap.Entry       { return k.get().Entries(scope) }
+func (k *keyMap) Shadowed(scope keymap.Scope) []keymap.Sequence   { return k.get().Shadowed(scope) }
+func (k *keyMap) Source(command keymap.Command) string            { return k.get().Source(command) }
+
+// keys is the mapping in force. It is the default one until main installs what the .jdrc files say.
+var keys = &keyMap{mapping: keymap.Default()}
 
 // UseKeys installs the key mapping every view reads its shortcuts from, and shows in its footers and menus.
-func UseKeys(mapping keymap.Map) { keys = mapping }
+func UseKeys(mapping keymap.Map) {
+	keys.mu.Lock()
+	keys.mapping = mapping
+	keys.mu.Unlock()
+}
 
 // Keys returns the mapping in force.
-func Keys() keymap.Map { return keys }
+func Keys() keymap.Map { return keys.get() }
 
 // keyLabel is how a command's key is named in messages: its first key, or "(unbound)" when .jdrc removed every key of it.
 func keyLabel(command keymap.Command) string {

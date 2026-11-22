@@ -230,7 +230,7 @@ func (m *MergeModel) startEdit(below bool) {
 		buffer.OpenLineBelow()
 	}
 	m.editing, m.vim, m.editChunk, m.editTop, m.editCtx, m.editGPending = true, buffer, chunk, 0, -1, false
-	m.resolver = vimkeys.New(keys)
+	m.resolver = vimkeys.New(keys.get())
 	m.keepEditorVisible()
 	m.notice("", false)
 }

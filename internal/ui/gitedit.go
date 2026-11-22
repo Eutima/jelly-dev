@@ -151,7 +151,7 @@ func (m GitModel) openEditor() (tea.Model, tea.Cmd) {
 	if m.diff.current >= 0 && m.diff.current < len(m.diff.changes) && len(lines) > 0 {
 		buffer.GotoLine(min(m.diff.changes[m.diff.current].NewStart+1, len(lines)))
 	}
-	m.editor = &diffEditor{vim: buffer, resolver: vimkeys.New(keys)}
+	m.editor = &diffEditor{vim: buffer, resolver: vimkeys.New(keys.get())}
 	m.keepEditorVisible()
 	m.say("", false)
 	return m, nil

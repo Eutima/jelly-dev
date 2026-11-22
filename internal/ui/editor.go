@@ -67,7 +67,7 @@ type ExCommandMsg struct{ Command string }
 func NewEditorModel(doc editor.Document) EditorModel {
 	buffer := vimbuf.New(doc.Lines, nil)
 	buffer.PassUnknownEx(true)
-	m := EditorModel{theme: DarkTheme(), doc: doc, vim: buffer, showNums: true, syntax: newSyntaxCache(), resolver: vimkeys.New(keys)}
+	m := EditorModel{theme: DarkTheme(), doc: doc, vim: buffer, showNums: true, syntax: newSyntaxCache(), resolver: vimkeys.New(keys.get())}
 	if doc.New && doc.Path != "" {
 		m.notice(fmt.Sprintf("\"%s\" [New]", doc.Path), false)
 	}

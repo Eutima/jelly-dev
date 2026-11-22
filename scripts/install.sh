@@ -74,6 +74,7 @@ as_root() {
 
 # root_command prints the command an administrator runs to install the system packages that were skipped.
 root_command() {
+    # shellcheck disable=SC2086 # the list is split into words on purpose
     packages=$(printf '%s\n' $root_needed | sort -u | tr '\n' ' ')
     case $pm in
         apt-get) echo "sudo apt-get update && sudo apt-get install -y $packages" ;;
