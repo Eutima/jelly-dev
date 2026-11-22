@@ -308,12 +308,12 @@ lsp_rust() {
 deps_lsp() {
     lang_enabled go && lsp_gopls
     lang_enabled python && npm_tool "pyright (Python)" pyright-langserver pyright
-    any_lang javascript angular && npm_tool "typescript-language-server (JavaScript, TypeScript)" typescript-language-server typescript typescript-language-server
+    any_lang javascript angular && npm_tool "typescript-language-server (JavaScript, TypeScript)" typescript-language-server typescript@5 typescript-language-server
     any_lang html css json && npm_tool "HTML, CSS and JSON language servers" vscode-html-language-server vscode-langservers-extracted
     lang_enabled yaml && npm_tool "YAML language server" yaml-language-server yaml-language-server
     lang_enabled docker && npm_tool "Dockerfile language server" docker-langserver dockerfile-language-server-nodejs
     lang_enabled compose && npm_tool "Docker Compose language server" docker-compose-langserver @microsoft/compose-language-service
-    lang_enabled angular && npm_tool "Angular language server" ngserver @angular/language-server @angular/language-service typescript
+    lang_enabled angular && npm_tool "Angular language server" ngserver @angular/language-server @angular/language-service typescript@5
     lang_enabled java && lsp_jdtls
     any_lang html css json yaml javascript angular && npm_tool "prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)" prettier prettier
     lang_enabled python && python_tool "black (Python formatter)" black black
