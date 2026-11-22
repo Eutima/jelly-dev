@@ -22,7 +22,7 @@ const (
 // newEditor builds the editor of a tab.
 func (m ProjectModel) newEditor(doc editor.Document) EditorModel {
 	return NewEditorModel(doc).WithForwardedCommands().WithNavigator(m.hooks.Navigator, m.root).
-		WithClipboard(m.hooks.ReadClipboard, m.hooks.WriteClipboard).WithTheme(m.theme)
+		WithClipboard(m.hooks.ReadClipboard, m.hooks.WriteClipboard).WithTheme(m.theme).WithStyle(CurrentEditorStyle())
 }
 
 // openEditors returns the editors of all tabs, the shown one up to date.

@@ -51,7 +51,7 @@ ANSI = {
 
 # key names that are sent as they are; everything else is typed
 KEYS = {"enter": "\r", "esc": "\x1b", "tab": "\t", "down": "\x1b[B", "up": "\x1b[A", "right": "\x1b[C", "left": "\x1b[D",
-        "ctrl+t": "\x14", "ctrl+f": "\x06", "ctrl+g": "\x07", "ctrl+p": "\x10", "ctrl+o": "\x0f", "ctrl+e": "\x05", "ctrl+a": "\x01", "space": " "}
+        "ctrl+t": "\x14", "ctrl+f": "\x06", "ctrl+g": "\x07", "ctrl+p": "\x10", "ctrl+o": "\x0f", "ctrl+e": "\x05", "ctrl+a": "\x01", "ctrl+w": "\x17", "space": " "}
 
 class Shot(NamedTuple):
     name: str  # file name below docs/screenshots
@@ -78,14 +78,17 @@ SHOTS = [
     Shot("ide-search", "jd repo-changes   (ctrl+g: search in files)", "repo-changes", ["."], ["ctrl+g", "~func"], (118, 30), {}),
     Shot("palette", "jd repo-changes   (ctrl+a: command palette)", "repo-changes", ["."], ["down", "down", "down", "down", "enter", "ctrl+a"], (118, 30), {}),
     Shot("palette-diff", "jd git   (ctrl+a: command palette of the diff)", "repo-changes", ["git"], ["ctrl+a"], (118, 28), {}),
-    Shot("notes", "jd repo-changes   (:note: notes of a project)", "repo-changes", ["."],
-     ["down", "down", "down", "down", "enter", "~:note ideas", "enter", "i", "~# Ideas", "enter", "enter", "~- palette in the diff", "enter", "~- refactor with undo", "esc"], (118, 30), {}),
+    Shot("notes", "jd repo-changes   (notes of a project)", "repo-changes", ["."],
+     ["down", "down", "down", "down", "enter", "ctrl+a", "~Open the notes", "enter", "~# Ideas", "enter", "enter", "~- palette in the diff", "enter", "~- refactor with undo"], (118, 30), {}),
+    Shot("nano", "jd repo-changes   (the nano-style editor: ctrl+w searches)", "repo-changes", ["."],
+     ["down", "down", "down", "down", "enter", "down", "down", "down", "~// a nano-style editor", "ctrl+w", "~greet"], (118, 30), {}),
     Shot("jdrc", "~/.jdrc   (jd checks the file and tells what is wrong)", "repo-changes", ["."], [], (118, 8), {},
          jdrc="palette = ctrl+q, f1\nfind = ctrl+g\ntabz = ctrl+j\nvim.bottom = G G\n"),
-    Shot("addlang", "jd repo-changes   (:addlang: add a language)", "repo-changes", ["."], ["tab", "~:addlang", "enter"], (118, 30), {}),
+    Shot("addlang", "jd repo-changes   (:addlang: add a language)", "repo-changes", ["."], ["ctrl+a", "~addlang", "enter"], (118, 30), {}),
     # a terminal with 16 colours: jd chooses the ansi theme by itself (no fixed backgrounds, reverse video for what is highlighted)
     Shot("ansi-theme", "jd repo-changes   (a 16 colour terminal: the ansi theme)", "repo-changes", ["."], ["down", "down", "down", "down", "enter"], (118, 30), {"TERM": "xterm-color", "COLORTERM": ""}),
-    Shot("languages", "jd   (first start: which languages?)", ".", ["setup"], [], (118, 20), {"JD_DRY_RUN": "1", "JD_SKIP_GIT_CONFIG": "1"}, first_start=True),
+    Shot("editor-choice", "jd   (first start: which editor?)", ".", ["setup"], [], (118, 10), {"JD_DRY_RUN": "1", "JD_SKIP_GIT_CONFIG": "1"}, first_start=True),
+    Shot("languages", "jd   (first start: which languages?)", ".", ["setup"], ["enter"], (118, 20), {"JD_DRY_RUN": "1", "JD_SKIP_GIT_CONFIG": "1"}, first_start=True),
 ]
 
 
@@ -244,11 +247,11 @@ def main():
     unknown = set(options.only or []) - names
     if unknown:
         raise SystemExit(f"error: unknown screenshot {sorted(unknown)}; known: {sorted(names)}")
-    prepare_demo()
     try:
         for shot in SHOTS:
             if options.only and shot.name not in options.only:
                 continue
+            prepare_demo()  # every shot starts from the sandbox as it is: what one shot writes (notes, a session) does not show in the next
             screen = capture(shot, DEMO / shot.directory)
             width, height = render(screen, shot.title, OUT / f"{shot.name}.png")
             print(f"{OUT / (shot.name + '.png')}  {width}x{height}")

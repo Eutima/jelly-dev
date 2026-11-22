@@ -105,15 +105,21 @@ func (b *Buffer) GotoLine(line int) {
 	b.col = firstNonBlank(b.lines[b.row])
 }
 
-func (b *Buffer) paste(after bool, n int) {
-	if b.clip != nil { // text that was copied somewhere else wins over the register
-		if text, outside := b.clip.get(); outside {
-			b.register, b.registerLine = clipboardRegister(text)
-			b.clip.mu.Lock()
-			b.clip.last = text
-			b.clip.mu.Unlock()
-		}
+// syncRegisterFromClipboard makes text that was copied somewhere else the register: it wins over what was yanked here.
+func (b *Buffer) syncRegisterFromClipboard() {
+	if b.clip == nil {
+		return
 	}
+	if text, outside := b.clip.get(); outside {
+		b.register, b.registerLine = clipboardRegister(text)
+		b.clip.mu.Lock()
+		b.clip.last = text
+		b.clip.mu.Unlock()
+	}
+}
+
+func (b *Buffer) paste(after bool, n int) {
+	b.syncRegisterFromClipboard()
 	b.pasteRegister(after, n)
 }
 
@@ -252,7 +258,9 @@ func (b *Buffer) ReplaceLines(lines []string) {
 	if len(b.lines) == 0 {
 		b.lines, b.origin, b.noLines = [][]rune{{}}, []int{owner}, true
 	}
-	b.mode = Normal
+	if !b.ml.on { // a modeless buffer stays in insert mode
+		b.mode = Normal
+	}
 	b.resetPending()
 	b.clampCursor()
 }

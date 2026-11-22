@@ -146,6 +146,9 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 		return exitUsage
 	}
 	ui.UseKeys(mapping)
+	if !useEditorStyle(stderr, env) {
+		return exitUsage
+	}
 	cfg, err := config.Load(env.getenv)
 	if err != nil {
 		printError(stderr, err)

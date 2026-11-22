@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/eutima/jelly-dev/internal/tools"
+	"github.com/eutima/jelly-dev/internal/ui"
 )
 
 // installerFake records what the installer script was started for.
@@ -226,6 +227,11 @@ func TestRun_SetupMarkDoneFailsWhenTheConfigFolderCannotBeWritten(t *testing.T) 
 // answerLanguages is a runUI that answers the language question with the given keys.
 func answerLanguages(asked *int, keys ...tea.KeyMsg) uiRunner {
 	return func(model tea.Model) error {
+		if _, isEditor := model.(ui.EditorChoiceModel); isEditor { // the editor question comes first: nano, by enter; it is not the one counted here
+			model, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+			model.Update(keyEnter)
+			return nil
+		}
 		*asked++
 		model, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 		for _, key := range keys {

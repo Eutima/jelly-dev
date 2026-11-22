@@ -91,6 +91,8 @@ type Buffer struct {
 	message  string
 	page     int
 
+	ml modeless // the state of the modeless (nano-style) use of the buffer, see modeless.go
+
 	clip     *clipboardSync // the system clipboard, nil when the buffer is not connected to it
 	passEx   bool           // unknown ":" commands are handed to the caller instead of being an error
 	ex       string         // the last command handed to the caller
@@ -196,6 +198,9 @@ func (b *Buffer) Pending() string {
 
 // Selected returns the selected rune columns [from, to) of line row in visual mode.
 func (b *Buffer) Selected(row int) (from, to int, ok bool) {
+	if b.ml.marked {
+		return b.markedColumns(row)
+	}
 	if b.mode != Visual && b.mode != VisualLine {
 		return 0, 0, false
 	}

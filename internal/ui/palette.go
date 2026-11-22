@@ -87,6 +87,8 @@ func (m ProjectModel) paletteActions() []paletteAction {
 		{"Diff against another worktree", ":diffworktree", command("diffworktree")},
 		{"Add a language (install its tools)", ":addlang", command("addlang")},
 		{"Install missing tools", ":tools", command("tools")},
+		{"Editor: nano style (no modes, keys shown at the bottom)", ":editor nano", command("editor nano")},
+		{"Editor: vim style (modal)", ":editor vim", command("editor vim")},
 		{"Quit", ":qa", command("qa")},
 	}
 	if m.hooks.Theme != nil {

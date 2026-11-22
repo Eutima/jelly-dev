@@ -11,6 +11,7 @@ import (
 	"github.com/eutima/jelly-dev/internal/ai"
 	"github.com/eutima/jelly-dev/internal/keymap"
 	"github.com/eutima/jelly-dev/internal/merge"
+	"github.com/eutima/jelly-dev/internal/nanokeys"
 	"github.com/eutima/jelly-dev/internal/vimbuf"
 	"github.com/eutima/jelly-dev/internal/vimkeys"
 )
@@ -91,17 +92,18 @@ type MergeModel struct {
 	current  int   // index into changed, -1 when none selected
 	cursor   int   // row of the line cursor in the result pane
 
-	noWrap       bool           // long lines are cut with "…" instead of wrapped (toggled with w)
-	editing      bool           // the vim-style editor is open on one chunk of the result
-	vim          *vimbuf.Buffer // the editor's text and state while editing
-	editConfirm  bool           // ctrl+d asked whether to apply the unapplied edits
-	editChunk    int            // the chunk being edited
-	editBefore   []string       // read-only result lines above the chunk
-	editAfter    []string       // read-only result lines below the chunk
-	editFirst    int            // result line number of the first edited line
-	editCtx      int            // cursor line (index into the context + edited + context view) while it is on a read-only line, else -1
-	editGPending bool           // a g was typed on a read-only line (gg goes to the top)
-	editTop      int            // first shown line of the editor view (context lines included)
+	noWrap       bool              // long lines are cut with "…" instead of wrapped (toggled with w)
+	editing      bool              // the vim-style editor is open on one chunk of the result
+	vim          *vimbuf.Buffer    // the editor's text and state while editing
+	nano         *nanokeys.Session // the key handler when the editor is in the nano style, nil in the vim style
+	editConfirm  bool              // ctrl+d asked whether to apply the unapplied edits
+	editChunk    int               // the chunk being edited
+	editBefore   []string          // read-only result lines above the chunk
+	editAfter    []string          // read-only result lines below the chunk
+	editFirst    int               // result line number of the first edited line
+	editCtx      int               // cursor line (index into the context + edited + context view) while it is on a read-only line, else -1
+	editGPending bool              // a g was typed on a read-only line (gg goes to the top)
+	editTop      int               // first shown line of the editor view (context lines included)
 
 	width, height int
 	offset        int

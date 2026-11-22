@@ -179,7 +179,7 @@ func (m Map) Conflicts() []Problem {
 func (m Map) windowKeyConflicts() []Problem {
 	var out []Problem
 	for _, d := range definitions {
-		if d.scope != ScopeVim && d.scope != ScopeInsert {
+		if d.scope != ScopeVim && d.scope != ScopeInsert && d.scope != ScopeNano {
 			continue
 		}
 		b := m.bindings[d.command]
@@ -191,7 +191,7 @@ func (m Map) windowKeyConflicts() []Problem {
 				}
 				if b.source != defaultSource {
 					out = append(out, m.problemAt(d.command, fmt.Sprintf("%s: %s uses %s, which is the key of %s in the project window; the window handles it first", d.command, seq, Written(key), owner)))
-				} else if m.bindings[owner].source != defaultSource {
+				} else if d.scope != ScopeNano && m.bindings[owner].source != defaultSource { // a nano default does not block someone who uses the vim style
 					out = append(out, m.problemAt(owner, fmt.Sprintf("%s: %s is the default key of %s in the editor, which would stop working; give %s other keys (or none) in a file", owner, Written(key), d.command, d.command)))
 				}
 			}

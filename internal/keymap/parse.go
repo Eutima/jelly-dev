@@ -123,6 +123,10 @@ func checkSequence(seq Sequence, scope Scope) error {
 		if single(seq[0]) || seq[0] == " " {
 			return fmt.Errorf("%s is typed text in insert mode; use ctrl, alt, a named key or a function key", seq)
 		}
+	case ScopeNano:
+		if single(seq[0]) || seq[0] == " " {
+			return fmt.Errorf("%s is typed text in the nano-style editor; use ctrl, alt, a named key or a function key", seq)
+		}
 	case ScopeVim:
 		first := seq[0]
 		if len(first) == 1 && first[0] >= '0' && first[0] <= '9' {

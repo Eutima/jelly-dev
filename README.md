@@ -13,7 +13,7 @@
   <a href="https://github.com/Eutima/jelly-dev/actions/workflows/release.yml"><img src="https://github.com/Eutima/jelly-dev/actions/workflows/release.yml/badge.svg?branch=master" alt="release"></a>
 </p>
 
-**An intuitive, easy to use terminal IDE with a clear diff and merge UI.** A project tree, a vim-style editor with language servers, a shell
+**An intuitive, easy to use terminal IDE with a clear diff and merge UI.** A project tree, an editor with language servers (nano-style or vim-style, your choice), a shell
 panel and a command palette, plus side-by-side diffs, a three-pane `git mergetool` and conflict resolution with Claude or Codex.
 One static binary, one command: `jd`.
 
@@ -63,7 +63,7 @@ it once with `python3 -m jelly_dev`: its first start adds the folder to your she
 
 **Docker**: the pip install is also the quickest way to get a nice editor inside a container: `RUN pip install jelly-dev` in a Dockerfile (Alpine, Debian
 or Ubuntu image with Python; with a non-root `USER` add `ENV PATH="$HOME/.local/bin:$PATH"` after the `USER` line, or the full path of that user's home folder), then `docker exec -it <container> jd`. The wheel carries the static binary, jd needs no root, no `HOME` and no
-write access to the root file system (CI runs it that way), and it has a project tree, a vim-style editor, diffs and a shell panel, so a
+write access to the root file system (CI runs it that way), and it has a project tree, an editor, diffs and a shell panel, so a
 quick fix or a look at the files of a running container needs no other tools. Node.js and npm, which some language servers need, do not have to be in the
 image: jd installs them below `~/.local` when the first such server is added (`:addlang`, `jd install-lsp javascript`, or when a window opens), so
 `RUN pip install jelly-dev && jd install-lsp javascript` prepares them at build time.
@@ -76,7 +76,10 @@ Then reload the shell (`exec "$SHELL" -l`, or open a new terminal) and check it:
 Taken from the [playground](playground/README.md) examples (`python3 playground/screenshots.py` makes them again).
 
 ![The project window](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide.png)
-*The project window: file tree, file tabs and a vim-style editor with syntax colours; `ctrl+o` projects, `ctrl+t` terminal, `shift+tab` tabs, `ctrl+f` and `ctrl+g` search.*
+*The project window: file tree, file tabs and an editor (nano-style or vim-style) with syntax colours; `ctrl+o` projects, `ctrl+t` terminal, `shift+tab` tabs, `ctrl+f` and `ctrl+g` search.*
+
+![The nano-style editor](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/nano.png)
+*The nano-style editor, the beginner-friendly one: no modes, the keys at the bottom (`ctrl+w` opened the search prompt); the vim-style editor is a choice away.*
 
 ![A shell in a panel under the editor (several tabs), like in VS Code.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide-terminal.png)
 *A shell in a panel under the editor (several tabs), like in VS Code.*
@@ -114,13 +117,16 @@ Taken from the [playground](playground/README.md) examples (`python3 playground/
 ![`:addlang` adds a language](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/addlang.png)
 *`:addlang` lists all languages: pick one and its language server and formatter are installed.*
 
+![The first start asks which editor you want.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/editor-choice.png)
+*The first start asks which editor you want: nano-style (beginner-friendly) or vim-style (more advanced: modes and keyboard commands); `:editor` changes it later.*
+
 ![The first start asks which languages to install language servers and formatters for.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/languages.png)
-*The first start asks which languages to install language servers and formatters for.*
+*The first start asks which editor you want (nano-style or vim-style) and which languages to install language servers and formatters for.*
 
 ## The IDE
 
 `jd` with no argument opens the **most recent project** (a folder) in the project window: the file tree on the left and a
-vim-style editor on the right; with no history it shows a welcome screen with the recent projects (`enter` opens it in this window, without a question,
+editor on the right; with no history it shows a welcome screen with the recent projects (`enter` opens it in this window, without a question,
 `w` open in a new window, `o` type a folder, `d` forget, `q` quit). `jd <folder>` opens that folder, `jd <file>` opens the
 file in its project (the git root, else its folder); a name that does not exist yet starts a new file. The list of recent
 projects, and for each one the file and cursor that were open, is kept in `<user config dir>/jd/projects.json`
@@ -213,7 +219,32 @@ project folder (the way to the root when the tree has only folders), a name endi
 cannot leave the project. `d` asks first, and the question starts on *No*. `ctrl+e` or `tab` switch to the editor, `q` quit (`ctrl+e` switches back to the tree). Entries of `.git` and the root
 `.gitignore` (names and globs) are hidden. The mouse works in the tree, the editor and the footers.
 
-Editor: normal, insert and visual mode with the keys listed under "Merge" (the same engine; all of them are the defaults of the `vim.*` and `insert.*` commands, see "Shortcuts and .jdrc"), line numbers, syntax highlighting,
+**Two editors, you choose** (the editor of the project window and the one of the merge and diff views): the **nano-style** editor has no modes - you type, the
+keys are shown at the bottom - and the **vim-style** editor is modal. The first start asks which one you want (vim is preselected; `jd setup` asks again), `:editor nano` /
+`:editor vim` or the entries *Editor: nano style* / *Editor: vim style* in the actions (`ctrl+a`) change it at any time for every open file, `JD_EDITOR=nano|vim` decides for one
+run. Someone who finished the first-start setup before this choice existed keeps vim until they choose; an install without a terminal (a Docker build) gets nano. The choice is
+kept in `editor.json` in the config folder.
+
+**The nano-style editor**: type to insert, the arrows, `home`, `end`, `pgup`, `pgdown`, `delete` and `backspace` do what you expect, `ctrl+s` saves. Keys (the bottom line shows them, a click
+on a hint presses it; all of them can be changed with `nano.*` in `.jdrc`):
+
+| Key | Action |
+|---|---|
+| `ctrl+s` | save |
+| `ctrl+x` | leave the file (asks *Save modified buffer?* when there are changes: `y` saves, `n` discards, `esc` stays) |
+| `ctrl+k` / `ctrl+u` | cut the line (or the marked text) / paste; consecutive cuts add up |
+| `alt+a` (`ctrl+^`), `alt+6` | set the mark and select to the cursor / copy the marked text |
+| `ctrl+w`, `alt+w` | search for text (plain text, case does not matter) / the next match |
+| `ctrl+\` (`alt+r`) | search and replace: asks for the text and the replacement, then `y` replaces, `n` skips, `a` replaces all, `esc` stops |
+| `ctrl+_` (`alt+g`) | go to a line (`12` or `12,5`) |
+| `alt+u` / `alt+e` | undo / redo (typing in one go is one step) |
+| `ctrl+left`, `ctrl+right`, `ctrl+home`, `ctrl+end`, `ctrl+y`, `ctrl+v` | a word left/right, start/end of the file, page up/down |
+
+The keys of the project window go first: `ctrl+a` (actions), `ctrl+e` (focus), `ctrl+f` / `ctrl+g` (search in the project), `ctrl+o` (projects), `ctrl+b` (back after a jump), `ctrl+d` (close the
+tab, asks when there are changes), `ctrl+t` (terminal) - nano's own meaning of those is on `home`, `end`, `delete` and the actions. `ctrl+space` completes (language server), `:`-commands are in
+the actions. `ctrl+\`, `ctrl+_` and `ctrl+^` are not sent by every terminal: their `alt+` alternatives always work.
+
+Vim-style editor: normal, insert and visual mode with the keys listed under "Merge" (the same engine; all of them are the defaults of the `vim.*` and `insert.*` commands, see "Shortcuts and .jdrc"), line numbers, syntax highlighting,
 scrolling, `:w [file]`, `:wq`, `:x`, `:q`, `:q!`, `:e[!] file`, `:set nu|nonu`, `:{n}`. Files are written atomically with
 their line endings. Not yet: splits, diagnostics and the rest of vim.
 
@@ -428,6 +459,12 @@ vim.top    = - t, ctrl+home      # a key sequence: keys separated by spaces (vim
   and in the `:` and `/` line are fixed, and a sequence cannot start with a digit, `esc`, `ctrl+c`, `ctrl+d` or a key a project window command has (the window handles those first).
   In the visual mode the same commands act as ever (`vim.openbelow` swaps the ends of the selection). `insert.*` takes keys that are not typed text (`ctrl+x`, `alt+x`, a named key, a
   function key), no sequences: `jk` as escape would need a timeout. Binding `insert.down` (or `up`, `newline`, `tab`) to other keys also takes the old key away in the completion popup, which uses the same keys. A command that is bound to other keys leaves its old keys without effect; `jd rc` lists them all.
+- **The nano-style editor** (`nano.*`): `nano.exit` (`ctrl+x`), `nano.cut` (`ctrl+k`), `nano.uncut` (`ctrl+u`), `nano.search` (`ctrl+w`), `nano.searchnext` (`alt+w`),
+  `nano.replace` (`ctrl+\`, `alt+r`), `nano.goto` (`ctrl+_`, `alt+g`), `nano.undo` (`alt+u`), `nano.redo` (`alt+e`), `nano.mark` (`alt+a`, `ctrl+^`), `nano.copy` (`alt+6`),
+  `nano.pageup` / `nano.pagedown` (`pgup` `ctrl+y` / `pgdown` `ctrl+v`), `nano.wordleft` / `nano.wordright` (`ctrl+left` / `ctrl+right`), `nano.top` / `nano.bottom`
+  (`ctrl+home` / `ctrl+end`). Single keys that are not typed text, no sequences. The arrows, `home`, `end`, `enter`, `backspace`, `delete` and `tab` are fixed; a key a project
+  window command has (`ctrl+a`, `ctrl+e`, `ctrl+f`, `ctrl+g`, `ctrl+o`, `ctrl+b`, `ctrl+d` ...) is refused, the window handles it first. Not every terminal sends `ctrl+\`, `ctrl+_`
+  and `ctrl+^`; each has an `alt+` alternative that always works.
 - **Validation**: before anything runs, jd checks the files, and **does not start** (exit code 2, nothing opens) when it finds a problem: it prints
   every one with its file and line, for example `jd: ~/.jdrc line 3: unknown command "tabz"`, and `jd rc` shows the mapping together with the same problems
   so you can fix them (`jd rc`, `jd --version`, `jd --help`, `jd setup` and `jd install-*` do not need a valid file). A problem is an unknown command, an unknown
@@ -464,7 +501,7 @@ local changes and with a merge stopped on conflicts: see `playground/README.md`.
 ## Installer and tools
 
 The wheel carries the same static binary as the release (no download at install time). A wheel cannot run code when it is
-installed, so jd runs the installer script itself the first time it starts interactively (`jd` or `jd <folder>`): the script
+installed, so jd runs the installer script itself the first time it starts interactively (`jd` or `jd <folder>`), after asking which editor you want (nano-style or vim-style, see "The IDE"): the script
 that is part of the release, the same as `curl ... | sh`, without downloading jd again. It installs the tools the IDE needs
 (the groups below, through your package manager and `sudo` when there are root rights, else in your home folder, see
 "Without root") and makes jd git's diff and merge tool

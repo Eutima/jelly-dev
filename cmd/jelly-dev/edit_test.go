@@ -27,8 +27,11 @@ func newIDEEnv(t *testing.T) *ideEnv {
 	e := &ideEnv{config: config}
 	e.env = testEnv(func(model tea.Model) error { e.models = append(e.models, model); return nil })
 	e.env.getenv = func(key string) string {
-		if key == project.EnvConfigDir {
+		switch key {
+		case project.EnvConfigDir:
 			return config
+		case "JD_EDITOR":
+			return "vim" // the tests of the window type vim keys
 		}
 		return ""
 	}

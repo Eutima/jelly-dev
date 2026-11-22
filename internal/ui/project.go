@@ -66,6 +66,8 @@ type ProjectHooks struct {
 	// NoteRoot returns the project whose notes `:note` opens ("" when none was chosen: the open project); SetNoteRoot stores the choice.
 	NoteRoot    func() string
 	SetNoteRoot func(root string)
+	// SetEditor remembers the editor style the user chose with :editor; nil: the choice only lasts for this window.
+	SetEditor func(style config.EditorStyle)
 	// Self returns the command that runs this program with arguments in dir (the diff views); nil runs the executable itself.
 	Self func(dir string, args ...string) *exec.Cmd
 	// MergeTool returns the command that resolves the merge conflicts of the project in dir; nil runs `git mergetool` with jd.
@@ -736,6 +738,8 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 		return m.refactorCommand(argument)
 	case "copypath", "cpath", "yankpath":
 		return m.copyPath(argument)
+	case "editor":
+		return m.editorCommand(argument)
 	case "note", "notes":
 		return m.noteCommand(argument)
 	case "palette", "commands", "actions":

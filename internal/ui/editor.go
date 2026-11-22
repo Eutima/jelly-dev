@@ -9,8 +9,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/eutima/jelly-dev/internal/keymap"
 
+	"github.com/eutima/jelly-dev/internal/config"
 	"github.com/eutima/jelly-dev/internal/editor"
 	"github.com/eutima/jelly-dev/internal/lsp"
+	"github.com/eutima/jelly-dev/internal/nanokeys"
 	"github.com/eutima/jelly-dev/internal/vimbuf"
 	"github.com/eutima/jelly-dev/internal/vimkeys"
 )
@@ -30,8 +32,9 @@ type EditorModel struct {
 
 	doc      editor.Document
 	vim      *vimbuf.Buffer
-	top      int // first line shown
-	left     int // first screen column shown
+	nano     *nanokeys.Session // the key handler of the nano style; nil: the vim style
+	top      int               // first line shown
+	left     int               // first screen column shown
 	showNums bool
 
 	syntax *syntaxCache // the colors of the text; a pointer, because View (a value receiver) fills it and the model is copied on every key
@@ -97,6 +100,29 @@ func (m EditorModel) WithClipboard(read func() (string, error), write func(strin
 func (m *EditorModel) markQuit() {
 	m.quitting = true
 	m.vim.FlushClipboard()
+}
+
+// WithStyle returns the editor in the style (nano or vim): the buffer stays the same, only the way it is operated changes. The vim style
+// starts in normal mode, the nano style has no modes.
+func (m EditorModel) WithStyle(style config.EditorStyle) EditorModel {
+	if style == config.EditorNano {
+		if m.nano == nil {
+			m.nano = useNano(m.vim)
+		}
+	} else if m.nano != nil {
+		m.nano = nil
+		m.vim.ExitModeless()
+		m.resolver.Reset()
+	}
+	return m
+}
+
+// Style returns the style the editor is operated in.
+func (m EditorModel) Style() config.EditorStyle {
+	if m.nano != nil {
+		return config.EditorNano
+	}
+	return config.EditorVim
 }
 
 // WithForwardedCommands makes the editor send commands it does not know up as ExCommandMsg instead of refusing them.
@@ -211,6 +237,9 @@ func (m EditorModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.vim.PasteText(string(msg.Runes))
 		m.scrollToCursor()
 		return m, nil
+	}
+	if m.nano != nil {
+		return m.handleNanoKey(msg)
 	}
 	// The keys the user pressed become the keys the engine knows (.jdrc can bind the commands to other keys or to a sequence of keys):
 	// normally one key becomes one, a sequence that is not complete yet becomes none, and a complete one becomes the keys of its command.
@@ -399,6 +428,9 @@ func (m EditorModel) opened(doc editor.Document) EditorModel {
 	m.doc, m.vim = doc, vimbuf.New(doc.Lines, nil)
 	m.resolver.Reset()
 	m.vim.PassUnknownEx(true)
+	if m.nano != nil { // a new buffer for the same style
+		m.nano = useNano(m.vim)
+	}
 	if m.clipboard.Read != nil || m.clipboard.Write != nil {
 		m.vim.SetClipboard(m.clipboard)
 	}
@@ -482,7 +514,7 @@ func (m EditorModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // clickText puts the cursor where the text was clicked.
 func (m *EditorModel) clickText(x, y int) {
 	line := m.top + y - 1
-	if y < 1 || y > m.textHeight() || line >= m.vim.LineCount() || m.vim.Mode() != vimbuf.Normal {
+	if y < 1 || y > m.textHeight() || line >= m.vim.LineCount() || (m.vim.Mode() != vimbuf.Normal && m.nano == nil) {
 		return
 	}
 	column := m.left + x - m.numberWidth()
@@ -509,7 +541,15 @@ func (m EditorModel) footerBar() *bar {
 	if m.forwardEx && m.pane != "" {
 		focus = "  [" + m.pane + "]"
 	}
-	result.add(barPart{fmt.Sprintf(" %s  %s%s  %d:%d%s   ", m.vim.Mode(), name, modified, row+1, col+1, focus), m.theme.Header})
+	mode := m.vim.Mode().String()
+	if m.nano != nil {
+		mode = "NANO"
+	}
+	result.add(barPart{fmt.Sprintf(" %s  %s%s  %d:%d%s   ", mode, name, modified, row+1, col+1, focus), m.theme.Header})
+	if m.nano != nil { // a modeless editor has no ":" line: its keys are shown, in the project window too
+		nanoHintBar(result, m.theme)
+		return result
+	}
 	if m.forwardEx { // in the project window every action is in the palette, which the top bar offers
 		return result
 	}
@@ -642,6 +682,11 @@ func (m EditorModel) messageRows() []string {
 	width := max(m.width, 1)
 	wrapped := func(text string, style lipgloss.Style) []string {
 		return messageLines(text, width, editorMessageMax, style)
+	}
+	if m.nano != nil {
+		if row, open := nanoPromptRow(m.nano); open {
+			return []string{renderText(row, nil, width, m.theme.Equal, m.theme.Equal)}
+		}
 	}
 	switch {
 	case m.vim.Mode() == vimbuf.Command:

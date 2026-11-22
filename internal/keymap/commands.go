@@ -12,10 +12,13 @@ const (
 	ScopeDiff   Scope = "diff"   // the diff, git and directory views
 	ScopeVim    Scope = "vim"    // the editor's normal and visual mode
 	ScopeInsert Scope = "insert" // the editor's insert mode
+	ScopeNano   Scope = "nano"   // the nano-style editor
 )
 
 // Scopes lists the scopes in the order `jd rc` prints them.
-func Scopes() []Scope { return []Scope{ScopeIDE, ScopeMerge, ScopeDiff, ScopeVim, ScopeInsert} }
+func Scopes() []Scope {
+	return []Scope{ScopeIDE, ScopeMerge, ScopeDiff, ScopeVim, ScopeInsert, ScopeNano}
+}
 
 // Title describes a scope.
 func (s Scope) Title() string {
@@ -30,6 +33,8 @@ func (s Scope) Title() string {
 		return "the editor's normal and visual mode (a key sequence is keys separated by spaces: g g)"
 	case ScopeInsert:
 		return "the editor's insert mode (keys that are not typed text: ctrl, alt, named and function keys)"
+	case ScopeNano:
+		return "the nano-style editor (keys that are not typed text; the arrows, enter, backspace, delete and tab are fixed)"
 	}
 	return string(s)
 }
@@ -159,6 +164,27 @@ const (
 	InsertDeleteToStart Command = "insert.deletetostart"
 	InsertDeleteToEnd   Command = "insert.deletetoend"
 	InsertComplete      Command = "insert.complete"
+)
+
+// The nano-style editor.
+const (
+	NanoExit       Command = "nano.exit"
+	NanoCut        Command = "nano.cut"
+	NanoUncut      Command = "nano.uncut"
+	NanoSearch     Command = "nano.search"
+	NanoSearchNext Command = "nano.searchnext"
+	NanoReplace    Command = "nano.replace"
+	NanoGoto       Command = "nano.goto"
+	NanoUndo       Command = "nano.undo"
+	NanoRedo       Command = "nano.redo"
+	NanoMark       Command = "nano.mark"
+	NanoCopy       Command = "nano.copy"
+	NanoPageUp     Command = "nano.pageup"
+	NanoPageDown   Command = "nano.pagedown"
+	NanoWordLeft   Command = "nano.wordleft"
+	NanoWordRight  Command = "nano.wordright"
+	NanoTop        Command = "nano.top"
+	NanoBottom     Command = "nano.bottom"
 )
 
 // definition is one command: where it is active, what it does and the keys it has when no file says otherwise. A default is a key or
@@ -293,6 +319,24 @@ var definitions = []definition{
 	{InsertDeleteToStart, ScopeInsert, "delete everything before the cursor", []string{"ctrl+u"}},
 	{InsertDeleteToEnd, ScopeInsert, "delete everything after the cursor", []string{"ctrl+k"}},
 	{InsertComplete, ScopeInsert, "open the completion popup", []string{"ctrl+space", "ctrl+n"}},
+
+	{NanoExit, ScopeNano, "leave the file (asks to save when there are changes)", []string{"ctrl+x"}},
+	{NanoCut, ScopeNano, "cut the line, or the marked text", []string{"ctrl+k"}},
+	{NanoUncut, ScopeNano, "paste what was cut or copied", []string{"ctrl+u"}},
+	{NanoSearch, ScopeNano, "search for text", []string{"ctrl+w"}},
+	{NanoSearchNext, ScopeNano, "go to the next match of the last search", []string{"alt+w"}},
+	{NanoReplace, ScopeNano, "search and replace (ctrl+\\ is not sent by every terminal: alt+r always works)", []string{"ctrl+\\", "alt+r"}},
+	{NanoGoto, ScopeNano, "go to a line (ctrl+_ is not sent by every terminal: alt+g always works)", []string{"ctrl+_", "alt+g"}},
+	{NanoUndo, ScopeNano, "undo", []string{"alt+u"}},
+	{NanoRedo, ScopeNano, "redo", []string{"alt+e"}},
+	{NanoMark, ScopeNano, "set or remove the mark: the text up to the cursor is selected", []string{"alt+a", "ctrl+^"}},
+	{NanoCopy, ScopeNano, "copy the marked text", []string{"alt+6"}},
+	{NanoPageUp, ScopeNano, "one page up", []string{"pgup", "ctrl+y"}},
+	{NanoPageDown, ScopeNano, "one page down", []string{"pgdown", "ctrl+v"}},
+	{NanoWordLeft, ScopeNano, "one word to the left", []string{"ctrl+left"}},
+	{NanoWordRight, ScopeNano, "one word to the right", []string{"ctrl+right"}},
+	{NanoTop, ScopeNano, "to the start of the file", []string{"ctrl+home"}},
+	{NanoBottom, ScopeNano, "to the end of the file", []string{"ctrl+end"}},
 }
 
 func find(command Command) (definition, bool) {

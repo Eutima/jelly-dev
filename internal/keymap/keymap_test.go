@@ -150,8 +150,8 @@ func TestLoad_ReadsHomeThenConfigDirThenProjectAndReportsProblems(t *testing.T) 
 		}
 	}
 	write(filepath.Join(home, ".jdrc"), "tabs = ctrl+j\nfind = alt+f\nbogus = x\n")
-	write(filepath.Join(config, "jdrc"), "find = alt+g\n")
-	write(filepath.Join(project, ".jdrc"), "tabs = ctrl+y\n")
+	write(filepath.Join(config, "jdrc"), "find = alt+j\n")
+	write(filepath.Join(project, ".jdrc"), "tabs = ctrl+j\n")
 	getenv := func(name string) string {
 		if name == EnvConfigDir {
 			return config
@@ -159,10 +159,10 @@ func TestLoad_ReadsHomeThenConfigDirThenProjectAndReportsProblems(t *testing.T) 
 		return ""
 	}
 	m, problems := Load(getenv, home, project)
-	if m.Label(Tabs) != "ctrl+y" || m.Source(Tabs) != "./.jdrc:1" {
+	if m.Label(Tabs) != "ctrl+j" || m.Source(Tabs) != "./.jdrc:1" {
 		t.Fatalf("the project file wins: %q %q", m.Label(Tabs), m.Source(Tabs))
 	}
-	if m.Label(Find) != "alt+g" {
+	if m.Label(Find) != "alt+j" {
 		t.Fatalf("the config folder overrides the home file: %q", m.Label(Find))
 	}
 	if len(problems) != 1 || !strings.Contains(problems[0].String(), "~/.jdrc line 3: unknown command") {
@@ -465,7 +465,7 @@ func TestConflicts_AWindowKeyInAnyPositionOfASequenceCouldNeverComplete(t *testi
 }
 
 func TestConflicts_AWindowCommandThatTakesADefaultKeyOfTheEditorIsReportedAtTheWindowCommand(t *testing.T) {
-	a, _ := parse(t, "find = ctrl+u\n") // ctrl+u is vim.halfup and insert.deletetostart by default
+	a, _ := parse(t, "find = ctrl+u\n") // ctrl+u is vim.halfup and insert.deletetostart by default (nano.uncut too: a nano default does not count)
 	m, _ := Default().Apply(a, "~/.jdrc")
 	conflicts := m.Conflicts()
 	if len(conflicts) != 2 {
@@ -484,5 +484,38 @@ func TestConflicts_AWindowCommandThatTakesADefaultKeyOfTheEditorIsReportedAtTheW
 	m, _ = Default().Apply(fixed, "~/.jdrc")
 	if len(m.Conflicts()) != 0 {
 		t.Fatalf("settled: %v", m.Conflicts())
+	}
+}
+
+func TestNanoScope_DefaultsHaveNoConflicts_AndCanBeRebound(t *testing.T) {
+	if conflicts := Default().Conflicts(); len(conflicts) != 0 {
+		t.Fatalf("the defaults have conflicts: %v", conflicts)
+	}
+	a, problems := parse(t, "nano.exit = ctrl+q\nnano.search = f6\n")
+	if len(problems) != 0 {
+		t.Fatalf("problems: %v", problems)
+	}
+	m, problems := Default().Apply(a, "~/.jdrc")
+	if len(problems) != 0 || len(m.Conflicts()) != 0 {
+		t.Fatalf("problems %v conflicts %v", problems, m.Conflicts())
+	}
+	if command, ok := m.Lookup(ScopeNano, "ctrl+q"); !ok || command != NanoExit {
+		t.Fatalf("ctrl+q is nano.exit now: %v %v", command, ok)
+	}
+	if _, ok := m.Lookup(ScopeNano, "ctrl+x"); ok {
+		t.Fatal("the old key of nano.exit is free")
+	}
+}
+
+func TestNanoScope_RefusesTypedTextAndKeysTheWindowTakes(t *testing.T) {
+	_, problems := parse(t, "nano.cut = j\n")
+	if len(problems) != 1 || !strings.Contains(problems[0].String(), "typed text in the nano-style editor") {
+		t.Fatalf("problems: %v", problems)
+	}
+	a, _ := parse(t, "nano.cut = ctrl+a\n") // the palette of the project window
+	m, _ := Default().Apply(a, "~/.jdrc")
+	conflicts := m.Conflicts()
+	if len(conflicts) != 1 || !strings.Contains(conflicts[0].String(), "nano.cut: ctrl+a uses ctrl+a, which is the key of palette in the project window") {
+		t.Fatalf("conflicts: %v", conflicts)
 	}
 }

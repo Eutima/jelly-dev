@@ -61,10 +61,13 @@ func runInstallerScript(jdBin string, extraEnv []string, stdin io.Reader, stdout
 var errSetupDeclined = errors.New("not now")
 
 // runInstallerForSelf is what both the first start and `jd setup` do.
-func runInstallerForSelf(configDir string, stdout, stderr io.Writer, env environment) error {
+func runInstallerForSelf(configDir string, stdout, stderr io.Writer, env environment, askEditorAgain bool) error {
 	run := env.runInstaller
 	if run == nil {
 		return nil
+	}
+	if err := chooseEditor(configDir, stderr, env, askEditorAgain); err != nil {
+		return err
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -115,7 +118,7 @@ func runSetup(args []string, stdout, stderr io.Writer, env environment) int {
 		printError(stderr, dirErr)
 		return exitFailure
 	}
-	if err := runInstallerForSelf(dir, stdout, stderr, env); err != nil {
+	if err := runInstallerForSelf(dir, stdout, stderr, env, true); err != nil {
 		if errors.Is(err, errSetupDeclined) {
 			fmt.Fprintln(stderr, "jd: setup cancelled; run jd setup when you want it")
 			return exitOK
@@ -142,7 +145,7 @@ func setupOnFirstStart(configDir string, stdout, stderr io.Writer, env environme
 	}
 	fmt.Fprintf(stderr, "jd: first start: running the installer script (installs the tools the IDE needs and sets git up).\n")
 	fmt.Fprintf(stderr, "jd: skip it with %s=1, or only parts with JD_SKIP_DEPS=1 / JD_SKIP_GIT_CONFIG=1; run it again with: jd setup\n", envSkipSetup)
-	if err := runInstallerForSelf(configDir, stdout, stderr, env); errors.Is(err, errSetupDeclined) {
+	if err := runInstallerForSelf(configDir, stdout, stderr, env, false); errors.Is(err, errSetupDeclined) {
 		fmt.Fprintln(stderr, "jd: setup skipped for now; it asks again at the next start (or run: jd setup)")
 		return // no marker: the question comes again
 	} else if err != nil {

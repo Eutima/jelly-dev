@@ -125,6 +125,10 @@ func clipboardRegister(text string) (lines []string, linewise bool) {
 // PasteText inserts text typed or pasted by the terminal: in insert mode as typed text, otherwise like the p command with
 // text that came from outside (whole lines when it ends with a line break).
 func (b *Buffer) PasteText(text string) {
+	if b.ml.on {
+		b.TypeText(text)
+		return
+	}
 	switch b.mode {
 	case Insert:
 		for _, r := range strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n") {

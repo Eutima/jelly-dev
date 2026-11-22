@@ -10,7 +10,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/eutima/jelly-dev/internal/keymap"
 
+	"github.com/eutima/jelly-dev/internal/config"
 	"github.com/eutima/jelly-dev/internal/diff"
+	"github.com/eutima/jelly-dev/internal/nanokeys"
 	"github.com/eutima/jelly-dev/internal/source"
 	"github.com/eutima/jelly-dev/internal/vimbuf"
 	"github.com/eutima/jelly-dev/internal/vimkeys"
@@ -32,6 +34,7 @@ type diffEditor struct {
 	vim      *vimbuf.Buffer
 	top      int               // first visible line
 	resolver *vimkeys.Resolver // turns the keys pressed into the keys of the engine (the .jdrc bindings)
+	nano     *nanokeys.Session // the key handler of the nano style; nil: the vim style
 }
 
 // fileEditable reports whether the new side of a file can be changed in this view.
@@ -152,6 +155,9 @@ func (m GitModel) openEditor() (tea.Model, tea.Cmd) {
 		buffer.GotoLine(min(m.diff.changes[m.diff.current].NewStart+1, len(lines)))
 	}
 	m.editor = &diffEditor{vim: buffer, resolver: vimkeys.New(keys.get())}
+	if CurrentEditorStyle() == config.EditorNano {
+		m.editor.nano = useNano(buffer)
+	}
 	m.keepEditorVisible()
 	m.say("", false)
 	return m, nil
@@ -164,6 +170,9 @@ func (m GitModel) handleEditorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if keys.Is(keymap.Save, msg.String()) { // like :w, in every mode
 		m.saveEditor()
 		return m, nil
+	}
+	if e.nano != nil {
+		return m.handleNanoEditorKey(msg)
 	}
 	if msg.String() == "ctrl+d" && e.vim.Mode() == vimbuf.Normal && e.vim.Pending() == "" { // like :q
 		if e.vim.Modified() {
@@ -205,6 +214,40 @@ func (m GitModel) handleEditorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleNanoEditorKey is handleEditorKey for the nano style: ctrl+x leaves (asking to save), ctrl+s writes.
+func (m GitModel) handleNanoEditorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	e := m.editor
+	key := msg.String()
+	if _, _, asking := e.nano.Prompt(); msg.Type == tea.KeyRunes && !msg.Alt && len(msg.Runes) > 1 { // text that arrived at once
+		if asking {
+			e.nano.Paste(string(msg.Runes))
+		} else {
+			e.vim.TypeText(string(msg.Runes))
+			m.keepEditorVisible()
+		}
+		return m, nil
+	}
+	switch e.nano.Handle(e.vim, key).Result {
+	case vimbuf.Write:
+		m.saveEditor()
+	case vimbuf.WriteQuit:
+		if m.saveEditor() {
+			m.editor = nil
+			return m, nil
+		}
+	case vimbuf.Quit, vimbuf.ForceQuit:
+		m.editor = nil
+		return m, nil
+	}
+	if text := e.nano.Status(); text != "" {
+		m.say(text, false)
+	} else if text := e.vim.Message(); text != "" {
+		m.say(text, true)
+	}
+	m.keepEditorVisible()
+	return m, nil
+}
+
 // saveEditor writes the edited text to the file; it reports whether that worked (or there was nothing to write).
 func (m *GitModel) saveEditor() bool {
 	e := m.editor
@@ -219,7 +262,11 @@ func (m *GitModel) saveEditor() bool {
 		return false
 	}
 	e.vim.MarkWritten()
-	m.say("✓ Saved (u undoes)", false)
+	undo := "u"
+	if e.nano != nil {
+		undo = keymap.Pretty(keys.Key(keymap.NanoUndo))
+	}
+	m.say("✓ Saved ("+undo+" undoes)", false)
 	return true
 }
 
@@ -236,9 +283,21 @@ func (m GitModel) editorBodyHeight() int {
 
 func (m GitModel) editorStatus() string {
 	e := m.editor
+	if e.nano != nil {
+		if row, open := nanoPromptRow(e.nano); open {
+			return row
+		}
+	}
 	switch {
 	case m.diff.notice != "":
 		return m.diff.notice
+	case e.nano != nil:
+		row, col := e.vim.Cursor()
+		modified := ""
+		if e.vim.Modified() {
+			modified = "  [+]"
+		}
+		return fmt.Sprintf("NANO%s   %d:%d", modified, row+1, col+1)
 	case e.vim.Mode() == vimbuf.Command:
 		return ":" + e.vim.CommandLine()
 	}
@@ -257,6 +316,10 @@ func (m GitModel) editorStatus() string {
 func (m GitModel) editorBar() *bar {
 	result := &bar{}
 	result.add(barPart{" ", m.theme.Footer})
+	if m.editor != nil && m.editor.nano != nil {
+		nanoHintBar(result, m.theme)
+		return result
+	}
 	result.command("esc", "normal", true, m.theme)
 	result.sequenceHint(keymap.VimInsert, "insert", true, m.theme)
 	result.pairHint(keymap.VimVisual, keymap.VimVisualLine, "visual", true, m.theme)

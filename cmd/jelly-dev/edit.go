@@ -96,6 +96,9 @@ func runIDE(args []string, stdout, stderr io.Writer, env environment) int {
 		}
 	}
 	setupOnFirstStart(dir, stdout, stderr, env) // after the target is known: a mistyped folder fails before anything is installed
+	if !useEditorStyle(stderr, env) {           // the setup may just have asked for the editor
+		return exitUsage
+	}
 	newWindow := env.newWindow
 	if newWindow == nil {
 		newWindow = launch.NewWindow
@@ -169,6 +172,11 @@ func runIDE(args []string, stdout, stderr io.Writer, env environment) int {
 		ReadClipboard:  env.readClipboard,
 		WriteClipboard: env.writeClipboard,
 		NewWindow:      newWindow,
+		SetEditor: func(style config.EditorStyle) {
+			if err := config.SaveEditorStyle(dir, style); err != nil {
+				fmt.Fprintf(stderr, "jd: cannot remember the editor: %v\n", err)
+			}
+		},
 		SaveSession: func(root string, session project.Session) {
 			if err := updateProjects(env, func(s *project.Store) { s.SetSession(root, session) }); err != nil {
 				fmt.Fprintf(stderr, "jd: cannot store the session: %v\n", err)

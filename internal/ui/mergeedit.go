@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/eutima/jelly-dev/internal/config"
 	"github.com/eutima/jelly-dev/internal/keymap"
 	"github.com/eutima/jelly-dev/internal/merge"
 	"github.com/eutima/jelly-dev/internal/vimbuf"
@@ -222,12 +223,18 @@ func (m *MergeModel) startEdit(below bool) {
 	if _, index, ok := m.resultLineAt(m.cursor); ok && len(lines) > 0 {
 		buffer.GotoLine(index + 1)
 	}
+	nanoStyle := CurrentEditorStyle() == config.EditorNano
 	switch {
 	case !below:
-	case len(lines) == 0:
+	case len(lines) == 0 && !nanoStyle:
 		buffer.Handle("i")
+	case len(lines) == 0:
 	default:
 		buffer.OpenLineBelow()
+	}
+	m.nano = nil
+	if nanoStyle {
+		m.nano = useNano(buffer)
 	}
 	m.editing, m.vim, m.editChunk, m.editTop, m.editCtx, m.editGPending = true, buffer, chunk, 0, -1, false
 	m.resolver = vimkeys.New(keys.get())
@@ -268,6 +275,9 @@ func (m MergeModel) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.editConfirm = true
 		return m, nil
 	}
+	if m.nano != nil {
+		return m.handleNanoEditKey(msg)
+	}
 	for _, raw := range pressedKeys(msg, m.resolver) {
 		mode := vimkeys.Normal
 		if m.vim.Mode() == vimbuf.Insert {
@@ -301,6 +311,50 @@ func (m MergeModel) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.editing {
 		if text := m.vim.Message(); text != "" {
+			m.notice(text, true)
+		}
+		m.keepEditorVisible()
+	}
+	m.clamp()
+	return m, nil
+}
+
+// handleNanoEditKey is handleEditKey for the nano style: ctrl+s applies the edit, ctrl+x leaves (asking to apply).
+func (m MergeModel) handleNanoEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	_, _, asking := m.nano.Prompt()
+	if !asking {
+		if m.editNavigate(key) { // the moves over the read-only lines around the change
+			m.keepEditorVisible()
+			m.clamp()
+			return m, nil
+		}
+		if keys.Is(keymap.Save, key) {
+			m.applyEdit()
+			return m, nil
+		}
+		if msg.Type == tea.KeyRunes && !msg.Alt && len(msg.Runes) > 1 { // text that arrived at once
+			m.vim.TypeText(string(msg.Runes))
+			m.keepEditorVisible()
+			return m, nil
+		}
+	} else if msg.Type == tea.KeyRunes && !msg.Alt && len(msg.Runes) > 1 { // pasted text goes into the question
+		m.nano.Paste(string(msg.Runes))
+		return m, nil
+	}
+	switch m.nano.Handle(m.vim, key).Result {
+	case vimbuf.Write:
+		m.applyEdit()
+	case vimbuf.WriteQuit:
+		m.applyEdit()
+		m.closeEditor()
+	case vimbuf.Quit, vimbuf.ForceQuit:
+		m.closeEditor()
+	}
+	if m.editing {
+		if text := m.nano.Status(); text != "" {
+			m.notice(text, false)
+		} else if text := m.vim.Message(); text != "" {
 			m.notice(text, true)
 		}
 		m.keepEditorVisible()
@@ -355,7 +409,7 @@ func (m *MergeModel) editNavigate(key string) bool {
 	}
 	onContext := m.editCtx >= 0
 	if !onContext {
-		if m.vim.Mode() != vimbuf.Normal || m.vim.Pending() != "" {
+		if m.nano == nil && (m.vim.Mode() != vimbuf.Normal || m.vim.Pending() != "") {
 			return false
 		}
 		row, _ := m.vim.Cursor()
@@ -420,7 +474,7 @@ func (m MergeModel) answerEditPrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *MergeModel) closeEditor() {
-	m.editing, m.vim, m.editConfirm = false, nil, false
+	m.editing, m.vim, m.nano, m.editConfirm = false, nil, nil, false
 	m.setCursor(m.cursor)
 }
 
@@ -456,8 +510,21 @@ func (m MergeModel) editingStatus() string {
 	if m.editConfirm {
 		return "Apply the changes before leaving?  y apply and leave · n discard and leave · any other key keeps editing"
 	}
+	if m.nano != nil {
+		if row, open := nanoPromptRow(m.nano); open {
+			return row
+		}
+	}
 	if m.vim.Mode() == vimbuf.Command {
 		return ":" + m.vim.CommandLine()
+	}
+	if m.nano != nil && m.editCtx < 0 {
+		row, col := m.vim.Cursor()
+		modified := ""
+		if m.vim.Modified() {
+			modified = "  [+]"
+		}
+		return fmt.Sprintf("NANO%s   %d:%d   (ctrl+s applies · ctrl+x leaves · ctrl+w searches · dimmed lines are read-only)", modified, m.editFirst+row, col+1)
 	}
 	if m.editCtx >= 0 {
 		return fmt.Sprintf("-- READ-ONLY --   %d   (move into the change to edit · :q leaves · ctrl+d leaves)", m.editFirst-len(m.editBefore)+m.editCtx)

@@ -103,6 +103,9 @@ func (m EditorModel) textHeight() int { return max(m.bodyHeight()-m.listHeight()
 
 // navigationKey handles gd, gr and ctrl+o in normal mode; it reports whether the key was used.
 func (m EditorModel) navigationKey(key string) (EditorModel, tea.Cmd, bool) {
+	if m.nano != nil {
+		return m.nanoNavigationKey(key)
+	}
 	if m.vim.Mode() != vimbuf.Normal {
 		return m, nil, false
 	}
@@ -520,7 +523,11 @@ func (m EditorModel) handleFormatResult(msg formatResultMsg) (EditorModel, tea.C
 	}
 	m.vim.ReplaceLines(lines)
 	m.scrollToCursor()
-	m.notice(fmt.Sprintf("Formatted (%d lines) - u undoes", len(lines))+note, false)
+	undo := "u undoes"
+	if m.nano != nil {
+		undo = keymap.Pretty(keys.Key(keymap.NanoUndo)) + " undoes"
+	}
+	m.notice(fmt.Sprintf("Formatted (%d lines) - %s", len(lines), undo)+note, false)
 	return m, nil
 }
 
