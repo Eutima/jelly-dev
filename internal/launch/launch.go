@@ -93,7 +93,13 @@ func wslCommand(env Env, exe, dir string) ([]string, error) {
 	if env.Distro != "" {
 		inside = append(inside, "-d", env.Distro)
 	}
-	inside = append(inside, "--cd", dir, "-e", exe, dir)
+	inside = append(inside, "--cd", dir, "-e")
+	// wsl.exe -e starts no shell, so the new window would get a bare PATH without ~/.local/bin (the language servers) and
+	// without node (nvm): jd hands over its own PATH
+	if path := env.Getenv("PATH"); path != "" {
+		inside = append(inside, "env", "PATH="+path)
+	}
+	inside = append(inside, exe, dir)
 	if _, err := env.LookPath("wt.exe"); err == nil {
 		return append([]string{"wt.exe", "-w", "new"}, inside...), nil
 	}

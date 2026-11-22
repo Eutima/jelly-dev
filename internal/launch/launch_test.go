@@ -23,7 +23,7 @@ func fake(goos string, env map[string]string, found ...string) Env {
 
 func TestCommand(t *testing.T) {
 	exe, dir := "/usr/local/bin/jd", "/work/my project"
-	wsl := fake("linux", map[string]string{}, "wt.exe", "cmd.exe")
+	wsl := fake("linux", map[string]string{"PATH": "/home/u/.local/bin:/usr/bin"}, "wt.exe", "cmd.exe")
 	wsl.WSL, wsl.Distro = true, "Ubuntu"
 	wslNoWT := fake("linux", map[string]string{}, "cmd.exe")
 	wslNoWT.WSL = true
@@ -34,7 +34,7 @@ func TestCommand(t *testing.T) {
 	}{
 		{"custom terminal", fake("linux", map[string]string{"JD_TERMINAL": "kitty -1"}), []string{"kitty", "-1", exe, dir}},
 		{"tmux", fake("linux", map[string]string{"TMUX": "/tmp/tmux"}, "tmux"), []string{"tmux", "new-window", "-c", dir, exe, dir}},
-		{"wsl with windows terminal", wsl, []string{"wt.exe", "-w", "new", "wsl.exe", "-d", "Ubuntu", "--cd", dir, "-e", exe, dir}},
+		{"wsl with windows terminal", wsl, []string{"wt.exe", "-w", "new", "wsl.exe", "-d", "Ubuntu", "--cd", dir, "-e", "env", "PATH=/home/u/.local/bin:/usr/bin", exe, dir}},
 		{"wsl without windows terminal", wslNoWT, []string{"cmd.exe", "/c", "start", "", "wsl.exe", "--cd", dir, "-e", exe, dir}},
 		{"windows terminal", fake("windows", nil, "wt.exe"), []string{"wt.exe", "-w", "new", exe, dir}},
 		{"windows console", fake("windows", nil), []string{"cmd", "/c", "start", "", exe, dir}},
