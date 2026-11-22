@@ -382,15 +382,15 @@ func (m ProjectModel) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.picker = &picker
 		return m, cmd
 	}
-	chosen := m.pickerOutcome.Path
+	chosen, inNewWindow := m.pickerOutcome.Path, m.pickerOutcome.NewWindow
 	m.picker, m.pickerOutcome = nil, nil
 	if chosen == "" || chosen == m.root {
 		return m, cmd
 	}
-	if m.hooks.NewWindow == nil { // no way to open windows here: use this one
-		return m.switchProject(chosen, false)
+	if inNewWindow {
+		return m.newWindow(chosen)
 	}
-	return m.newWindow(chosen)
+	return m.switchProject(chosen, false)
 }
 
 // switchProject makes this window show another project. Unsaved changes block it unless force is set; what is open in the

@@ -79,7 +79,7 @@ Taken from the [playground](playground/README.md) examples (`python3 playground/
 ## The IDE
 
 `jd` with no argument opens the **most recent project** (a folder) in the project window: the file tree on the left and a
-vim-style editor on the right; with no history it shows a welcome screen with the recent projects (`enter` open here,
+vim-style editor on the right; with no history it shows a welcome screen with the recent projects (`enter` open it,
 `w` open in a new window, `o` type a folder, `d` forget, `q` quit). `jd <folder>` opens that folder, `jd <file>` opens the
 file in its project (the git root, else its folder); a name that does not exist yet starts a new file. The list of recent
 projects, and for each one the file and cursor that were open, is kept in `<user config dir>/jd/projects.json`
@@ -119,7 +119,8 @@ merge view has one footer line and a compact one below 10 lines.
 `←/→` and `enter`, or a click).
 
 **Switching projects**: `ctrl+p` (or `P` in the tree), `:project` (without a folder) or `:projects` / `:recent` open the list of
-recent projects; `enter` opens the chosen one in a new window, `o` lets you type a folder (with `tab` completion; also opened in a new window), `d`
+recent projects; `enter` opens the chosen one and asks *new window?* (`y`: a new window, `n`: this window, `esc`: back), `o` lets you type a folder (with `tab`
+completion; the same question follows, and a folder that does not exist is offered for creation first), `d`
 forgets an entry, `esc` closes the list. `:project <folder>` switches this window directly (the folder may be relative to the project or start
 with `~`); `:project!` discards unsaved changes, otherwise they block the switch (E37). The file and cursor that were open are
 stored first and come back when you return to a project; the language servers follow the window to the new project.
@@ -139,7 +140,9 @@ normal mode, like `esc`); only `ctrl+d`, `:wq`, `:q` and `q` in the tree close. 
 
 Welcome screen "open folder" (`o`): type a path and press `tab` to complete it (a single match completes the whole folder, several
 matches complete their common part, further presses walk through them; `shift+tab` goes back). The matching folders are listed
-while you type and can be chosen with the arrows; `enter` opens the folder here, `ctrl+w` in a new window.
+while you type and can be chosen with the arrows; `enter` opens the folder and asks whether that is a new window (`y`) or this one (`n`),
+`ctrl+w` opens it in a new window right away. A path that does not exist asks *Create this folder?* (`y` makes it, with its parents, `n` goes
+back to the prompt).
 
 Tree keys: `j`/`k` move, `enter`/`o` open a file or toggle a folder, `h`/`l` collapse/expand, `R` refresh, `w` new window,
 `n` new file, `d` delete, `e` edit (open) the file; the footer under the tree shows only these three. `n` asks for the name and

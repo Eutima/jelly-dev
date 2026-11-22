@@ -16,7 +16,16 @@ import (
 
 // WelcomeOutcome tells what the welcome screen was left with.
 type WelcomeOutcome struct {
-	Path string // the project to open in this window; empty when the user just quit
+	Path      string // the project to open; empty when the user just quit
+	NewWindow bool   // the user wants it in a new window (only set when the screen is embedded; the screen opens the window itself otherwise)
+}
+
+// welcomeQuestion is a yes or no question about the folder that is being opened: whether to create it, or whether it opens in a
+// new window (yes) or in this one (no).
+type welcomeQuestion struct {
+	create bool   // the folder does not exist: yes makes it
+	direct bool   // the folder is meant for a new window (ctrl+w): after it exists there is nothing left to ask
+	path   string // the folder
 }
 
 // WelcomeModel is the start screen: the recent projects, and a prompt to open another folder.
@@ -26,7 +35,8 @@ type WelcomeModel struct {
 	entries       []project.Entry
 	selected      int
 	top           int
-	typing        bool // the path prompt is open
+	question      *welcomeQuestion // the open question, nil when none
+	typing        bool             // the path prompt is open
 	input         []rune
 	matches       []string // folders that complete the typed path
 	matchSel      int      // the match that was chosen with tab or the arrows, -1 when none
@@ -83,6 +93,8 @@ const welcomeTop = 3 // title, blank line, list header
 // cut off); there is always at least one.
 func (m WelcomeModel) messageRows() []*bar {
 	switch {
+	case m.question != nil:
+		return textRows(m.questionText(), m.width, footerMax, m.theme.Equal.Bold(true))
 	case m.typing:
 		text := "Open folder: " + sanitize(string(m.input)) + "█"
 		if m.status != "" {
@@ -99,6 +111,9 @@ func (m WelcomeModel) messageRows() []*bar {
 
 // footerRows are the hints as wrapped bars.
 func (m WelcomeModel) footerRows() []*bar {
+	if m.question != nil {
+		return m.questionHintBar().wrap(m.width, footerMax)
+	}
 	if m.typing {
 		return m.promptHintBar().wrap(m.width, footerMax)
 	}
@@ -109,7 +124,7 @@ func (m WelcomeModel) footerRows() []*bar {
 func (m WelcomeModel) promptHintBar() *bar {
 	result := &bar{}
 	result.add(barPart{" ", m.theme.Footer})
-	for _, h := range []string{"[tab] complete", "[↑↓] choose", "[enter] open here", "[ctrl+w] new window", "[esc] back"} {
+	for _, h := range []string{"[tab] complete", "[↑↓] choose", "[enter] open", "[ctrl+w] new window", "[esc] back"} {
 		result.hint(barPart{h + "  ", m.theme.Footer})
 	}
 	return result
@@ -122,6 +137,9 @@ func (m WelcomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.keepVisible()
 	case tea.KeyMsg:
+		if m.question != nil {
+			return m.handleQuestionKey(msg)
+		}
 		if m.typing {
 			return m.handlePromptKey(msg)
 		}
@@ -180,8 +198,84 @@ func (m WelcomeModel) choose() (tea.Model, tea.Cmd) {
 	if m.selected >= len(m.entries) {
 		return m, nil
 	}
-	m.outcome.Path = m.entries[m.selected].Path
-	return m.finish()
+	return m.open(m.entries[m.selected].Path)
+}
+
+// open asks where a project opens: in a new window or in this one. Without a way to start windows there is nothing to ask.
+func (m WelcomeModel) open(path string) (tea.Model, tea.Cmd) {
+	if m.newWindow == nil {
+		m.outcome.Path = path
+		return m.finish()
+	}
+	m.question = &welcomeQuestion{path: path}
+	return m, nil
+}
+
+// openIn carries out the answer: the project opens in a new window or in this one.
+func (m WelcomeModel) openIn(path string, inNewWindow bool) (tea.Model, tea.Cmd) {
+	switch {
+	case !inNewWindow:
+		m.outcome.Path = path
+		return m.finish()
+	case m.embedded: // the project window starts the new window
+		m.outcome.Path, m.outcome.NewWindow = path, true
+		return m.finish()
+	}
+	return m.launch(path)
+}
+
+func (m WelcomeModel) questionText() string {
+	name := sanitize(m.question.path)
+	if m.question.create {
+		return "Create this folder?  " + name + " does not exist"
+	}
+	return "Open " + sanitize(filepath.Base(m.question.path)) + " in a new window? (no: in this window)"
+}
+
+// questionHintBar is the hint line while a question is open.
+func (m WelcomeModel) questionHintBar() *bar {
+	result := &bar{}
+	result.add(barPart{" ", m.theme.Footer})
+	yes, no := "new window", "this window"
+	if m.question.create {
+		yes, no = "create", "no"
+	}
+	result.command("y", yes, true, m.theme)
+	result.command("n", no, true, m.theme)
+	result.command("esc", "cancel", true, m.theme)
+	return result
+}
+
+// handleQuestionKey answers the open question: y or enter say yes, n says no, esc cancels (back to the prompt or the list).
+func (m WelcomeModel) handleQuestionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	question := *m.question
+	if msg.String() == "enter" && question.create {
+		return m, nil // creating a folder takes an explicit y: an enter that is pressed twice must not make a folder of a typo
+	}
+	m.question = nil
+	switch msg.String() {
+	case "y", "Y", "enter":
+		if question.create {
+			if err := os.MkdirAll(question.path, 0o755); err != nil { // #nosec G301 -- a project folder of the user's own
+				m.status, m.warn = "Cannot create "+question.path+": "+err.Error(), true
+				return m, nil
+			}
+			if question.direct {
+				m.typing = false
+				return m.openIn(question.path, true)
+			}
+			return m.open(question.path)
+		}
+		m.typing = false
+		return m.openIn(question.path, true)
+	case "n", "N":
+		if question.create {
+			return m, nil // keep typing
+		}
+		m.typing = false
+		return m.openIn(question.path, false)
+	}
+	return m, nil // esc and every other key: back
 }
 
 func (m WelcomeModel) openInWindow() (tea.Model, tea.Cmd) {
@@ -205,7 +299,7 @@ func (m WelcomeModel) launch(dir string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handlePromptKey edits the path of the folder to open: enter opens it here, ctrl+w in a new window.
+// handlePromptKey edits the path of the folder to open: enter opens it (after asking where), ctrl+w in a new window.
 func (m WelcomeModel) handlePromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.status, m.warn = "", false
 	switch msg.Type {
@@ -218,16 +312,31 @@ func (m WelcomeModel) handlePromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEnter, tea.KeyCtrlW:
 		path := expandHome(strings.TrimSpace(string(m.input)))
 		abs, err := filepath.Abs(path)
-		if path == "" || err != nil || !isDir(abs) {
+		if path == "" || err != nil {
 			m.status, m.warn = fmt.Sprintf("E344: Can't find directory \"%s\"", path), true
 			return m, nil
 		}
-		m.typing = false
+		_, statErr := os.Stat(abs)
+		switch {
+		case os.IsNotExist(statErr): // a folder that does not exist yet can be made, when it can be opened afterwards
+			if msg.Type == tea.KeyCtrlW && m.newWindow == nil {
+				m.status, m.warn = "Opening windows is not available here", true
+				return m, nil
+			}
+			m.question = &welcomeQuestion{create: true, direct: msg.Type == tea.KeyCtrlW, path: abs}
+			return m, nil
+		case statErr != nil:
+			m.status, m.warn = fmt.Sprintf("E344: %v", statErr), true
+			return m, nil
+		case !isDir(abs):
+			m.status, m.warn = fmt.Sprintf("E344: \"%s\" is not a directory", path), true
+			return m, nil
+		}
 		if msg.Type == tea.KeyCtrlW {
+			m.typing = false
 			return m.launch(abs)
 		}
-		m.outcome.Path = abs
-		return m.finish()
+		return m.open(abs) // the prompt stays until the question is answered: esc comes back to it
 	case tea.KeyBackspace:
 		if len(m.input) > 0 {
 			m.input = m.input[:len(m.input)-1]
@@ -313,6 +422,9 @@ func (m WelcomeModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.question != nil {
+			return m, nil
+		}
 		if row := m.top + msg.Y - welcomeTop; msg.Y >= welcomeTop && msg.Y < welcomeTop+m.bodyHeight() && row < len(m.entries) {
 			m.selected = row
 			return m.choose()
@@ -329,9 +441,9 @@ func replayKeys(m WelcomeModel, keys []string) (tea.Model, tea.Cmd) {
 func (m WelcomeModel) hintBar() *bar {
 	result := &bar{}
 	result.add(barPart{" ", m.theme.Footer})
-	hints := [][2]string{{"enter", "open here"}, {"w", "new window"}, {"o", "open folder"}, {"d", "forget"}, {"q", "quit"}}
-	if m.embedded { // inside a project window every project opens in a window of its own
-		hints = [][2]string{{"enter", "new window"}, {"o", "open folder"}, {"d", "forget"}, {"q", "close"}}
+	hints := [][2]string{{"enter", "open"}, {"w", "new window"}, {"o", "open folder"}, {"d", "forget"}, {"q", "quit"}}
+	if m.embedded {
+		hints = [][2]string{{"enter", "open"}, {"o", "open folder"}, {"d", "forget"}, {"q", "close"}}
 	}
 	for _, h := range hints {
 		result.command(h[0], h[1], len(m.entries) > 0 || h[0] == "o" || h[0] == "q", m.theme)

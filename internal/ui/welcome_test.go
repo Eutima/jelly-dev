@@ -53,13 +53,17 @@ func welcomeFixture(t *testing.T) (tea.Model, *WelcomeOutcome, *[]string, *[]str
 func TestWelcome_ListsProjectsAndOpensSelectedOne(t *testing.T) {
 	model, outcome, _, _, entries := welcomeFixture(t)
 	view := stripANSI(model.View())
-	for _, want := range []string{"Recent projects", "alpha", "beta", "2 h ago", "[enter] open here", "[w] new window"} {
+	for _, want := range []string{"Recent projects", "alpha", "beta", "2 h ago", "[enter] open", "[w] new window"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view lacks %q:\n%s", want, view)
 		}
 	}
-	_, cmd := welcomeKeys(model, "j", "enter")
-	if outcome.Path != entries[1].Path || !isQuit(cmd) {
+	model, _ = welcomeKeys(model, "j", "enter")
+	if view := stripANSI(model.View()); !strings.Contains(view, "Open beta in a new window?") || outcome.Path != "" {
+		t.Fatalf("enter must ask where to open it:\n%s", view)
+	}
+	_, cmd := welcomeKeys(model, "n") // in this window
+	if outcome.Path != entries[1].Path || outcome.NewWindow || !isQuit(cmd) {
 		t.Fatalf("outcome %q", outcome.Path)
 	}
 }
@@ -98,18 +102,87 @@ func TestWelcome_OpensTypedFolder(t *testing.T) {
 	if len(*windows) != 1 || (*windows)[0] != target {
 		t.Fatalf("windows %v", *windows)
 	}
-	model, cmd := welcomeKeys(model, "o")
-	model, cmd = welcomeKeys(model, append(strings.Split(target, ""), "enter")...)
+	model, _ = welcomeKeys(model, "o")
+	model, _ = welcomeKeys(model, append(strings.Split(target, ""), "enter")...)
+	model, cmd := welcomeKeys(model, "n")
 	if outcome.Path != target || !isQuit(cmd) {
 		t.Fatalf("outcome %q", outcome.Path)
 	}
 }
 
-func TestWelcome_RefusesMissingFolder(t *testing.T) {
+func TestWelcome_AsksToCreateAMissingFolder(t *testing.T) {
+	model, outcome, windows, _, _ := welcomeFixture(t)
+	missing := filepath.Join(t.TempDir(), "new", "project")
+	typed := append([]string{"o"}, strings.Split(missing, "")...)
+	model, _ = welcomeKeys(model, append(typed, "enter")...)
+	if view := stripANSI(model.View()); !strings.Contains(view, "Create this folder?") || !strings.Contains(view, "[y] create") {
+		t.Fatalf("a missing folder must be offered for creation:\n%s", view)
+	}
+	if _, err := os.Stat(missing); err == nil {
+		t.Fatal("nothing is created before the answer")
+	}
+	model, _ = welcomeKeys(model, "n") // no: back to the prompt, nothing made
+	if _, err := os.Stat(missing); err == nil || !strings.Contains(stripANSI(model.View()), "Open folder: "+missing) {
+		t.Fatalf("no must keep the prompt and create nothing:\n%s", model.View())
+	}
+	model, _ = welcomeKeys(model, "enter", "enter") // an enter does not create it
+	if _, err := os.Stat(missing); err == nil {
+		t.Fatal("only y creates a folder")
+	}
+	model, _ = welcomeKeys(model, "y") // yes: the folder is made, then the window question comes
+	if info, err := os.Stat(missing); err != nil || !info.IsDir() {
+		t.Fatalf("yes must create the folder: %v", err)
+	}
+	if view := stripANSI(model.View()); !strings.Contains(view, "in a new window?") || outcome.Path != "" {
+		t.Fatalf("after creating it the window question follows:\n%s", view)
+	}
+	_, cmd := welcomeKeys(model, "y") // in a new window
+	if len(*windows) != 1 || (*windows)[0] != missing || isQuit(cmd) {
+		t.Fatalf("windows %v", *windows)
+	}
+}
+
+func TestWelcome_CtrlWOnAMissingFolderCreatesItAndOpensTheWindow(t *testing.T) {
+	model, _, windows, _, _ := welcomeFixture(t)
+	missing := filepath.Join(t.TempDir(), "made")
+	typed := append([]string{"o"}, strings.Split(missing, "")...)
+	model, _ = welcomeKeys(model, append(typed, "ctrl+w", "y")...)
+	if _, err := os.Stat(missing); err != nil || len(*windows) != 1 || (*windows)[0] != missing {
+		t.Fatalf("created %v windows %v\n%s", err, *windows, model.View())
+	}
+}
+
+func TestWelcome_RefusesAFileAndAnEmptyPath(t *testing.T) {
 	model, outcome, _, _, _ := welcomeFixture(t)
-	model, _ = welcomeKeys(model, "o", "/", "n", "o", "p", "e", "enter")
-	if outcome.Path != "" || !strings.Contains(stripANSI(model.View()), "E344") {
-		t.Fatalf("outcome %q\n%s", outcome.Path, model.View())
+	file := filepath.Join(t.TempDir(), "file.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	model, _ = welcomeKeys(model, append(append([]string{"o"}, strings.Split(file, "")...), "enter")...)
+	if outcome.Path != "" || !strings.Contains(stripANSI(model.View()), "is not a directory") {
+		t.Fatalf("a file is no project:\n%s", model.View())
+	}
+	model, _ = pressKey(model, tea.KeyCtrlU)
+	model, _ = pressKey(model, tea.KeyEnter)
+	if !strings.Contains(stripANSI(model.View()), "E344") {
+		t.Fatalf("an empty path is refused:\n%s", model.View())
+	}
+}
+
+func TestWelcome_EscapeCancelsTheWindowQuestion(t *testing.T) {
+	model, outcome, windows, _, _ := welcomeFixture(t)
+	model, _ = welcomeKeys(model, "enter", "esc")
+	if outcome.Path != "" || len(*windows) != 0 || strings.Contains(stripANSI(model.View()), "in a new window?") {
+		t.Fatalf("esc must go back to the list: %q %v", outcome.Path, *windows)
+	}
+}
+
+func TestWelcome_OpensHereWithoutAskingWhenThereAreNoWindows(t *testing.T) {
+	model, outcome := NewWelcomeModel([]project.Entry{{Path: t.TempDir()}}, nil, nil)
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 90, Height: 14})
+	_, cmd := welcomeKeys(updated, "enter")
+	if outcome.Path == "" || !isQuit(cmd) {
+		t.Fatal("without windows there is nothing to ask")
 	}
 }
 
@@ -138,7 +211,11 @@ func TestWelcome_ShowsHintWithoutProjectsAndFitsScreen(t *testing.T) {
 
 func TestWelcome_ClickOpensProject(t *testing.T) {
 	model, outcome, _, _, entries := welcomeFixture(t)
-	updated, cmd := model.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: 4})
+	updated, _ := model.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: 4})
+	if !strings.Contains(stripANSI(updated.View()), "Open beta in a new window?") {
+		t.Fatalf("a click must ask where to open the project:\n%s", updated.View())
+	}
+	updated, cmd := welcomeKeys(updated, "n")
 	if outcome.Path != entries[1].Path || !isQuit(cmd) {
 		t.Fatalf("outcome %q (%v)", outcome.Path, updated.View())
 	}
@@ -242,7 +319,8 @@ func TestWelcome_CompletesFolderWithTab(t *testing.T) {
 	if got := stripANSI(model.View()); !strings.Contains(got, "Open folder: "+root+"/alpine/█") {
 		t.Fatalf("shift+tab walks backwards and wraps:\n%s", got)
 	}
-	model, cmd := pressKey(model, tea.KeyEnter)
+	model, _ = pressKey(model, tea.KeyEnter)
+	model, cmd := welcomeKeys(model, "n")
 	if outcome.Path != root+"/alpine" || !isQuit(cmd) {
 		t.Fatalf("outcome %q", outcome.Path)
 	}
@@ -259,7 +337,8 @@ func TestWelcome_ListsFoldersWhileTypingAndChoosesWithArrows(t *testing.T) {
 	}
 	model, _ = pressKey(model, tea.KeyDown)
 	model, _ = pressKey(model, tea.KeyDown)
-	model, cmd := pressKey(model, tea.KeyEnter)
+	model, _ = pressKey(model, tea.KeyEnter)
+	model, cmd := welcomeKeys(model, "n")
 	if outcome.Path != root+"/two" || !isQuit(cmd) {
 		t.Fatalf("outcome %q", outcome.Path)
 	}
@@ -282,5 +361,24 @@ func TestWelcome_TypingAgainRefreshesMatches(t *testing.T) {
 	model, _ = pressKey(model, tea.KeyTab)
 	if view := stripANSI(model.View()); !strings.Contains(view, "! No fold") {
 		t.Fatalf("tab without matches must say so:\n%s", view)
+	}
+}
+
+func TestWelcome_EscapeFromTheWindowQuestionComesBackToThePrompt(t *testing.T) {
+	model, outcome, _, _, _ := welcomeFixture(t)
+	target, _ := filepath.EvalSymlinks(t.TempDir())
+	model, _ = welcomeKeys(model, append(append([]string{"o"}, strings.Split(target, "")...), "enter", "esc")...)
+	if view := stripANSI(model.View()); !strings.Contains(view, "[tab] complete") || strings.Contains(view, "in a new window?") || outcome.Path != "" {
+		t.Fatalf("esc must go back to the prompt:\n%s", view)
+	}
+}
+
+func TestWelcome_CtrlWOnAMissingFolderWithoutWindowsCreatesNothing(t *testing.T) {
+	model, _ := NewWelcomeModel(nil, nil, nil)
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 90, Height: 14})
+	missing := filepath.Join(t.TempDir(), "never")
+	updated, _ = welcomeKeys(updated, append(append([]string{"o"}, strings.Split(missing, "")...), "ctrl+w")...)
+	if _, err := os.Stat(missing); err == nil || strings.Contains(stripANSI(updated.View()), "Create this folder?") {
+		t.Fatalf("no window, no folder:\n%s", updated.View())
 	}
 }

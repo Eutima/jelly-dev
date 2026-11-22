@@ -159,16 +159,28 @@ func TestProject_ListsRecentProjectsAndSwitchesToChosenOne(t *testing.T) {
 			t.Fatalf("%s must open the project list", name)
 		}
 		view := stripANSI(model.View())
-		for _, want := range []string{"Recent projects", filepath.Base(fx.other), filepath.Base(fx.third), "[enter] new window"} {
+		for _, want := range []string{"Recent projects", filepath.Base(fx.other), filepath.Base(fx.third), "[enter] open"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("%s: list lacks %q:\n%s", name, want, view)
 			}
 		}
 	}
 	model, _ := projectKeys(fx.model, "P")
-	model, _ = projectKeys(model, "j", "enter") // the second entry
+	model, _ = projectKeys(model, "j", "enter") // the second entry: the picker asks where
+	if model.picker == nil || len(fx.windows) != 0 || !strings.Contains(stripANSI(model.View()), "in a new window?") {
+		t.Fatalf("enter must ask where to open the chosen project:\n%s", model.View())
+	}
+	model, _ = projectKeys(model, "y")
 	if model.picker != nil || model.Root() != fx.root || len(fx.windows) != 1 || fx.windows[0] != fx.other {
-		t.Fatalf("enter must open the chosen project in a new window: root %q windows %v picker %v", model.Root(), fx.windows, model.picker)
+		t.Fatalf("yes must open the chosen project in a new window: root %q windows %v picker %v", model.Root(), fx.windows, model.picker)
+	}
+}
+
+func TestProject_PickerNoOpensTheProjectInThisWindow(t *testing.T) {
+	fx := newSwitchFixture(t)
+	model, _ := projectKeys(fx.model, "P", "j", "enter", "n")
+	if model.picker != nil || model.Root() != fx.other || len(fx.windows) != 0 {
+		t.Fatalf("no must switch this window: root %q windows %v", model.Root(), fx.windows)
 	}
 }
 
@@ -206,7 +218,7 @@ func TestProject_PickerOpensNewWindowForgetsAndTypesFolder(t *testing.T) {
 	for _, r := range fx.third {
 		model, _ = projectKeys(model, string(r))
 	}
-	model, _ = projectKeys(model, "enter")
+	model, _ = projectKeys(model, "enter", "y")
 	if model.Root() != fx.root || model.picker != nil || len(fx.windows) != 2 || fx.windows[1] != fx.third {
 		t.Fatalf("a typed folder must open in a new window: %q %v", model.Root(), fx.windows)
 	}
@@ -229,5 +241,14 @@ func TestProject_PickerWithoutRecentHookShowsHintAndFitsScreen(t *testing.T) {
 				t.Fatalf("size %v: line %d is %d wide", size, i, lipgloss.Width(line))
 			}
 		}
+	}
+}
+
+func TestProject_PickerWithoutWindowHookOpensTheProjectHere(t *testing.T) {
+	fx := newSwitchFixture(t)
+	fx.model.hooks.NewWindow = nil
+	model, _ := projectKeys(fx.model, "P", "j", "enter")
+	if model.picker != nil || model.Root() != fx.other {
+		t.Fatalf("without windows the project opens here and nothing is asked: root %q picker %v", model.Root(), model.picker)
 	}
 }
