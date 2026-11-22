@@ -111,6 +111,10 @@ func startProcess(command *exec.Cmd, dir string, width, height int) (process, er
 	}
 	startup := windows.StartupInfoEx{ProcThreadAttributeList: attributes.List()}
 	startup.StartupInfo.Cb = uint32(unsafe.Sizeof(startup))
+	// With the standard handles named in the flags (all of them 0), the shell takes the pseudo console as its console. Without this a
+	// shell started by a program whose own standard handles are redirected (a test run, a pipe) writes to those handles instead and
+	// the screen stays empty.
+	startup.StartupInfo.Flags = windows.STARTF_USESTDHANDLES
 	var info windows.ProcessInformation
 	// created suspended, so that it is in the job before it can start a program of its own
 	flags := uint32(windows.EXTENDED_STARTUPINFO_PRESENT | windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_SUSPENDED)
