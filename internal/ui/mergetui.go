@@ -109,8 +109,9 @@ type MergeModel struct {
 	saveFailed    bool // the last save attempt failed and nothing changed since
 	dirty         bool // result differs from what was last saved
 	quitArmed     bool
-	embedded      bool // shown inside another model: quitting sets done instead of ending the program
-	done          bool // an embedded viewer was left
+	embedded      bool          // shown inside another model: quitting sets done instead of ending the program
+	done          bool          // an embedded viewer was left
+	palette       *mergePalette // the list of all actions, nil when closed
 }
 
 // NewMergeModel builds the viewer. save is called with the result lines when the user saves; the
@@ -268,7 +269,7 @@ func (m MergeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // allResolvedNotice is shown when the last open conflict was resolved.
-const allResolvedNotice = "✓ All conflicts resolved - press s to save"
+const allResolvedNotice = "✓ All conflicts resolved - press ctrl+s to save"
 
 // announceAllResolved adds the completion message to the status line, after the message of the action that
 // resolved the last conflict (unless that message says it already).
@@ -288,6 +289,9 @@ func (m MergeModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.clamp()
 	case tea.MouseMsg:
+		if m.palette != nil {
+			return m.updatePalette(msg)
+		}
 		if leftPress(msg) {
 			if keys := m.footerKeys(msg.X, msg.Y); keys != nil {
 				return replay(m, keys)
@@ -305,6 +309,9 @@ func (m MergeModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.applyAssistant(msg)
 		m.clamp()
 	case tea.KeyMsg:
+		if m.palette != nil {
+			return m.updatePalette(msg)
+		}
 		return m.handleKey(msg)
 	}
 	return m, nil
@@ -327,6 +334,9 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.notice("", false) // a message lives until the next key press
 	if key != "q" && key != "esc" && key != "ctrl+c" && key != "ctrl+d" {
 		m.quitArmed = false
+	}
+	if key == paletteKey || key == "f1" {
+		return m.openPalette()
 	}
 	if m.aiBusy {
 		m.notice("Waiting for the assistant... (q quits)", false)
@@ -390,7 +400,7 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.noWrap = !m.noWrap
 		m.offset = m.firstRowFor(m.offset)
 		m.notice(map[bool]string{true: "Long lines are cut (w wraps them)", false: "Long lines are wrapped (w cuts them)"}[m.noWrap], false)
-	case "s":
+	case "s", "ctrl+s":
 		m.saveResult()
 	}
 	m.clamp()
@@ -410,7 +420,7 @@ func (m MergeModel) quit() (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	m.quitArmed = true
-	m.notice("Unsaved result - press q again (or ctrl+c, ctrl+d) to discard it, or s to save", true)
+	m.notice("Unsaved result - press q again (or ctrl+c, ctrl+d) to discard it, or ctrl+s to save", true)
 	return m, nil
 }
 
@@ -456,7 +466,7 @@ func (m MergeModel) resolvedNotice(chunk int, choice Choice) string {
 	if left := m.Unresolved(); left > 0 {
 		return fmt.Sprintf("%s · %d conflict(s) left", text, left)
 	}
-	return text + " · all conflicts resolved, press s to save"
+	return text + " · all conflicts resolved, press ctrl+s to save"
 }
 
 // nextUnresolved returns the index (into changed) of the next unresolved conflict after the current change.
@@ -525,7 +535,7 @@ func (m *MergeModel) saveResult() {
 	}
 	if err := m.save(m.Result()); err != nil {
 		m.saveFailed = true
-		m.notice("Save failed: "+err.Error()+" - fix the problem and press s to retry", true)
+		m.notice("Save failed: "+err.Error()+" - fix the problem and press ctrl+s to retry", true)
 		return
 	}
 	m.outcome.Saved = true

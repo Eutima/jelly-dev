@@ -94,12 +94,3 @@ func (m MergeModel) applyAssistant(msg aiDoneMsg) MergeModel {
 	}
 	return m
 }
-
-// assistantHints are the shortcut hints of the installed assistants.
-func (m MergeModel) assistantHints() []hint {
-	hints := make([]hint, 0, len(m.assistants))
-	for _, assistant := range m.assistants {
-		hints = append(hints, hint{assistant.Key, assistant.Name, m.Unresolved() > 0 && !m.aiBusy, 1})
-	}
-	return hints
-}

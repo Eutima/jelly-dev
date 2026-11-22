@@ -414,7 +414,7 @@ func TestMergeView_ShowsPositionAndProgress_WhenConflictSelected(t *testing.T) {
 	model = mergePress(model, "n")
 	view := model.View()
 	for _, want := range []string{"Jelly Dev", "OURS", "RESULT", "THEIRS", "2 conflicts remaining", "Conflict 1 of 2 · unresolved",
-		"0/2 resolved", "Resolve conflict 1/2", "[→] ours", "● Modified"} {
+		"0/2 resolved", "[→] ours", "● Modified"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view lacks %q:\n%s", want, view)
 		}
@@ -494,11 +494,11 @@ func TestMergeView_GivesResultPaneMostWidth_WhenWide(t *testing.T) {
 
 func TestMergeView_ShowsUnavailableActionsAsFaint_WhenNothingSelected(t *testing.T) {
 	model, _ := newMergeTestModel(baseText, oursText, theirsText, &saver{})
-	if view := model.View(); !strings.Contains(view, "save (1 left)") || !strings.Contains(view, "Press [n] to jump") {
+	if view := model.View(); !strings.Contains(view, "[alt+p] commands") {
 		t.Fatalf("contextual hints expected:\n%s", view)
 	}
 	model = mergePress(model, "n", "n", "t")
-	if view := model.View(); !strings.Contains(view, "all conflicts resolved, press s to save") {
+	if view := model.View(); !strings.Contains(view, "all conflicts resolved, press ctrl+s to save") {
 		t.Fatalf("completion message expected:\n%s", view)
 	}
 }
@@ -782,7 +782,7 @@ func TestMergeView_ShowsAllConflictsResolved_WhenLastConflictResolvedByAnyAction
 			model = updated.(MergeModel)
 		}
 		if view := model.View(); model.Unresolved() != 0 || !strings.Contains(strings.ToLower(view), "all conflicts resolved") ||
-			!strings.Contains(view, "press s to save") {
+			!strings.Contains(view, "press ctrl+s to save") {
 			t.Errorf("%s: message expected (unresolved %d):\n%s", name, model.Unresolved(), view)
 		}
 	}

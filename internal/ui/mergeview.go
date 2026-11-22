@@ -231,6 +231,9 @@ func (m MergeModel) View() string {
 		out.WriteByte('\n')
 	}
 	out.WriteString(m.footer())
+	if m.palette != nil {
+		return m.palette.picker.overlay(out.String(), m.width, m.height)
+	}
 	return out.String()
 }
 
@@ -432,37 +435,6 @@ func (m MergeModel) progressLine() string {
 	return leftRight(left, right, m.width, m.theme.Header)
 }
 
-// hint is one shortcut of the footer.
-type hint struct {
-	key, label string
-	enabled    bool
-	drop       int // 0 is always kept; higher numbers are dropped first when the terminal is too narrow
-}
-
-func (m MergeModel) hints() [][]hint {
-	_, _, onLine := m.resultLineAt(m.cursor)
-	selected := m.current >= 0
-	save := hint{"s", "save", m.Unresolved() == 0, 0}
-	if left := m.Unresolved(); left > 0 {
-		save.label = fmt.Sprintf("save (%d left)", left)
-	}
-	view := []hint{{"↑↓", "move", true, 2}, {"n/p", "change", true, 0}, {"w", "wrap", true, 2}}
-	if m.width < threePaneWidth {
-		view = append(view, hint{"v", "pane", true, 0})
-	}
-	resolve := []hint{
-		{"→", "ours", selected, 0}, {"←", "theirs", selected, 0}, {"b", "both", selected, 0}, {"x", "ignore", selected && m.unresolvedSelected(), 1}, {"⌫", "cancel", selected && m.choiceMade(), 1},
-		{"r", "base", selected, 1}, {"m", "auto-resolve", true, 0}, {"ctrl+o", "all ours", m.Unresolved() > 0, 1}, {"ctrl+t", "all theirs", m.Unresolved() > 0, 1}, {"e", "edit", len(m.rows) > 0, 0},
-	}
-	resolve = append(resolve, m.assistantHints()...)
-	return [][]hint{
-		view,
-		resolve,
-		{{"d", "del", onLine, 2}, {"i", "ins", len(m.rows) > 0, 2}},
-		{{"u", "undo", len(m.history) > 0, 0}, save, {"q", "quit", true, 0}},
-	}
-}
-
 // footerMaxLines is the number of lines each of the two footer bars may take: a second one only when the terminal is high
 // enough to spare it.
 func (m MergeModel) footerMaxLines() int {
@@ -472,43 +444,8 @@ func (m MergeModel) footerMaxLines() int {
 	return 1
 }
 
-// shortcutBar builds the shortcut groups; the hints with a higher drop number are left out when maxDrop is smaller.
-func (m MergeModel) shortcutBar(maxDrop int) *bar {
-	result := &bar{}
-	result.add(barPart{" ", m.theme.Footer})
-	first := true
-	for _, group := range m.hints() {
-		shown := false
-		for _, h := range group {
-			if h.drop > maxDrop {
-				continue
-			}
-			if !shown && !first {
-				result.add(barPart{"│ ", m.theme.Footer.Faint(true)})
-			}
-			shown, first = true, false
-			result.command(h.key, h.label, h.enabled, m.theme)
-		}
-	}
-	return result
-}
-
-// shortcutRows are the shortcuts as wrapped bars. The less important hints are left out until the rest fits with its labels
-// on the lines the footer may take (commands that do not fit on a line go on the next one); when even the important ones do
-// not fit like that, they lose their labels, the last ones first.
-func (m MergeModel) shortcutRows() []*bar {
-	maxLines := m.footerMaxLines()
-	var result *bar
-	for maxDrop := 2; maxDrop >= 0; maxDrop-- {
-		result = m.shortcutBar(maxDrop)
-		if len(result.layout(make([]int, len(result.ops)), m.width)) <= maxLines {
-			break
-		}
-	}
-	return result.wrap(m.width, maxLines)
-}
-
-// actionRows is the first part of the footer: a message, the editor status or the actions for the selected change.
+// actionRows is the footer: a message, the editor status or the one line of main actions; every other action is in the
+// command palette.
 func (m MergeModel) actionRows() []*bar {
 	footer := m.theme.Footer
 	maxLines := m.footerMaxLines()
@@ -520,45 +457,29 @@ func (m MergeModel) actionRows() []*bar {
 		return text("! "+m.status, m.theme.Header.Background(footer.GetBackground()))
 	case m.status != "":
 		return text(m.status, m.theme.Header)
-	case m.current < 0 && m.Unresolved() > 0:
-		return text("Press [n] to jump to the next conflict, [m] to auto-resolve the simple ones", footer)
-	case m.current < 0 && m.dirty:
-		return text("✓ All conflicts resolved · press [s] to save, or [n] to review the changes", footer.Bold(true))
-	case m.current < 0:
-		return text("✓ Result saved · press [q] to quit", footer.Bold(true))
 	}
 	return m.actionBar().wrap(m.width, maxLines)
 }
 
-// actionBar builds the actions for the selected change (m.current >= 0).
+// actionBar is the single footer line: the pick actions and the way to the command palette.
 func (m MergeModel) actionBar() *bar {
-	footer := m.theme.Footer
 	result := &bar{}
-	key := func(k, label string) {
-		result.command(k, label, true, m.theme)
+	selected := m.current >= 0
+	result.add(barPart{" ", m.theme.Footer})
+	chunk := 0
+	if selected {
+		chunk = m.changed[m.current]
 	}
-	title := "Resolve change"
-	if number := m.conflictNumber(m.changed[m.current]); number > 0 {
-		title = fmt.Sprintf("Resolve conflict %d/%d", number, m.ConflictCount())
-	}
-	result.add(barPart{" " + title + "   ", m.theme.Header})
-	chunk := m.changed[m.current]
 	mark := func(side int) string {
-		if m.sideIncluded(chunk, side) {
+		if selected && m.sideIncluded(chunk, side) {
 			return " ✓"
 		}
 		return ""
 	}
-	for _, k := range [][2]string{{"→", "ours" + mark(paneOurs)}, {"←", "theirs" + mark(paneTheirs)}, {"b", "both"}, {"e", "edit"}} {
-		key(k[0], k[1])
-	}
-	if m.stateOf(chunk) == stateUnresolved {
-		key("x", "ignore")
-	}
-	if m.choices[chunk] != ChoiceAuto {
-		key("⌫", "cancel")
-	}
-	result.hint(barPart{" [o/t/r] pick+next  [m] auto-resolve", footer})
+	result.command("→", "ours"+mark(paneOurs), selected, m.theme)
+	result.command("←", "theirs"+mark(paneTheirs), selected, m.theme)
+	result.command("e", "edit", len(m.rows) > 0, m.theme)
+	result.command(paletteKey, "commands", true, m.theme)
 	return result
 }
 
@@ -567,7 +488,7 @@ func (m MergeModel) footerBars() []*bar {
 	if m.editing {
 		return append(m.actionRows(), m.editorBar().wrap(m.width, m.footerMaxLines())...)
 	}
-	return append(m.actionRows(), m.shortcutRows()...)
+	return m.actionRows()
 }
 
 func (m MergeModel) footer() string {
@@ -586,7 +507,7 @@ func (m MergeModel) compactFooter() string {
 	badge.style = m.theme.Footer
 	summary := fmt.Sprintf(" %d left · ", m.Unresolved())
 	return renderSegments([]barPart{
-		{summary, m.theme.Footer}, badge, {"   [n/p] [o] [t] [b] [e] [u] [s] [q]", m.theme.Footer},
+		{summary, m.theme.Footer}, badge, {"   [→] [←] [e] [" + paletteKey + "]", m.theme.Footer},
 	}, m.width, m.theme.Footer)
 }
 

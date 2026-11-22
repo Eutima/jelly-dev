@@ -81,27 +81,20 @@ func plainText(view string) string {
 
 func TestMergeFooter_ClicksRunTheCommands(t *testing.T) {
 	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
-	merged := clickOn(t, model, model.View(), "[n/p] change").(MergeModel)
-	if merged.current < 0 {
-		t.Fatal("[n/p] must select the first change")
-	}
+	merged := mergePress(model, "n")
 	merged = clickOn(t, merged, merged.View(), "[→] ours").(MergeModel)
 	if merged.Result()[1] != "X" {
 		t.Fatalf("[→] must apply ours: %v", merged.Result())
 	}
-	merged = clickOn(t, merged, merged.View(), "[u] undo").(MergeModel)
-	if merged.Unresolved() != 2 {
-		t.Fatalf("[u] must undo, unresolved %d", merged.Unresolved())
-	}
-	merged = clickOn(t, merged, merged.View(), "[b] both").(MergeModel)
-	if got := merged.Result(); merged.Unresolved() != 1 || got[1] != "X" || got[2] != "Y" {
-		t.Fatalf("[b] must take both sides: %v unresolved %d", got, merged.Unresolved())
+	merged = clickOn(t, model, model.View(), "[alt+p] commands").(MergeModel)
+	if merged.palette == nil {
+		t.Fatal("[alt+p] must open the command palette")
 	}
 }
 
 func TestMergeFooter_DisabledCommandsDoNothing(t *testing.T) {
 	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
-	for _, command := range []string{"[→] ours", "[s] save", "[u] undo"} { // nothing selected, unresolved, nothing to undo
+	for _, command := range []string{"[→] ours"} { // nothing selected, unresolved, nothing to undo
 		after := clickOn(t, model, model.View(), command).(MergeModel)
 		if after.Unresolved() != 2 || len(after.history) != 0 || after.outcome.Saved {
 			t.Errorf("%s must be inert", command)
@@ -441,36 +434,52 @@ func TestGitView_FootersWrapAndKeepTheViewHeight(t *testing.T) {
 	}
 }
 
-func TestMergeFooter_WrapsInANarrowHighTerminal(t *testing.T) {
+func TestMergeFooter_IsOneLine_WithTheMainActionsAndThePalette(t *testing.T) {
 	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
-	for _, width := range []int{40, 60, 90} {
+	model = mergePress(model, "n")
+	for _, width := range []int{60, 90} {
 		sized, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: 24})
 		view := sized.View()
 		if got := len(strings.Split(view, "\n")); got != 24 {
 			t.Fatalf("width %d: the view has %d lines, want 24", width, got)
 		}
-		footer := footerText(view, 4)
-		for _, key := range []string{"[n/p]", "[m]", "[e]", "[u]", "[s]", "[q]"} {
+		footer := footerText(view, 1)
+		for _, key := range []string{"[→]", "[←]", "[e]", "[alt+p]"} {
 			if !strings.Contains(footer, key) {
 				t.Errorf("width %d: %s is gone from the footer:\n%s", width, key, footer)
 			}
 		}
+		if footer = footerText(view, 2); strings.Contains(strings.SplitN(footer, "\n", 2)[0], "[→]") {
+			t.Errorf("width %d: the footer takes more than one line:\n%s", width, footer)
+		}
 	}
 }
 
-func TestMergeFooter_CommandOnTheSecondLineIsClickable(t *testing.T) {
+func TestMergePalette_RunsTheChosenAction(t *testing.T) {
 	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
-	sized, _ := model.Update(tea.WindowSizeMsg{Width: 40, Height: 24})
-	view := sized.View()
-	lines := strings.Split(plainText(view), "\n")
-	// the quit command is the last one: it sits on the last line when the shortcuts wrap
-	y := len(lines) - 1
-	x := strings.Index(lines[y], "[q]")
-	if x < 0 {
-		t.Fatalf("[q] is not on the last footer line: %q", lines[y])
+	model = mergePress(model, "n")
+	opened, _ := model.Update(keyMsg(paletteKey))
+	palette := opened.(MergeModel)
+	if palette.palette == nil || !strings.Contains(plainText(palette.View()), "Take both") {
+		t.Fatalf("the palette must list the actions:\n%s", palette.View())
 	}
-	if keys := sized.(MergeModel).footerKeys(len([]rune(lines[y][:x])), y); len(keys) == 0 {
-		t.Fatal("[q] on the wrapped line must be clickable")
+	for _, r := range "take both" {
+		opened, _ = opened.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	done, _ := opened.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	merged := done.(MergeModel)
+	if merged.palette != nil || merged.Unresolved() != 1 || merged.Result()[1] != "X" || merged.Result()[2] != "Y" {
+		t.Fatalf("both sides must be taken: %v unresolved %d", merged.Result(), merged.Unresolved())
+	}
+}
+
+func TestMergeCtrlS_Saves(t *testing.T) {
+	save := &saver{}
+	model, _ := newMergeTestModel(baseText, oursText, theirsText, save)
+	model = mergePress(model, "n", "n", "t")
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	if !updated.(MergeModel).outcome.Saved {
+		t.Fatal("ctrl+s must save the result")
 	}
 }
 

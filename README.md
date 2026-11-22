@@ -173,8 +173,11 @@ Keys in the merge view (conflicts):
 | `e` / `enter`, `i`, `d` | open the vim-style editor on the change under the cursor (`i`: on a new line below), delete the line |
 | `w` | wrap long lines (default) or cut them with `…` |
 | `u` | undo |
-| `s` | save (when every conflict is resolved) |
+| `ctrl+s` (or `s`) | save (when every conflict is resolved) |
 | `q` | quit |
+| `alt+p` (or `f1`) | command palette: every action above in a searchable list |
+
+The footer of the merge view is one line, `[→] ours  [←] theirs  [e] edit  [alt+p] commands`; everything else is in the palette.
 
 The commands in the footers are written as `[key] action` and can be clicked (when they are not dimmed): a click does what the key
 does. This works in the diff, git, directory and merge views, and for the editor commands (`[:w]`, `[:q]`, ...); the one-line
@@ -218,8 +221,7 @@ drop out, the first ones stay.
 **Narrow terminals**: in every view (project window, diff, git, merge, welcome and search) the footer wraps onto a second line when
 the commands do not fit (labels shrink to the `[key]` and then the last commands drop out only when two lines are not enough), and
 long messages (a file path, an error) wrap at the spaces over up to three lines (two in the other views) instead of ending in "…". The
-merge view keeps its most important shortcuts and only spends a second line per footer bar when the terminal is at least 14 lines
-high; below 10 lines it shows its single compact line.
+merge view has one footer line and a compact one below 10 lines.
 
 **Unsaved changes**: closing a tab or switching project asks *Save / Discard / Cancel* (`s`, `d`, `c`,
 `←/→` and `enter`, or a click).
