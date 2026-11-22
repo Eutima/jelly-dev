@@ -115,7 +115,7 @@ func main() {
 		busy: newBusy(os.Stderr, stderrIsTerminal()), workDir: workDir, detectAssistants: ai.Detect}
 	env.newTools = func(dir string) languageTools { return newInstaller(dir, env) }
 	shellPath := os.Getenv("PATH") // before EnsurePath adds folders: the hint below is about the PATH the user's shell has
-	tools.EnsurePath() // tools installed below ~/.local/bin and the Go bin folder are found even when the shell's PATH lacks them
+	tools.EnsurePath()             // tools installed below ~/.local/bin and the Go bin folder are found even when the shell's PATH lacks them
 	code := run(os.Args[1:], os.Stdout, os.Stderr, env)
 	exe, _ := os.Executable()
 	fmt.Fprint(os.Stderr, exitHint(code, exe, shellPath, runtime.GOOS, stderrIsTerminal())) // after the window closed, where the message stays visible
