@@ -194,11 +194,16 @@ file in its project (the git root, else its folder); a name that does not exist 
 projects, and for each one the file and cursor that were open, is kept in `<user config dir>/jd/projects.json`
 (`JD_CONFIG_DIR` changes the folder), so the next `jd` continues where you stopped.
 
-**Top bar**: the first line of the project window has the buttons *Project* (`ctrl+p`), *Terminal* (`ctrl+t`) and, in a git
-repository only, *Diff* (the git changes of the project as in `jd git`, `alt+d`, `D` in the tree or `:diff`; `q` returns to the editor; save
-first, the diff shows what is on disk). `ctrl+p` and `ctrl+t` work in the tree and in the editor's normal mode (`ctrl+o` is the way
+**Command palette**: `alt+p` (or `f1`, or a click on *Commands* in the top bar; the same key closes it again) opens a searchable list of
+all actions with their shortcuts: switch project, terminal, git diff, find file, search text, save, format, `gd`/`gr`, tabs, focus, theme,
+tools, quit. Type to narrow it, `enter` or a click runs the entry, `esc` closes it. The bars show nothing else: the top bar has the project,
+the branch and *Commands*, and the footers only the mode and position and `[alt+p] commands`. (`ctrl+shift+p` cannot be used: a terminal
+sends it as `ctrl+p`, and Windows Terminal keeps it for its own palette.)
+
+**Top bar and shortcuts**: *Diff* shows the git changes of the project as in `jd git` (`alt+d`, `D` in the tree or `:diff`; `q` returns to
+the editor; save first, the diff shows what is on disk). `ctrl+p` and `ctrl+t` work in the tree and in the editor's normal mode (`ctrl+o` is the way
 back after `gd`/`gr`). *Terminal* opens a shell in the project in a panel under the editor, like VS Code. Everything you type goes
-to the shell; `ctrl+]` (or a click on the editor) gives the focus back, `ctrl+t` or the *Terminal* button hides the panel (the shells
+to the shell; `ctrl+]` (or a click on the editor) gives the focus back, `ctrl+t` or the palette entry hides the panel (the shells
 keep running). The panel has **tabs**, one shell each: `alt+t` or `[+]` (or `:terminal new`) opens another, a click or `alt+1` … `alt+9`
 chooses one, `alt+w` or `[×]` ends the shown one; a shell that exits closes its tab, the last one takes the panel with it. Windows has no embedded terminal yet: there the shell runs in place of the window until
 you `exit`.

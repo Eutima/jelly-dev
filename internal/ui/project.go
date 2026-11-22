@@ -86,6 +86,7 @@ type ProjectModel struct {
 	knownFiles    []string            // the file list of the last search, shown at once the next time
 	name          *namePrompt         // the prompt for a new file name, nil when none is open
 	dlg           *unsavedDialog      // the question about unsaved changes, nil when none is open
+	palette       *commandPalette     // the list of all actions, nil when closed
 	pick          *formatPick         // the list of formatters to choose from, nil when closed
 	langs         *languagePick       // the list of languages (:addlang), nil when closed
 	terms         []*terminal.Session // the shells (tabs) of the panel under the editor
@@ -311,6 +312,14 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.openFormatPicker(msg)
 	case languageAddedMsg:
 		return m.languageAdded(msg)
+	case noticeExpiredMsg:
+		if m.status == msg.text {
+			m.notice("", false)
+		}
+		if m.editor.status == msg.text {
+			m.editor.notice("", false)
+		}
+		return m, nil
 	case externalDoneMsg:
 		if msg.err != nil {
 			m.say(fmt.Sprintf("%s: %v", msg.what, msg.err), true)
@@ -462,6 +471,9 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.name != nil {
 		return m.nameKey(msg)
 	}
+	if m.palette != nil {
+		return m.updatePalette(msg)
+	}
 	if m.pick != nil {
 		return m.updateFormatPicker(msg)
 	}
@@ -477,7 +489,10 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.focus == focusTerminal && m.termPanelHeight() > 0 {
 		return m.terminalKey(msg)
 	}
-	if msg.String() == "alt+d" { // the diff, from the tree and from the editor alike
+	switch msg.String() {
+	case paletteKey, "f1": // all actions, from the tree and from the editor alike
+		return m.openPalette()
+	case "alt+d":
 		return m.showDiff()
 	}
 	if m.focus == focusTree {
@@ -653,6 +668,8 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 			return m.newTerminal()
 		}
 		return m.openTerminal()
+	case "palette", "commands", "actions":
+		return m.openPalette()
 	case "diff", "changes":
 		return m.showDiff()
 	case "tabnext", "tabn", "bnext", "bn":
@@ -757,6 +774,9 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.name != nil {
 		return m, nil
 	}
+	if m.palette != nil {
+		return m.updatePalette(msg)
+	}
 	if m.pick != nil {
 		return m.updateFormatPicker(msg)
 	}
@@ -823,11 +843,7 @@ func (m ProjectModel) editorOffset() int {
 
 func (m ProjectModel) treeFooterBar() *bar {
 	result := &bar{}
-	result.add(barPart{" ", m.theme.Footer})
-	for _, h := range [][2]string{{"n", "new"}, {"d", "delete"}, {"e", "edit"}} {
-		result.command(h[0], h[1], true, m.theme)
-	}
-	return result
+	return result // no hints: the commands are in the palette, which the top bar offers
 }
 
 // View implements tea.Model.
@@ -847,6 +863,9 @@ func (m ProjectModel) View() string {
 	}
 	if m.name != nil {
 		return m.nameView(screen)
+	}
+	if m.palette != nil {
+		return m.palette.picker.overlay(screen, m.width, m.height)
 	}
 	if m.pick != nil {
 		return m.pick.picker.overlay(screen, m.width, m.height)

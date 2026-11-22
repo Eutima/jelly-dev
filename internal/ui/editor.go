@@ -179,6 +179,9 @@ func (m EditorModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m EditorModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.notice("", false)
+	if m.forwardEx && (msg.String() == paletteKey || msg.String() == "f1") { // the project window opens its palette
+		return m, func() tea.Msg { return ExCommandMsg{Command: "palette"} }
+	}
 	if msg.String() == "ctrl+s" { // like :w, in every mode: the editor stays as it is (an insert stays an insert)
 		m.save("")
 		return m, nil
@@ -446,10 +449,11 @@ func (m EditorModel) footerBar() *bar {
 	}
 	row, col := m.vim.Cursor()
 	result.add(barPart{fmt.Sprintf(" %s  %s%s  %d:%d   ", m.vim.Mode(), name, modified, row+1, col+1), m.theme.Header})
+	if m.forwardEx { // in the project window every action is in the palette, which the top bar offers
+		return result
+	}
 	result.command(":w", "save", true, m.theme)
 	result.command(":q", "quit", true, m.theme)
-	result.command("ctrl+f", "files", m.forwardEx, m.theme)
-	result.command("ctrl+g", "text", m.forwardEx, m.theme)
 	result.command("gd", "def", m.nav != nil, m.theme)
 	result.command("gr", "refs", m.nav != nil, m.theme)
 	result.command(":fmt", "format", m.nav != nil, m.theme)

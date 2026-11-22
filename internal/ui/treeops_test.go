@@ -10,17 +10,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func TestTreeFooter_ShowsOnlyNewDeleteEdit(t *testing.T) {
+func TestTreeFooter_HasNoHints(t *testing.T) {
 	model, _ := newProjectFixture(t, 120, sampleFiles)
 	footer := stripANSI(strings.Join(model.treeFooterRows(model.treeFooterWidth()), "\n"))
-	for _, want := range []string{"[n] new", "[d] delete", "[e] edit"} {
-		if !strings.Contains(footer, want) {
-			t.Errorf("%s missing in the tree footer: %q", want, footer)
-		}
-	}
-	for _, gone := range []string{"[ctrl+p]", "[ctrl+f]", "[ctrl+g]", "[ctrl+t]", "[enter]", "[w]"} {
+	for _, gone := range []string{"[", "commands", "[n]", "[d]", "[e]"} {
 		if strings.Contains(footer, gone) {
-			t.Errorf("%s must not be in the tree footer: %q", gone, footer)
+			t.Errorf("%q must not be in the tree footer: %q", gone, footer)
 		}
 	}
 }

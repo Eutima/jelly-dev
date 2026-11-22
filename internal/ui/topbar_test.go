@@ -9,7 +9,22 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/eutima/jelly-dev/internal/project"
 )
+
+// runPalette runs the action of the command palette with the given label.
+func runPalette(t *testing.T, m ProjectModel, label string) (ProjectModel, tea.Cmd) {
+	t.Helper()
+	for _, action := range m.paletteActions() {
+		if action.label == label {
+			updated, cmd := action.run(m)
+			return updated.(ProjectModel), cmd
+		}
+	}
+	t.Fatalf("no palette action %q", label)
+	return m, nil
+}
 
 // buttonX returns a column inside the top bar button with the given action.
 func buttonX(t *testing.T, m ProjectModel, action string) int {
@@ -28,53 +43,60 @@ func clickBar(m ProjectModel, x int) (ProjectModel, tea.Cmd) {
 	return updated.(ProjectModel), cmd
 }
 
-func TestTopBar_ShowsButtonsOnFirstLine(t *testing.T) {
+func TestTopBar_ShowsOnlyTheCommandsButton(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
-	if first := strings.Split(model.View(), "\n")[0]; strings.Contains(first, "Diff") {
-		t.Fatalf("outside a repository there is no diff button: %q", first)
-	}
 	if err := os.Mkdir(filepath.Join(model.root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	first := strings.Split(model.View(), "\n")[0]
-	for _, label := range []string{"Project", "Terminal", "Diff"} {
-		if !strings.Contains(first, label) {
-			t.Fatalf("top bar lacks %s: %q", label, first)
+	if !strings.Contains(first, "Commands") || !strings.Contains(first, paletteKey) {
+		t.Fatalf("the top bar must offer the palette: %q", first)
+	}
+	for _, gone := range []string{"Project", "Terminal", "Diff"} {
+		if strings.Contains(first, gone) {
+			t.Fatalf("the top bar must not show %s any more: %q", gone, first)
 		}
 	}
 }
 
-func TestTopBar_ProjectButtonOpensPicker(t *testing.T) {
+func TestTopBar_CommandsButtonOpensThePalette(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
-	model, _ = clickBar(model, buttonX(t, model, actionProject))
-	if model.picker == nil {
-		t.Fatal("the project button must open the project list")
+	model, _ = clickBar(model, buttonX(t, model, paletteKey))
+	if model.palette == nil {
+		t.Fatal("a click on the commands button must open the palette")
 	}
 }
 
-func TestTopBar_TerminalButtonRunsShellInProject(t *testing.T) {
+func TestPalette_ProjectActionOpensPicker(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, sampleFiles)
+	model, _ = runPalette(t, model, "Switch project")
+	if model.picker == nil {
+		t.Fatal("the project action must open the project list")
+	}
+}
+
+func TestPalette_TerminalActionRunsShellInProject(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
 	var dir string
 	model.hooks.Terminal = func(d string) *exec.Cmd { dir = d; return exec.Command("true") }
-	model, cmd := clickBar(model, buttonX(t, model, actionTerminal))
+	model, cmd := runPalette(t, model, "Open terminal")
 	if cmd == nil || dir != model.root {
 		t.Fatalf("terminal must start in the project: cmd %v dir %q", cmd != nil, dir)
 	}
 }
 
-func TestTopBar_DiffNeedsGitRepository(t *testing.T) {
+func TestPalette_DiffNeedsGitRepository(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
 	called := false
 	model.hooks.Diff = func(string) *exec.Cmd { called = true; return exec.Command("true") }
-	updated, cmd := model.runProjectCommand("diff")
-	model = updated.(ProjectModel)
+	model, cmd := runPalette(t, model, "Show the git diff")
 	if called || cmd != nil || !model.warn {
 		t.Fatalf("outside a repository the diff must warn: called %v warn %v status %q", called, model.warn, model.status)
 	}
 	if err := os.Mkdir(filepath.Join(model.root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, cmd = clickBar(model, buttonX(t, model, actionDiff)); cmd == nil || !called {
+	if _, cmd = runPalette(t, model, "Show the git diff"); cmd == nil || !called {
 		t.Fatal("in a repository the diff must start")
 	}
 }
@@ -92,29 +114,101 @@ func TestTopBar_ExCommandsAndFailureReported(t *testing.T) {
 	}
 }
 
-func TestEditor_FooterClickInInsertModeRunsCommand(t *testing.T) {
+func TestTopBar_ClickInInsertModeOpensThePaletteWithoutTyping(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
 	model, _ = projectKeys(model, "G", "enter") // opens a file in the editor
 	model, _ = projectKeys(model, "i")
 	before := strings.Join(model.Editor().Lines(), "\n")
-	var x int
-	for _, r := range model.Editor().footerBar().regions {
-		if r.keys[0] == ":" { // :w
-			x = r.from + 1
+	model, _ = clickBar(model, buttonX(t, model, paletteKey))
+	if got := strings.Join(model.Editor().Lines(), "\n"); got != before {
+		t.Fatalf("a click must not type into the text:\n%q\n%q", before, got)
+	}
+	if model.palette == nil {
+		t.Fatal("the click must open the palette, also in insert mode")
+	}
+}
+
+func gitRepoWithCommit(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
-	editorX := model.editorOffset() + x
-	updated, _ := model.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: editorX, Y: topBarHeight + model.bodyHeight() - 1})
+	run("init", "-q", "-b", "main")
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "-A")
+	run("commit", "-q", "-m", "first")
+	return dir
+}
+
+func TestDiff_SaysThereAreNoChangesForThreeSeconds_WhenTheTreeIsClean(t *testing.T) {
+	dir := gitRepoWithCommit(t)
+	model, err := NewProjectModel(dir, "", project.Session{}, ProjectHooks{Diff: func(string) *exec.Cmd {
+		t.Error("with nothing to show the diff view must not open")
+		return exec.Command("true")
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, cmd := model.Update(tea.WindowSizeMsg{Width: 100, Height: 14})
 	model = updated.(ProjectModel)
-	if got := strings.Join(model.Editor().Lines(), "\n"); got != before {
-		t.Fatalf("a footer click must not type into the text:\n%q\n%q", before, got)
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d"), Alt: true})
+	model = updated.(ProjectModel)
+	if cmd == nil || !strings.Contains(stripANSI(model.View()), "No changes") {
+		t.Fatalf("alt+d in a clean tree must say so:\n%s", model.View())
+	}
+	msg, ok := cmd().(noticeExpiredMsg)
+	if !ok {
+		t.Fatal("the message must expire by itself (after noticeDuration)")
+	}
+	if noticeDuration != 3*time.Second {
+		t.Fatalf("the message stays %v, want 3s", noticeDuration)
+	}
+	updated, _ = model.Update(msg)
+	if strings.Contains(stripANSI(updated.(ProjectModel).View()), "No changes") {
+		t.Fatal("after the time the message must be gone")
+	}
+}
+
+func TestDiff_ExpiryKeepsANewerMessage(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, sampleFiles)
+	model.say("something newer", false)
+	updated, _ := model.Update(noticeExpiredMsg{text: "No changes: the working tree is clean"})
+	if got := updated.(ProjectModel); got.status != "something newer" {
+		t.Fatalf("a newer message must stay: %q", got.status)
+	}
+}
+
+func TestDiff_OpensWhenThereAreChanges(t *testing.T) {
+	dir := gitRepoWithCommit(t)
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	model, err := NewProjectModel(dir, "", project.Session{}, ProjectHooks{Diff: func(string) *exec.Cmd { called = true; return exec.Command("true") }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, cmd := model.showDiff()
+	if cmd == nil || !called {
+		t.Fatal("with changes the diff must open")
 	}
 }
 
 func TestTerminalPanel_OpensUnderEditorTakesKeysAndCloses(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
 	model.hooks.Terminal = func(string) *exec.Cmd { return exec.Command("/bin/sh", "-c", "read w; echo got-$w; sleep 30") }
-	model, _ = clickBar(model, buttonX(t, model, actionTerminal))
+	model, _ = runPalette(t, model, "Open terminal")
 	if len(model.terms) == 0 || model.focus != focusTerminal || !strings.Contains(stripANSI(model.View()), "TERMINAL") {
 		t.Fatalf("the terminal must open in a panel:\n%s", model.View())
 	}
@@ -135,11 +229,11 @@ func TestTerminalPanel_OpensUnderEditorTakesKeysAndCloses(t *testing.T) {
 	if model.focus != focusProjectEdit || model.termPanelHeight() == 0 {
 		t.Fatal("ctrl+] must give the focus back and keep the panel")
 	}
-	model, _ = clickBar(model, buttonX(t, model, actionTerminal)) // focuses the running shell again
+	model, _ = runPalette(t, model, "Open terminal") // focuses the running shell again
 	if model.focus != focusTerminal {
 		t.Fatal("the button must focus the shell")
 	}
-	model, _ = clickBar(model, buttonX(t, model, actionTerminal)) // and hides it
+	model, _ = runPalette(t, model, "Open terminal") // and hides it
 	if model.termShown || len(model.terms) == 0 {
 		t.Fatal("a second click must hide the panel but keep the shell")
 	}
@@ -380,5 +474,66 @@ func TestProject_AltDRunsDiffFromTreeAndEditor(t *testing.T) {
 		if cmd == nil || !called {
 			t.Fatalf("alt+d must start the diff (focus %d)", focus)
 		}
+	}
+}
+
+// cleanRepo makes the project folder of a fixture a git repository whose working tree matches HEAD.
+func cleanRepo(t *testing.T, root string) {
+	t.Helper()
+	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"add", "-A"}, {"commit", "-q", "-m", "first"}} {
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+func TestAltD_SaysThereAreNoChangesForThreeSeconds_WhenTheTreeIsClean(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, sampleFiles)
+	cleanRepo(t, model.root)
+	called := false
+	model.hooks.Diff = func(string) *exec.Cmd { called = true; return exec.Command("true") }
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d"), Alt: true})
+	model = updated.(ProjectModel)
+	if called {
+		t.Fatal("with nothing to show the diff view must not open")
+	}
+	if !strings.Contains(stripANSI(model.View()), "No changes") {
+		t.Fatalf("the message must be shown:\n%s", model.View())
+	}
+	if cmd == nil {
+		t.Fatal("the message needs a timer that removes it")
+	}
+	if noticeDuration != 3*time.Second {
+		t.Fatalf("the message stays %v, want 3 seconds", noticeDuration)
+	}
+	updated, _ = model.Update(noticeExpiredMsg{text: "No changes: the working tree is clean"})
+	if strings.Contains(stripANSI(updated.(ProjectModel).View()), "No changes") {
+		t.Fatal("the message must be gone when the time is over")
+	}
+}
+
+func TestAltD_NewerMessageSurvivesTheTimerOfAnOlderOne(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, sampleFiles)
+	model.notice("Tree refreshed", false)
+	updated, _ := model.Update(noticeExpiredMsg{text: "No changes: the working tree is clean"})
+	if got := updated.(ProjectModel).status; got != "Tree refreshed" {
+		t.Fatalf("a message that came later must stay: %q", got)
+	}
+}
+
+func TestAltD_ShowsTheDiff_WhenThereAreChanges(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, sampleFiles)
+	cleanRepo(t, model.root)
+	if err := os.WriteFile(filepath.Join(model.root, "README.md"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	model.hooks.Diff = func(string) *exec.Cmd { called = true; return exec.Command("true") }
+	_, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d"), Alt: true})
+	if cmd == nil || !called {
+		t.Fatal("with changes the diff must open")
 	}
 }

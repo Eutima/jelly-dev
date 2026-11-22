@@ -226,21 +226,19 @@ func TestEditor_ExplainsNavigationProblems(t *testing.T) {
 	}
 }
 
-func TestEditor_NavigationFooterCommandsSendTheirKeys(t *testing.T) {
+func TestEditor_FooterInTheProjectWindowHasNoCommands(t *testing.T) {
 	nav := &fakeNav{}
 	model, _ := navProject(t, nav)
-	bar := model.Editor().footerBar()
-	text := stripANSI(bar.render(300, model.theme.Footer))
-	for command, want := range map[string][]string{"[gr]": {"g", "r"}, "[gd]": {"g", "d"}, "[ctrl+f]": {"ctrl+f"}, "[ctrl+g]": {"ctrl+g"}} {
-		index := strings.Index(text, command)
-		if index < 0 {
-			t.Fatalf("footer lacks %s: %q", command, text)
-		}
-		if keys := bar.keysAt(len([]rune(text[:index]))); len(keys) != len(want) || keys[0] != want[0] {
-			t.Errorf("%s must send %v, got %v", command, want, keys)
+	text := stripANSI(model.Editor().footerBar().render(300, model.theme.Footer))
+	for _, gone := range []string{"[", "commands", "gd", "gr", "ctrl+f", ":w", ":q"} {
+		if strings.Contains(text, gone) {
+			t.Errorf("%q belongs in the palette, not in the footer: %q", gone, text)
 		}
 	}
-	plain, _ := newEditorForTest(t, "a\n")
+	if !strings.Contains(text, "NORMAL") {
+		t.Errorf("the footer still shows the mode: %q", text)
+	}
+	plain, _ := newEditorForTest(t, "a\n") // a standalone editor has no palette: it keeps its commands
 	text = stripANSI(plain.footerBar().render(300, plain.theme.Footer))
 	if index := strings.Index(text, "[gd]"); plain.footerBar().keysAt(len([]rune(text[:index]))) != nil {
 		t.Error("without a navigator gd must be inert")

@@ -348,6 +348,9 @@ func keyMsg(name string) tea.KeyMsg {
 	if name == " " {
 		return tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}}
 	}
+	if letter, ok := strings.CutPrefix(name, "alt+"); ok && len([]rune(letter)) == 1 {
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(letter), Alt: true}
+	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(name)}
 }
 

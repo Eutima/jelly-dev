@@ -241,7 +241,7 @@ func TestProject_BarsFitSmallTerminals(t *testing.T) {
 	model, _ := newProjectFixture(t, 45, sampleFiles)
 	model, _ = projectKeys(model, "G", "enter")
 	lines := strings.Split(stripANSI(model.View()), "\n")
-	if !strings.Contains(lines[0], "Project") {
+	if !strings.Contains(lines[0], "Commands") {
 		t.Fatalf("the top bar keeps its first button: %q", lines[0])
 	}
 }
@@ -250,7 +250,7 @@ func TestProject_BarsFitSmallTerminals(t *testing.T) {
 // that fits, and every command is still there (and clickable).
 func TestEditor_FooterWrapsInsteadOfCuttingTheCommands(t *testing.T) {
 	model, _ := newEditorForTest(t, "alpha\nbeta\n")
-	model = model.WithForwardedCommands()
+	model = model.WithNavigator(&fakeNav{}, t.TempDir())
 	for _, width := range []int{60, 50, 40} {
 		updated, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: 12})
 		narrow := updated.(EditorModel)
@@ -259,7 +259,7 @@ func TestEditor_FooterWrapsInsteadOfCuttingTheCommands(t *testing.T) {
 			t.Fatalf("width %d: %d lines", width, len(lines))
 		}
 		footer := strings.Join(lines[len(lines)-2:], "\n")
-		for _, command := range []string{"[:w]", "[:q]", "[ctrl+f]", "[ctrl+g]"} {
+		for _, command := range []string{"[:w]", "[:q]", "[gd]", "[gr]"} {
 			if !strings.Contains(footer, command) {
 				t.Errorf("width %d: %s was cut off:\n%s", width, command, footer)
 			}
@@ -273,7 +273,7 @@ func TestEditor_FooterWrapsInsteadOfCuttingTheCommands(t *testing.T) {
 	// at 60 columns the labels fit on two lines: nothing was shortened
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
 	view := stripANSI(updated.(EditorModel).View())
-	for _, label := range []string{"[:w] save", "[:q] quit", "[ctrl+f] files", "[ctrl+g] text"} {
+	for _, label := range []string{"[:w] save", "[:q] quit", "[gd] def"} {
 		if !strings.Contains(view, label) {
 			t.Errorf("at 60 columns %q still fits and must not be shortened:\n%s", label, view)
 		}
@@ -283,7 +283,7 @@ func TestEditor_FooterWrapsInsteadOfCuttingTheCommands(t *testing.T) {
 // A click on a command of the second footer line runs it.
 func TestEditor_ClickOnTheSecondFooterLineRunsTheCommand(t *testing.T) {
 	model, _ := newEditorForTest(t, "alpha\n")
-	model = model.WithForwardedCommands().WithNavigator(&fakeNav{}, t.TempDir()) // gd, gr and :fmt are enabled: they can be clicked
+	model = model.WithNavigator(&fakeNav{}, t.TempDir()) // gd, gr and :fmt are enabled: they can be clicked
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
 	model = updated.(EditorModel)
 	rows := model.footerRows()
@@ -378,35 +378,6 @@ func TestBar_WrapDropsTheLastCommandsWhenTwoLinesAreNotEnough(t *testing.T) {
 }
 
 // The hints under the tree wrap onto a second line in a narrow pane, and a click on that line runs its command.
-func TestProject_TreeHintsWrapAndTheSecondLineIsClickable(t *testing.T) {
-	model, _ := newProjectFixture(t, 72, sampleFiles) // the tree pane is 18 columns wide
-	rows := model.treeFooterRows(model.treeFooterWidth())
-	if len(rows) != 2 {
-		t.Fatalf("the hints take two lines in a narrow pane: %d", len(rows))
-	}
-	bar := model.treeFooterBar()
-	lines := bar.wrap(model.treeFooterWidth(), treeFooterBars)
-	if len(lines[1].regions) == 0 {
-		t.Fatal("the second line has a command")
-	}
-	region := lines[1].regions[0]
-	y := topBarHeight + treeHeaderLines + model.treeBody() + 1 // the second footer line, on the screen
-	updated, cmd := model.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: region.from + 1, Y: y})
-	got := settleProject(updated.(ProjectModel), cmd)
-	switch region.keys[0] {
-	case "d":
-		if got.dlg == nil {
-			t.Fatal("a click on [d] on the second line asks before deleting")
-		}
-	case "e", "n":
-		if got.name == nil && got.focus == model.focus {
-			t.Fatalf("a click on %v on the second line did nothing", region.keys)
-		}
-	default:
-		t.Fatalf("unexpected command %v on the second line", region.keys)
-	}
-}
-
 // footerText returns the last lines of a view as plain text.
 func footerText(view string, lines int) string {
 	all := strings.Split(plainText(view), "\n")

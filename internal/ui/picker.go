@@ -15,8 +15,10 @@ const (
 )
 
 // PickItem is one entry of a picker: what it is called, what it is for, and whether it is usable (a missing tool is dim).
+// Lead, when set, is shown first as "[lead]" in a column (the shortcut of a command).
 type PickItem struct {
 	Label, Detail string
+	Lead          string
 	Dim           bool
 }
 
@@ -57,7 +59,7 @@ func (p PickerModel) refilter() PickerModel {
 	words := strings.Fields(strings.ToLower(string(p.query)))
 	p.shown = p.shown[:0:0]
 	for i, item := range p.items {
-		text := strings.ToLower(item.Label + " " + item.Detail)
+		text := strings.ToLower(item.Lead + " " + item.Label + " " + item.Detail)
 		match := true
 		for _, word := range words {
 			if !strings.Contains(text, word) {
@@ -168,6 +170,7 @@ func (p PickerModel) overlay(screen string, width, height int) string {
 		p.theme.Header.Render(padRight(" "+sanitize(p.title), boxWidth)),
 		p.theme.Selected.Render(padRight(" > "+string(p.query)+"▏", boxWidth)),
 	}
+	leadWidth := p.leadWidth()
 	for i := 0; i < rows; i++ {
 		pos := p.top + i
 		switch {
@@ -177,7 +180,11 @@ func (p PickerModel) overlay(screen string, width, height int) string {
 			lines = append(lines, p.theme.Equal.Render(strings.Repeat(" ", boxWidth)))
 		default:
 			item := p.items[p.shown[pos]]
-			text := " " + sanitize(item.Label)
+			text := " "
+			if leadWidth > 0 {
+				text += padRight(leadText(item.Lead), leadWidth) + "  "
+			}
+			text += sanitize(item.Label)
 			if item.Detail != "" {
 				text += "  " + sanitize(item.Detail)
 			}
@@ -194,6 +201,23 @@ func (p PickerModel) overlay(screen string, width, height int) string {
 	lines = append(lines, p.theme.Equal.Render(strings.Repeat(" ", boxWidth)), p.theme.Footer.Render(padRight(pickerHintText, boxWidth)))
 	x, y := p.origin(width, height)
 	return overlayBox(screen, lines, boxWidth, x, y)
+}
+
+// leadText is the shortcut column text of an entry: "[ctrl+s]", empty when the entry has none.
+func leadText(lead string) string {
+	if lead == "" {
+		return ""
+	}
+	return "[" + sanitize(lead) + "]"
+}
+
+// leadWidth is the width of the shortcut column: the widest "[shortcut]" of all entries, 0 when no entry has one.
+func (p PickerModel) leadWidth() int {
+	width := 0
+	for _, item := range p.items {
+		width = max(width, ansi.StringWidth(leadText(item.Lead)))
+	}
+	return width
 }
 
 // overlayBox draws rows (each exactly width columns wide) over the screen at column x and row y; the screen shows around it.
