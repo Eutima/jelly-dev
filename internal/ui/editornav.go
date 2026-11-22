@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/eutima/jelly-dev/internal/keymap"
 
 	"github.com/eutima/jelly-dev/internal/diff"
 	"github.com/eutima/jelly-dev/internal/lsp"
@@ -118,10 +119,10 @@ func (m EditorModel) navigationKey(key string) (EditorModel, tea.Cmd, bool) {
 		m.vim.Handle("esc") // the g is used up
 		command := map[string]string{"t": "tabnext", "T": "tabprev"}[key]
 		return m, func() tea.Msg { return ExCommandMsg{Command: command} }, true
-	case pending == "" && m.forwardEx && (key == "ctrl+f" || key == "ctrl+g" || key == "ctrl+p" || key == "ctrl+t"): // the project window opens its search, project list or terminal
-		command := map[string]string{"ctrl+f": "find", "ctrl+g": "grep", "ctrl+p": "project", "ctrl+t": "terminal"}[key]
+	case pending == "" && m.forwardEx && forwardedCommand(key) != "": // the project window opens its search, project list or tab list
+		command := forwardedCommand(key)
 		return m, func() tea.Msg { return ExCommandMsg{Command: command} }, true
-	case pending == "" && key == "ctrl+o":
+	case pending == "" && keys.Is(keymap.Back, key):
 		model, cmd := m.jumpBack()
 		return model, cmd, true
 	}
@@ -521,4 +522,20 @@ func (m EditorModel) handleFormatResult(msg formatResultMsg) (EditorModel, tea.C
 	m.scrollToCursor()
 	m.notice(fmt.Sprintf("Formatted (%d lines) - u undoes", len(lines))+note, false)
 	return m, nil
+}
+
+// forwardedCommand is the Ex command of the project window that a key of the editor's normal mode stands for ("" for any other key): the
+// search, the project list and the tab list.
+func forwardedCommand(key string) string {
+	switch command, _ := keys.Lookup(keymap.ScopeIDE, key); command {
+	case keymap.Find:
+		return "find"
+	case keymap.Grep:
+		return "grep"
+	case keymap.Projects:
+		return "project"
+	case keymap.Tabs:
+		return "tabs"
+	}
+	return ""
 }

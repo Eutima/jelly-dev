@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/eutima/jelly-dev/internal/keymap"
 
 	"github.com/eutima/jelly-dev/internal/diff"
 	"github.com/eutima/jelly-dev/internal/source"
@@ -158,7 +159,7 @@ func (m GitModel) openEditor() (tea.Model, tea.Cmd) {
 func (m GitModel) handleEditorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	e := m.editor
 	m.say("", false)
-	if msg.String() == "ctrl+s" { // like :w, in every mode
+	if keys.Is(keymap.Save, msg.String()) { // like :w, in every mode
 		m.saveEditor()
 		return m, nil
 	}

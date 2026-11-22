@@ -1,0 +1,53 @@
+# The shortcuts of jd. Save this as ~/.jdrc (or .jdrc in a project) and change what you like.
+# Syntax:  command = key[, key ...]   (none unbinds a command; the first key is the one shown in the UI)
+# Keys:    ctrl+j  alt+x  f4  esc  tab  shift+tab  enter  backspace  delete  up  down  left  right  pgup  pgdown  home  end
+#          space  comma  hash  or a single character. The vim editing keys are not part of this file.
+
+# ide: the project window (keys need ctrl, alt, shift or a function key: bare letters belong to the editor and the shell)
+palette       = alt+p, f1              # default: show the command palette
+tabs          = shift+tab, alt+t       # default: switch tab (files and terminals); shift+tab only in the tree and the editor's normal mode, alt+t everywhere
+terminal      = ctrl+t                 # default: show or hide the terminal panel
+projects      = ctrl+p                 # default: switch project
+find          = ctrl+f                 # default: find a file by name
+grep          = ctrl+g                 # default: search text in the project
+diff          = alt+d                  # default: show the git diff
+focus         = ctrl+e                 # default: switch focus between the tree and the editor
+leaveterminal = ctrl+]                 # default: give the focus back from the terminal panel to the editor
+closeterminal = alt+w                  # default: end the shown terminal tab
+back          = ctrl+o                 # default: go back to where the last jump started
+save          = ctrl+s                 # default: save the file (in every editor mode)
+
+# merge: the three-way merge view
+merge.palette    = alt+p, f1              # default: show the command palette
+merge.next       = n, tab                 # default: next change
+merge.prev       = p, shift+tab           # default: previous change
+merge.ours       = right                  # default: add ours to the change (again: remove it)
+merge.theirs     = left                   # default: add theirs to the change (again: remove it)
+merge.both       = b                      # default: take both sides and jump to the next conflict
+merge.base       = r                      # default: take the base and jump to the next conflict
+merge.pickours   = o                      # default: take ours and jump to the next conflict
+merge.picktheirs = t                      # default: take theirs and jump to the next conflict
+merge.ignore     = x                      # default: ignore both sides of an open conflict
+merge.cancel     = backspace, delete      # default: cancel the decision for the change
+merge.auto       = m                      # default: resolve the conflicts that are none in fact
+merge.allours    = ctrl+o, ctrl+right     # default: take ours for every open conflict
+merge.alltheirs  = ctrl+t, ctrl+left      # default: take theirs for every open conflict
+merge.edit       = e, enter               # default: edit the change under the cursor
+merge.insert     = i                      # default: insert a line below the cursor
+merge.delete     = d                      # default: delete the line under the cursor
+merge.undo       = u                      # default: undo
+merge.wrap       = w                      # default: wrap or cut long lines
+merge.pane       = v                      # default: switch the shown pane on a narrow terminal
+merge.save       = ctrl+s, s              # default: save the result
+merge.quit       = q, esc, ctrl+c, ctrl+d # default: quit
+merge.claude     = a                      # default: let Claude resolve the open conflicts
+merge.codex      = c                      # default: let Codex resolve the open conflicts
+
+# diff: the diff, git and directory views
+diff.next   = down, tab              # default: next change (or file)
+diff.prev   = up, shift+tab          # default: previous change (or file)
+diff.split  = t                      # default: switch between the split and the unified view
+diff.revert = r, backspace, delete   # default: revert the selected change
+diff.edit   = e, enter               # default: edit the file
+diff.undo   = u                      # default: undo the last revert or edit
+diff.quit   = q, esc, ctrl+c, ctrl+d # default: quit

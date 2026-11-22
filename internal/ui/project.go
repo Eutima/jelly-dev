@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/eutima/jelly-dev/internal/keymap"
 
 	"github.com/eutima/jelly-dev/internal/config"
 	"github.com/eutima/jelly-dev/internal/editor"
@@ -91,6 +92,7 @@ type ProjectModel struct {
 	name             *namePrompt         // the prompt for a new file name, nil when none is open
 	dlg              *unsavedDialog      // the question about unsaved changes, nil when none is open
 	palette          *commandPalette     // the list of all actions, nil when closed
+	tabs             *tabSwitcher        // the list of all tabs, nil when closed
 	conflicts        []string            // the files with unresolved merge conflicts
 	conflictsChecked time.Time           // when they were looked for last
 	pick             *formatPick         // the list of formatters to choose from, nil when closed
@@ -497,6 +499,9 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.palette != nil {
 		return m.updatePalette(msg)
 	}
+	if m.tabs != nil {
+		return m.updateTabSwitcher(msg)
+	}
 	if m.pick != nil {
 		return m.updateFormatPicker(msg)
 	}
@@ -512,29 +517,33 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.focus == focusTerminal && m.termPanelHeight() > 0 {
 		return m.terminalKey(msg)
 	}
-	switch msg.String() {
-	case paletteKey, "f1": // all actions, from the tree and from the editor alike
+	key := msg.String()
+	switch command, _ := keys.Lookup(keymap.ScopeIDE, key); command {
+	case keymap.Palette: // all actions, from the tree and from the editor alike
 		return m.openPalette()
-	case "alt+d":
+	case keymap.Diff:
 		return m.showDiff()
+	case keymap.Terminal: // shows or hides the terminal panel, whatever has the focus (the panel itself handles it as well)
+		return m.openTerminal()
 	}
 	if m.focus == focusTree {
-		switch msg.String() {
-		case "P", "ctrl+p":
+		command, _ := keys.Lookup(keymap.ScopeIDE, key)
+		switch {
+		case key == "P" || command == keymap.Projects:
 			return m.openPicker()
-		case "ctrl+t":
+		case command == keymap.Tabs:
+			return m.openTabSwitcher()
+		case key == "T":
 			return m.openTerminal()
-		case "T":
-			return m.openTerminal()
-		case "D":
+		case key == "D":
 			return m.showDiff()
-		case "ctrl+f", "/":
+		case key == "/" || command == keymap.Find:
 			return m.openSearch(searchFiles, "")
-		case "ctrl+g":
+		case command == keymap.Grep:
 			return m.openSearch(searchText, "")
 		}
 	}
-	if msg.String() == "ctrl+e" {
+	if keys.Is(keymap.Focus, key) {
 		return m.toggleFocus(), nil
 	}
 	if m.focus == focusProjectEdit {
@@ -693,6 +702,8 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 		return m.openTerminal()
 	case "palette", "commands", "actions":
 		return m.openPalette()
+	case "tabs", "buffers", "ls":
+		return m.openTabSwitcher()
 	case "diff", "changes":
 		return m.showDiff()
 	case "mergetool", "merge", "conflicts":
@@ -802,6 +813,9 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.palette != nil {
 		return m.updatePalette(msg)
 	}
+	if m.tabs != nil {
+		return m.updateTabSwitcher(msg)
+	}
 	if m.pick != nil {
 		return m.updateFormatPicker(msg)
 	}
@@ -891,6 +905,9 @@ func (m ProjectModel) View() string {
 	}
 	if m.palette != nil {
 		return m.palette.picker.overlay(screen, m.width, m.height)
+	}
+	if m.tabs != nil {
+		return m.tabs.picker.overlay(screen, m.width, m.height)
 	}
 	if m.pick != nil {
 		return m.pick.picker.overlay(screen, m.width, m.height)

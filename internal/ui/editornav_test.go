@@ -354,7 +354,7 @@ func TestEditor_CtrlCAndCtrlDGoBackAfterAJumpInsteadOfClosing(t *testing.T) {
 		if row, col := model.Editor().Cursor(); row != 3 || col != 1 {
 			t.Fatalf("key %v: cursor %d,%d", key, row, col)
 		}
-		// nothing left to go back to: ctrl+c does nothing, ctrl+d closes the tab, and with the last tab the window
+		// nothing left to go back to: ctrl+c does nothing, ctrl+d closes the tab (at once when it is saved), and with the last tab the window
 		if key == tea.KeyCtrlC {
 			updated, cmd = model.Update(tea.KeyMsg{Type: key})
 			model = settleProject(updated.(ProjectModel), cmd)
@@ -365,12 +365,8 @@ func TestEditor_CtrlCAndCtrlDGoBackAfterAJumpInsteadOfClosing(t *testing.T) {
 		}
 		updated, cmd = model.Update(tea.KeyMsg{Type: key})
 		model = settleProject(updated.(ProjectModel), cmd)
-		if model.dlg == nil || len(model.openEditors()) != 2 {
-			t.Fatalf("key %v without a jump left must ask before it closes the tab", key)
-		}
-		model, _ = projectKeys(model, "y")
-		if len(model.openEditors()) != 1 {
-			t.Fatalf("yes closes the tab: %d tabs", len(model.openEditors()))
+		if model.dlg != nil || len(model.openEditors()) != 1 {
+			t.Fatalf("key %v without a jump left must close the saved tab at once: %d tabs", key, len(model.openEditors()))
 		}
 		updated, cmd = model.Update(tea.KeyMsg{Type: key})
 		model = settleProject(updated.(ProjectModel), cmd)

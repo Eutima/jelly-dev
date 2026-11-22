@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
+	"github.com/eutima/jelly-dev/internal/keymap"
 	"github.com/eutima/jelly-dev/internal/merge"
 )
 
@@ -476,10 +477,10 @@ func (m MergeModel) actionBar() *bar {
 		}
 		return ""
 	}
-	result.command("→", "ours"+mark(paneOurs), selected, m.theme)
-	result.command("←", "theirs"+mark(paneTheirs), selected, m.theme)
-	result.command("e", "edit", len(m.rows) > 0, m.theme)
-	result.command(paletteKey, "commands", true, m.theme)
+	result.binding(keymap.MergeOurs, "ours"+mark(paneOurs), selected, m.theme)
+	result.binding(keymap.MergeTheirs, "theirs"+mark(paneTheirs), selected, m.theme)
+	result.binding(keymap.MergeEdit, "edit", len(m.rows) > 0, m.theme)
+	result.binding(keymap.MergePalette, "commands", true, m.theme)
 	return result
 }
 
@@ -506,8 +507,14 @@ func (m MergeModel) compactFooter() string {
 	badge := m.saveBadge()
 	badge.style = m.theme.Footer
 	summary := fmt.Sprintf(" %d left · ", m.Unresolved())
+	var main strings.Builder
+	for _, command := range []keymap.Command{keymap.MergeOurs, keymap.MergeTheirs, keymap.MergeEdit, keymap.MergePalette} {
+		if label := keys.Label(command); label != "" {
+			fmt.Fprintf(&main, " [%s]", label)
+		}
+	}
 	return renderSegments([]barPart{
-		{summary, m.theme.Footer}, badge, {"   [→] [←] [e] [" + paletteKey + "]", m.theme.Footer},
+		{summary, m.theme.Footer}, badge, {"  " + main.String(), m.theme.Footer},
 	}, m.width, m.theme.Footer)
 }
 

@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/eutima/jelly-dev/internal/ai"
+	"github.com/eutima/jelly-dev/internal/keymap"
 	"github.com/eutima/jelly-dev/internal/merge"
 )
 
@@ -24,10 +25,18 @@ func (m MergeModel) WithAssistants(assistants ...ai.Assistant) MergeModel {
 	return m
 }
 
-// assistantFor returns the assistant started by key.
-func (m MergeModel) assistantFor(key string) (ai.Assistant, bool) {
+// assistantCommand is the command that starts an assistant.
+func assistantCommand(assistant ai.Assistant) keymap.Command {
+	if assistant.Name == "Codex" {
+		return keymap.MergeCodex
+	}
+	return keymap.MergeClaude
+}
+
+// assistantFor returns the assistant a command starts.
+func (m MergeModel) assistantFor(command keymap.Command) (ai.Assistant, bool) {
 	for _, assistant := range m.assistants {
-		if assistant.Key == key {
+		if assistantCommand(assistant) == command {
 			return assistant, true
 		}
 	}

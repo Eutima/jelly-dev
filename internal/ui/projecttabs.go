@@ -96,8 +96,8 @@ func (m ProjectModel) closeTabAsking(i int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// askToClose handles ctrl+c and ctrl+d (outside insert mode and the terminal): it always asks before anything closes. From the
-// editor with several tabs it closes the shown tab, otherwise the window. Unsaved changes ask what to do with them instead.
+// askToClose handles ctrl+c and ctrl+d (outside insert mode and the terminal). From the editor with several tabs it closes the shown
+// tab at once (changes in it ask what to do with them first); closing the window always asks.
 func (m ProjectModel) askToClose(fromEditor bool) (tea.Model, tea.Cmd) {
 	if !fromEditor || len(m.files) <= 1 {
 		return m.quitAsking(false)
@@ -109,8 +109,7 @@ func (m ProjectModel) askToClose(fromEditor bool) (tea.Model, tea.Cmd) {
 	if blocked, asked := m.confirmUnsaved(closeIt); asked {
 		return blocked, nil
 	}
-	name := m.tabNames()[m.tab]
-	return m.confirmClose("Close "+sanitize(name)+"?", closeIt), nil
+	return closeIt(m)
 }
 
 // quitAsking leaves the window after asking: first about every tab with changes, then (unless that was asked already)

@@ -2,13 +2,16 @@ package ui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/eutima/jelly-dev/internal/keymap"
 )
 
-// mergePaletteAction is one entry of the command palette of the merge view: what it does, the key shown for it and the
-// key that runs it.
+// mergePaletteAction is one entry of the command palette of the merge view: what it does, the command that does it directly, and
+// whether it can be used now. The key shown for it is the one the command has in .jdrc.
 type mergePaletteAction struct {
-	label, shown, key string
-	enabled           bool
+	label   string
+	command keymap.Command
+	enabled bool
 }
 
 // mergePalette is the open list of all actions of the merge view.
@@ -22,32 +25,32 @@ func (m MergeModel) paletteActions() []mergePaletteAction {
 	selected := m.current >= 0
 	unresolved := m.Unresolved() > 0
 	actions := []mergePaletteAction{
-		{"Next change", "n", "n", true},
-		{"Previous change", "p", "p", true},
-		{"Take ours", "→", "right", selected},
-		{"Take theirs", "←", "left", selected},
-		{"Take both", "b", "b", selected},
-		{"Take the base", "r", "r", selected},
-		{"Ours, then the next change", "o", "o", selected},
-		{"Theirs, then the next change", "t", "t", selected},
-		{"Ignore the change", "x", "x", selected && m.unresolvedSelected()},
-		{"Cancel the choice", "⌫", "backspace", selected && m.choiceMade()},
-		{"Resolve the simple conflicts", "m", "m", true},
-		{"All ours", "ctrl+o", "ctrl+o", unresolved},
-		{"All theirs", "ctrl+t", "ctrl+t", unresolved},
-		{"Edit the result", "e", "e", len(m.rows) > 0},
-		{"Insert a line", "i", "i", len(m.rows) > 0},
-		{"Delete the line", "d", "d", len(m.rows) > 0},
-		{"Undo", "u", "u", len(m.history) > 0},
-		{"Wrap long lines", "w", "w", true},
-		{"Switch the pane", "v", "v", m.width < threePaneWidth},
+		{"Next change", keymap.MergeNext, true},
+		{"Previous change", keymap.MergePrev, true},
+		{"Take ours", keymap.MergeOurs, selected},
+		{"Take theirs", keymap.MergeTheirs, selected},
+		{"Take both", keymap.MergeBoth, selected},
+		{"Take the base", keymap.MergeBase, selected},
+		{"Ours, then the next change", keymap.MergePickOurs, selected},
+		{"Theirs, then the next change", keymap.MergePickTheirs, selected},
+		{"Ignore the change", keymap.MergeIgnore, selected && m.unresolvedSelected()},
+		{"Cancel the choice", keymap.MergeCancel, selected && m.choiceMade()},
+		{"Resolve the simple conflicts", keymap.MergeAuto, true},
+		{"All ours", keymap.MergeAllOurs, unresolved},
+		{"All theirs", keymap.MergeAllTheirs, unresolved},
+		{"Edit the result", keymap.MergeEdit, len(m.rows) > 0},
+		{"Insert a line", keymap.MergeInsert, len(m.rows) > 0},
+		{"Delete the line", keymap.MergeDelete, len(m.rows) > 0},
+		{"Undo", keymap.MergeUndo, len(m.history) > 0},
+		{"Wrap long lines", keymap.MergeWrap, true},
+		{"Switch the pane", keymap.MergePane, m.width < threePaneWidth},
 	}
 	for _, assistant := range m.assistants {
-		actions = append(actions, mergePaletteAction{"Resolve with " + assistant.Name, assistant.Key, assistant.Key, unresolved && !m.aiBusy})
+		actions = append(actions, mergePaletteAction{"Resolve with " + assistant.Name, assistantCommand(assistant), unresolved && !m.aiBusy})
 	}
 	return append(actions,
-		mergePaletteAction{"Save the result", "ctrl+s", "ctrl+s", true},
-		mergePaletteAction{"Quit", "q", "q", true},
+		mergePaletteAction{"Save the result", keymap.MergeSave, true},
+		mergePaletteAction{"Quit", keymap.MergeQuit, true},
 	)
 }
 
@@ -58,10 +61,10 @@ func (m MergeModel) openPalette() (tea.Model, tea.Cmd) {
 	for _, action := range m.paletteActions() {
 		if action.enabled {
 			actions = append(actions, action)
-			items = append(items, PickItem{Lead: action.shown, Label: action.label})
+			items = append(items, PickItem{Lead: keys.Label(action.command), Label: action.label})
 		}
 	}
-	m.palette = &mergePalette{picker: newPicker(m.theme, "Commands ("+paletteKey+")", items), actions: actions}
+	m.palette = &mergePalette{picker: newPicker(m.theme, "Commands ("+keys.Label(keymap.MergePalette)+")", items), actions: actions}
 	return m, nil
 }
 
@@ -71,7 +74,7 @@ func (m MergeModel) updatePalette(msg tea.Msg) (tea.Model, tea.Cmd) {
 	picker := m.palette.picker
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if key := msg.String(); key == paletteKey || key == "f1" { // the key that opens the palette closes it again
+		if keys.Is(keymap.MergePalette, msg.String()) { // the key that opens the palette closes it again
 			m.palette = nil
 			return m, nil
 		}
@@ -95,5 +98,5 @@ func (m MergeModel) updatePalette(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if chosen < 0 || chosen >= len(actions) {
 		return m, nil
 	}
-	return m.handleKey(keyMsg(actions[chosen].key))
+	return m.runCommand(actions[chosen].command)
 }

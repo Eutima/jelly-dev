@@ -39,7 +39,7 @@ func TestPalette_ListsEverythingTheBarsUsedToShow(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
 	model.hooks.Theme = func(string) (Theme, bool) { return DarkTheme(), true }
 	view := stripANSI(sendKey(model, altP).View())
-	for _, want := range []string{"Switch project", "Open terminal", "Show the git diff", "Find file", "Search text in the project", "Save file"} {
+	for _, want := range []string{"Switch project", "Show or hide the terminal", "Show the git diff", "Find file", "Search text in the project", "Save file"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the first rows of the palette lack %q:\n%s", want, view)
 		}
@@ -59,7 +59,7 @@ func TestPalette_TypingNarrowsAndEnterRuns(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
 	model = sendKey(model, altP)
 	model, _ = projectKeys(model, "s", "w", "i", "t", "c", "h")
-	if !strings.Contains(stripANSI(model.View()), "Switch project") || strings.Contains(stripANSI(model.View()), "Open terminal") {
+	if !strings.Contains(stripANSI(model.View()), "Switch project") || strings.Contains(stripANSI(model.View()), "Show or hide the terminal") {
 		t.Fatalf("typing must narrow the list:\n%s", model.View())
 	}
 	model, _ = projectKeys(model, "enter")
@@ -140,7 +140,7 @@ func TestPalette_ShowsShortcutColumnThenDescription(t *testing.T) {
 	view := stripANSI(sendKey(model, altP).View())
 	var lines []string
 	for _, line := range strings.Split(view, "\n") {
-		if strings.Contains(line, "Switch project") || strings.Contains(line, "Open terminal") || strings.Contains(line, "Save file") {
+		if strings.Contains(line, "Switch project") || strings.Contains(line, "Show or hide the terminal") || strings.Contains(line, "Save file") {
 			lines = append(lines, line)
 		}
 	}

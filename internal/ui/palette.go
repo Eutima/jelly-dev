@@ -4,13 +4,16 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/eutima/jelly-dev/internal/keymap"
 
 	"github.com/eutima/jelly-dev/internal/config"
 )
 
-// paletteKey opens the command palette. A terminal sends ctrl+shift+p like ctrl+p (and Windows Terminal keeps it for its own
-// palette), so jd uses alt+p; f1 works too.
-const paletteKey = "alt+p"
+// The command palette opens with alt+p or f1 by default (a terminal sends ctrl+shift+p like ctrl+p, and Windows Terminal keeps it for
+// its own palette); .jdrc changes that.
+
+// paletteClick is what the top bar button of the palette sends back when it is clicked.
+const paletteClick = ":palette"
 
 // mergeToolKey is what the top bar button of the merge conflicts sends back when it is clicked.
 const mergeToolKey = ":mergetool"
@@ -46,13 +49,14 @@ func (m ProjectModel) paletteActions() []paletteAction {
 		}
 	}
 	actions := []paletteAction{
-		{"Switch project", "ctrl+p", command("project")},
-		{"Open terminal", "ctrl+t", command("terminal")},
-		{"Show the git diff", "alt+d", command("diff")},
+		{"Switch project", keys.Label(keymap.Projects), command("project")},
+		{"Switch tab (files and terminals)", keys.Label(keymap.Tabs), command("tabs")},
+		{"Show or hide the terminal", keys.Label(keymap.Terminal), command("terminal")},
+		{"Show the git diff", keys.Label(keymap.Diff), command("diff")},
 		{"Resolve merge conflicts (git mergetool)", ":mergetool", command("mergetool")},
-		{"Find file", "ctrl+f", command("find")},
-		{"Search text in the project", "ctrl+g", command("grep")},
-		{"Save file", "ctrl+s", editorCommand("w")},
+		{"Find file", keys.Label(keymap.Find), command("find")},
+		{"Search text in the project", keys.Label(keymap.Grep), command("grep")},
+		{"Save file", keys.Label(keymap.Save), editorCommand("w")},
 		{"Save all files", ":wa", command("wa")},
 		{"Format file", ":format", editorCommand("format")},
 		{"Go to definition", "gd", navigate(navDefinition)},
@@ -60,7 +64,7 @@ func (m ProjectModel) paletteActions() []paletteAction {
 		{"Next tab", "gt", command("tabnext")},
 		{"Previous tab", "gT", command("tabprev")},
 		{"Close tab", ":bd", command("bd")},
-		{"Switch focus between tree and editor", "ctrl+e", func(m ProjectModel) (tea.Model, tea.Cmd) { return m.toggleFocus(), nil }},
+		{"Switch focus between tree and editor", keys.Label(keymap.Focus), func(m ProjectModel) (tea.Model, tea.Cmd) { return m.toggleFocus(), nil }},
 		{"New terminal tab", ":terminal new", command("terminal new")},
 		{"Open this project in a new window", ":window", command("window")},
 		{"Refresh the file tree", "R", func(m ProjectModel) (tea.Model, tea.Cmd) {
@@ -87,7 +91,7 @@ func (m ProjectModel) openPalette() (tea.Model, tea.Cmd) {
 	for i, action := range actions {
 		items[i] = PickItem{Lead: action.key, Label: action.label}
 	}
-	m.palette = &commandPalette{picker: newPicker(m.theme, "Commands ("+paletteKey+")", items), actions: actions}
+	m.palette = &commandPalette{picker: newPicker(m.theme, "Commands ("+keys.Label(keymap.Palette)+")", items), actions: actions}
 	return m, nil
 }
 
@@ -97,7 +101,7 @@ func (m ProjectModel) updatePalette(msg tea.Msg) (tea.Model, tea.Cmd) {
 	picker := m.palette.picker
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if key := msg.String(); key == paletteKey || key == "f1" { // the key that opens the palette closes it again
+		if keys.Is(keymap.Palette, msg.String()) { // the key that opens the palette closes it again
 			m.palette = nil
 			return m, nil
 		}
@@ -126,4 +130,4 @@ func (m ProjectModel) updatePalette(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // paletteHint is the one hint the bars of the project window show: a click opens the palette.
-func paletteHint() string { return fmt.Sprintf("commands (%s)", paletteKey) }
+func paletteHint() string { return fmt.Sprintf("commands (%s)", keys.Label(keymap.Palette)) }

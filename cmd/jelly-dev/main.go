@@ -43,7 +43,8 @@ const (
                              install (--update: update) the language servers and formatters of the languages (python html css json yaml docker compose
                              javascript angular go java; none given: the languages chosen so far)
   jd install-git [--apply] [--local]
-                             print (or with --apply write, overwriting existing values) the git diff/merge tool settings`
+                             print (or with --apply write, overwriting existing values) the git diff/merge tool settings
+  jd rc                      print the keyboard shortcuts in force (the defaults, and what ~/.jdrc and .jdrc change) in the .jdrc syntax`
 )
 
 // uiRunner shows a model in the terminal and blocks until the user quits.
@@ -72,6 +73,8 @@ type environment struct {
 	enableAttributes func()
 	busy             busyFunc
 	workDir          string
+	// homeDir is the home folder, where ~/.jdrc is read; "" has no such file.
+	homeDir string
 	// newWindow opens a directory in a new terminal window; nil uses the real terminal launcher.
 	newWindow func(dir string) error
 	// detectAssistants finds the installed assistant CLIs (Claude, Codex); nil means none.
@@ -106,7 +109,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "jd: %v\n", err)
 		os.Exit(exitFailure)
 	}
-	env := environment{runUI: runProgram, readClipboard: source.ReadClipboard, writeClipboard: source.WriteClipboard, openGit: openGit, gitConfig: runGitConfig, runInstaller: runInstallerScript, interactive: interactiveTerminal, newTools: func(dir string) languageTools { return tools.NewInstaller(dir) }, getenv: os.Getenv, namedTheme: ui.NamedTheme, detectTheme: ui.DetectedThemeName, enableAttributes: enableTextAttributes,
+	home, _ := os.UserHomeDir()
+	env := environment{homeDir: home, runUI: runProgram, readClipboard: source.ReadClipboard, writeClipboard: source.WriteClipboard, openGit: openGit, gitConfig: runGitConfig, runInstaller: runInstallerScript, interactive: interactiveTerminal, newTools: func(dir string) languageTools { return tools.NewInstaller(dir) }, getenv: os.Getenv, namedTheme: ui.NamedTheme, detectTheme: ui.DetectedThemeName, enableAttributes: enableTextAttributes,
 		busy: newBusy(os.Stderr, stderrIsTerminal()), workDir: workDir, detectAssistants: ai.Detect}
 	tools.EnsurePath() // tools installed below ~/.local/bin and the Go bin folder are found even when the shell's PATH lacks them
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, env))
@@ -132,6 +136,14 @@ func run(args []string, stdout, stderr io.Writer, env environment) int {
 	if len(args) > 0 && args[0] == "install-git" {
 		return runInstallGit(args[1:], stdout, stderr, env) // needs no theme, so a bad theme must not block it
 	}
+	if len(args) > 0 && args[0] == "rc" {
+		return runRC(args[1:], stdout, stderr, env)
+	}
+	mapping, problems := loadKeys(args, env) // the shortcuts of every view; a bad line is reported and the defaults stay
+	for _, problem := range problems {
+		fmt.Fprintf(stderr, "jd: %s\n", problem)
+	}
+	ui.UseKeys(mapping)
 	cfg, err := config.Load(env.getenv)
 	if err != nil {
 		printError(stderr, err)

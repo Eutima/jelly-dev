@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/eutima/jelly-dev/internal/keymap"
 
 	"github.com/eutima/jelly-dev/internal/diff"
 )
@@ -126,33 +127,38 @@ func (m DiffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m DiffModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	page := max(m.bodyHeight()-1, 1)
-	switch msg.String() {
-	case "q", "ctrl+c", "ctrl+d", "esc":
+	key := msg.String()
+	command, _ := keys.Lookup(keymap.ScopeDiff, key)
+	switch {
+	case command == keymap.DiffQuit || key == "ctrl+c": // ctrl+c is the way out whatever diff.quit is bound to
 		return m, tea.Quit
-	case "j":
-		m.offset++
-	case "k":
-		m.offset--
-	case "pgdown", " ":
-		m.offset += page
-	case "pgup":
-		m.offset -= page
-	case "g", "home":
-		m.offset = 0
-	case "G", "end":
-		m.offset = m.rowCount()
-	case "t":
+	case command == keymap.DiffSplit:
 		m.showUnified = !m.showUnified
 		if m.current >= 0 {
 			m.gotoHunk(m.current)
 		}
-	case "down", "tab":
+	case command == keymap.DiffNext:
 		m.gotoHunk(m.current + 1)
-	case "up", "shift+tab":
+	case command == keymap.DiffPrev:
 		if m.current < 0 {
 			m.gotoHunk(m.HunkCount() - 1)
 		} else {
 			m.gotoHunk(m.current - 1)
+		}
+	default: // the keys that are not commands: scrolling
+		switch key {
+		case "j":
+			m.offset++
+		case "k":
+			m.offset--
+		case "pgdown", " ":
+			m.offset += page
+		case "pgup":
+			m.offset -= page
+		case "g", "home":
+			m.offset = 0
+		case "G", "end":
+			m.offset = m.rowCount()
 		}
 	}
 	m.clamp()
@@ -244,13 +250,14 @@ func (m DiffModel) footerBar() *bar {
 	default:
 		result.add(barPart{" " + position + "   ", m.theme.Footer})
 	}
-	for _, h := range [][2]string{{"↑↓", "next/prev change"}, {"j/k", "scroll"}, {"t", "split/unified"}, {"q", "quit"}} {
-		result.command(h[0], h[1], true, m.theme)
-	}
+	result.stepHint("next/prev change", m.theme)
+	result.command("j/k", "scroll", true, m.theme)
+	result.binding(keymap.DiffSplit, "split/unified", true, m.theme)
+	result.binding(keymap.DiffQuit, "quit", true, m.theme)
 	if m.editable {
-		result.command("r", "revert", m.current >= 0, m.theme)
-		result.command("e", "edit", true, m.theme)
-		result.command("u", "undo", m.canUndo, m.theme)
+		result.binding(keymap.DiffRevert, "revert", m.current >= 0, m.theme)
+		result.binding(keymap.DiffEdit, "edit", true, m.theme)
+		result.binding(keymap.DiffUndo, "undo", m.canUndo, m.theme)
 	}
 	return result
 }

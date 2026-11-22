@@ -4,7 +4,9 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/charmbracelet/lipgloss"
+	"github.com/eutima/jelly-dev/internal/keymap"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -61,19 +63,56 @@ func (b *bar) place(keys []string, parts ...barPart) {
 // command appends "[key] label  " in the usual look: the key bracketed and highlighted, the label plain; a
 // disabled command is faint and inert. The clickable part ends before the two spaces that separate commands.
 func (b *bar) command(key, label string, enabled bool, theme Theme) {
+	var clicks []string
+	if enabled {
+		clicks = commandKeys(key)
+	}
+	b.hintWith(key, clicks, label, enabled, theme)
+}
+
+// binding appends the hint of a command whose shortcut can be changed in .jdrc: it shows the key the command has now, and a click sends
+// that key. A command without a key (unbound) has no hint.
+func (b *bar) binding(command keymap.Command, label string, enabled bool, theme Theme) {
+	key := keys.Key(command)
+	if key == "" {
+		return
+	}
+	var clicks []string
+	if enabled {
+		clicks = []string{key}
+	}
+	b.hintWith(keymap.Pretty(key), clicks, label, enabled, theme)
+}
+
+// stepHint appends the hint for the next and previous change: "↑↓" by default, "ctrl+k/ctrl+j" for longer names. A click goes to the next
+// change. Nothing is shown when the next-change command has no key.
+func (b *bar) stepHint(label string, theme Theme) {
+	next, prev := keys.Key(keymap.DiffNext), keys.Key(keymap.DiffPrev)
+	if next == "" {
+		return
+	}
+	shown := keymap.Pretty(next)
+	if prev != "" {
+		separator := ""
+		if len([]rune(keymap.Pretty(prev))) > 1 || len([]rune(keymap.Pretty(next))) > 1 {
+			separator = "/"
+		}
+		shown = keymap.Pretty(prev) + separator + keymap.Pretty(next)
+	}
+	b.hintWith(shown, []string{next}, label, true, theme)
+}
+
+// hintWith is command with the keys a click sends given.
+func (b *bar) hintWith(key string, clicks []string, label string, enabled bool, theme Theme) {
 	keyStyle, labelStyle := theme.Header, theme.Footer
 	if !enabled {
 		// a command that cannot be used now is dim on purpose; every usable one keeps full white text
 		keyStyle, labelStyle = theme.Footer.Faint(true), theme.Footer.Faint(true)
 	}
-	var keys []string
-	if enabled {
-		keys = commandKeys(key)
-	}
 	full := []barPart{{"[" + key + "]", keyStyle}, {" " + label, labelStyle}}
 	tail := []barPart{{"  ", labelStyle}}
-	b.ops = append(b.ops, barOp{parts: full, short: full[:1], tail: tail, keys: keys, collapsible: true})
-	b.place(keys, full...)
+	b.ops = append(b.ops, barOp{parts: full, short: full[:1], tail: tail, keys: clicks, collapsible: true})
+	b.place(clicks, full...)
 	b.append(tail...)
 }
 
@@ -332,26 +371,36 @@ func commandKeys(shown string) []string {
 	return []string{shown}
 }
 
+// keyTypes are the keys with a name of their own, as tea.KeyMsg.String reports them.
+var keyTypes = map[string]tea.KeyType{
+	"enter": tea.KeyEnter, "esc": tea.KeyEsc, "backspace": tea.KeyBackspace, "delete": tea.KeyDelete, "insert": tea.KeyInsert,
+	"tab": tea.KeyTab, "shift+tab": tea.KeyShiftTab, "left": tea.KeyLeft, "right": tea.KeyRight, "up": tea.KeyUp, "down": tea.KeyDown,
+	"pgup": tea.KeyPgUp, "pgdown": tea.KeyPgDown, "home": tea.KeyHome, "end": tea.KeyEnd,
+	"ctrl+left": tea.KeyCtrlLeft, "ctrl+right": tea.KeyCtrlRight, "ctrl+up": tea.KeyCtrlUp, "ctrl+down": tea.KeyCtrlDown,
+	"shift+left": tea.KeyShiftLeft, "shift+right": tea.KeyShiftRight, "shift+up": tea.KeyShiftUp, "shift+down": tea.KeyShiftDown,
+	"ctrl+home": tea.KeyCtrlHome, "ctrl+end": tea.KeyCtrlEnd, "ctrl+pgup": tea.KeyCtrlPgUp, "ctrl+pgdown": tea.KeyCtrlPgDown,
+	"ctrl+@": tea.KeyCtrlAt, "ctrl+]": tea.KeyCtrlCloseBracket, "ctrl+\\": tea.KeyCtrlBackslash, "ctrl+^": tea.KeyCtrlCaret, "ctrl+_": tea.KeyCtrlUnderscore,
+	"f1": tea.KeyF1, "f2": tea.KeyF2, "f3": tea.KeyF3, "f4": tea.KeyF4, "f5": tea.KeyF5, "f6": tea.KeyF6, "f7": tea.KeyF7, "f8": tea.KeyF8,
+	"f9": tea.KeyF9, "f10": tea.KeyF10, "f11": tea.KeyF11, "f12": tea.KeyF12, "f13": tea.KeyF13, "f14": tea.KeyF14, "f15": tea.KeyF15,
+	"f16": tea.KeyF16, "f17": tea.KeyF17, "f18": tea.KeyF18, "f19": tea.KeyF19, "f20": tea.KeyF20,
+}
+
 // keyMsg turns a key name (as tea.KeyMsg.String reports it) back into a message.
 func keyMsg(name string) tea.KeyMsg {
-	named := map[string]tea.KeyType{
-		"enter": tea.KeyEnter, "esc": tea.KeyEsc, "backspace": tea.KeyBackspace, "delete": tea.KeyDelete,
-		"tab": tea.KeyTab, "left": tea.KeyLeft, "right": tea.KeyRight, "up": tea.KeyUp, "down": tea.KeyDown,
-		"pgup": tea.KeyPgUp, "pgdown": tea.KeyPgDown, "home": tea.KeyHome, "end": tea.KeyEnd,
-		"ctrl+c": tea.KeyCtrlC, "ctrl+d": tea.KeyCtrlD, "ctrl+o": tea.KeyCtrlO, "ctrl+t": tea.KeyCtrlT,
-		"ctrl+r": tea.KeyCtrlR, "ctrl+u": tea.KeyCtrlU, "ctrl+k": tea.KeyCtrlK, "ctrl+p": tea.KeyCtrlP, "ctrl+g": tea.KeyCtrlG,
-		"ctrl+n": tea.KeyCtrlN, "ctrl+f": tea.KeyCtrlF, "ctrl+@": tea.KeyCtrlAt,
+	alt := false
+	if rest, ok := strings.CutPrefix(name, "alt+"); ok && rest != "" {
+		name, alt = rest, true
 	}
-	if keyType, ok := named[name]; ok {
-		return tea.KeyMsg{Type: keyType}
+	keyType, named := keyTypes[name]
+	switch {
+	case named:
+		return tea.KeyMsg{Type: keyType, Alt: alt}
+	case len(name) == len("ctrl+")+1 && strings.HasPrefix(name, "ctrl+") && name[len("ctrl+")] >= 'a' && name[len("ctrl+")] <= 'z':
+		return tea.KeyMsg{Type: tea.KeyType(1 + name[len("ctrl+")] - 'a'), Alt: alt} // ctrl+a is 1 ... ctrl+z is 26
+	case name == " ":
+		return tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}, Alt: alt}
 	}
-	if name == " " {
-		return tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}}
-	}
-	if letter, ok := strings.CutPrefix(name, "alt+"); ok && len([]rune(letter)) == 1 {
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(letter), Alt: true}
-	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(name)}
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(name), Alt: alt}
 }
 
 // leftPress reports whether msg is the press of the left mouse button.

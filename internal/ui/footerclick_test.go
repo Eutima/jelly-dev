@@ -458,7 +458,7 @@ func TestMergeFooter_IsOneLine_WithTheMainActionsAndThePalette(t *testing.T) {
 func TestMergePalette_RunsTheChosenAction(t *testing.T) {
 	model, _ := newMergeTestModel(twoConflictsBase, twoConflictsOurs, twoConflictsTheirs, &saver{})
 	model = mergePress(model, "n")
-	opened, _ := model.Update(keyMsg(paletteKey))
+	opened, _ := model.Update(keyMsg("alt+p"))
 	palette := opened.(MergeModel)
 	if palette.palette == nil || !strings.Contains(plainText(palette.View()), "Take both") {
 		t.Fatalf("the palette must list the actions:\n%s", palette.View())

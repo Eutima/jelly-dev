@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/eutima/jelly-dev/internal/keymap"
 
 	"github.com/eutima/jelly-dev/internal/diff"
 	"github.com/eutima/jelly-dev/internal/source"
@@ -203,6 +204,21 @@ func (m *GitModel) applyLoaded(msg loadedMsg) tea.Cmd {
 	return nil
 }
 
+// diffCommand is the command of the diff scope a key runs in the git view. A few keys do something else here than in the diff view: esc
+// steps from the diff back to the list (it quits from the list), and enter and backspace only edit and revert in the diff pane.
+func (m GitModel) diffCommand(key string) keymap.Command {
+	command, _ := keys.Lookup(keymap.ScopeDiff, key)
+	switch {
+	case command == keymap.DiffQuit && key == "esc":
+		return ""
+	case (command == keymap.DiffEdit || command == keymap.DiffRevert) && m.focus != focusDiff && (key == "enter" || key == "backspace" || key == "delete"):
+		return ""
+	case m.focus != focusDiff && (command == keymap.DiffNext || command == keymap.DiffPrev):
+		return ""
+	}
+	return command
+}
+
 // stepChange handles arrow down (direction 1) and up (-1) in the diff pane: the next or previous change, and at the last or first change of the
 // file the first or last change of the next or previous file. At the end of the list the change wraps within the file.
 func (m GitModel) stepChange(msg tea.KeyMsg, direction int) (tea.Model, tea.Cmd) {
@@ -323,35 +339,36 @@ func (m GitModel) forwardToDiff(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
-	switch key {
-	case "ctrl+c", "ctrl+d", "q":
-		m.abortLoad() // also stops a running git process
-		return m, tea.Quit
-	case "tab":
+	if key == "tab" { // moves the focus between the list and the diff, whatever diff.next says
 		m.focus = 1 - m.focus
 		return m, nil
-	case "t":
+	}
+	command := m.diffCommand(key)
+	if key == "ctrl+c" { // the way out stays, whatever diff.quit is bound to
+		command = keymap.DiffQuit
+	}
+	switch command {
+	case keymap.DiffQuit:
+		m.abortLoad() // also stops a running git process
+		return m, tea.Quit
+	case keymap.DiffSplit:
 		return m.forwardToDiff(msg)
-	case "r":
+	case keymap.DiffRevert:
 		return m.revertChange()
-	case "u":
+	case keymap.DiffUndo:
 		return m.undoEdit()
-	case "e":
+	case keymap.DiffEdit:
 		return m.openEditor()
 	}
 	if m.focus == focusDiff {
-		switch key {
-		case "down":
+		switch {
+		case command == keymap.DiffNext:
 			return m.stepChange(msg, 1)
-		case "up":
+		case command == keymap.DiffPrev:
 			return m.stepChange(msg, -1)
-		case "esc", "left", "h":
+		case key == "esc" || key == "left" || key == "h":
 			m.focus = focusList
 			return m, nil
-		case "enter":
-			return m.openEditor()
-		case "backspace", "delete":
-			return m.revertChange()
 		}
 		return m.forwardToDiff(msg)
 	}
@@ -416,9 +433,10 @@ func (m GitModel) listView() string {
 func (m GitModel) listFooterBar() *bar {
 	result := &bar{}
 	result.add(barPart{" ", m.theme.Footer})
-	for _, h := range [][2]string{{"↑↓", "files"}, {"enter", "open"}, {"tab", "focus"}, {"q", "quit"}} {
+	for _, h := range [][2]string{{"↑↓", "files"}, {"enter", "open"}, {"tab", "focus"}} {
 		result.command(h[0], h[1], true, m.theme)
 	}
+	result.binding(keymap.DiffQuit, "quit", true, m.theme)
 	return result
 }
 

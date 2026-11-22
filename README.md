@@ -8,7 +8,7 @@ One static binary, one command: `jd`.
 
 Linux · macOS · Windows · `pip install jelly-dev`
 
-[Install](#install) · [Screenshots](#screenshots) · [The IDE](#the-ide) · [Diff, git and directories](#diff-git-and-directories) · [Merge](#merge) · [Command line](#command-line) · [Installer and tools](#installer-and-tools)
+[Install](#install) · [Screenshots](#screenshots) · [The IDE](#the-ide) · [Diff, git and directories](#diff-git-and-directories) · [Merge](#merge) · [Shortcuts and .jdrc](#shortcuts-and-jdrc) · [Command line](#command-line) · [Installer and tools](#installer-and-tools)
 
 ## Install
 
@@ -47,7 +47,7 @@ Then reload the shell (`exec "$SHELL" -l`, or open a new terminal) and check it:
 Taken from the [playground](playground/README.md) examples (`python3 playground/screenshots.py` makes them again).
 
 ![The project window](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide.png)
-*The project window: file tree, file tabs and a vim-style editor with syntax colours; `ctrl+p` projects, `ctrl+t` terminal, `ctrl+f` and `ctrl+g` search.*
+*The project window: file tree, file tabs and a vim-style editor with syntax colours; `ctrl+p` projects, `ctrl+t` terminal, `shift+tab` tabs, `ctrl+f` and `ctrl+g` search.*
 
 ![A shell in a panel under the editor (several tabs), like in VS Code.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/ide-terminal.png)
 *A shell in a panel under the editor (several tabs), like in VS Code.*
@@ -96,19 +96,25 @@ or the palette entry runs `git mergetool` with jd as the tool (whatever git is c
 is staged when you save. The window looks again after the merge tool ends and now and then while you type.
 
 **Top bar and shortcuts**: *Diff* shows the git changes of the project as in `jd git` (`alt+d`, `D` in the tree or `:diff`; `q` returns to
-the editor; save first, the diff shows what is on disk). `ctrl+p` and `ctrl+t` work in the tree and in the editor's normal mode (`ctrl+o` is the way
+the editor; save first, the diff shows what is on disk). `ctrl+p` works in the tree and in the editor's normal mode (`ctrl+t` and `alt+d` everywhere) (`ctrl+o` is the way
 back after `gd`/`gr`). *Terminal* opens a shell in the project in a panel under the editor, like VS Code. Everything you type goes
-to the shell; `ctrl+]` (or a click on the editor) gives the focus back, `ctrl+t` or the palette entry hides the panel (the shells
-keep running). The panel has **tabs**, one shell each: `alt+t` or `[+]` (or `:terminal new`) opens another, a click or `alt+1` … `alt+9`
-chooses one, `alt+w` or `[×]` ends the shown one; a shell that exits closes its tab, the last one takes the panel with it. Windows has no embedded terminal yet: there the shell runs in place of the window until
-you `exit`.
+to the shell; `ctrl+]` (or a click on the editor) gives the focus back, `ctrl+t` (also from the editor and the tree, where it shows the panel) or the
+palette entry hides the panel (the shells keep running). The panel has **tabs**, one shell each: `[+]` (or `:terminal new`, or *New terminal* in the
+tab list) opens another, a click or `alt+1` … `alt+9`
+chooses one, `alt+w` or `[×]` ends the shown one; a shell that exits closes its tab, the last one takes the panel with it. On Windows the panel runs `$SHELL`, else `%ComSpec%` (cmd.exe), in a ConPTY (Windows 10 version 1809 or newer), so the shell is inside the window
+like on Linux and macOS; on an older Windows it runs in place of the window until you `exit`.
 
 **File tabs**: every file you open from the tree, a search or `gd`/`gr` gets a tab above the editor (an open file is shown, not
 opened twice); each tab keeps its own text, undo history and cursor. `gt` / `gT` (or `:tabn` / `:tabp`, `:bn` / `:bp`) show the next /
 previous tab, a click on a name shows it, a click on `×` (or `:bd`, `:tabclose`) closes it. `:q`, `:wq` and `ctrl+d` close the tab, the
-last one leaves; `:wa` writes all files, `:qa` leaves when nothing is unsaved and `:qa!` anyway. The open tabs come back with the project.
+last one leaves (`ctrl+d` closes a saved tab at once and asks only when it has unsaved changes); `:wa` writes all files, `:qa` leaves when nothing is unsaved and `:qa!` anyway. The open tabs come back with the project.
 The footers and bars adapt to the width: on a narrow terminal the last commands lose their label (the `[key]` stays clickable) and then
 drop out, the first ones stay.
+
+**Tab list**: `shift+tab` (in the tree and in the editor's normal mode, not in insert mode or the terminal panel, where the editor and the shell keep it) or `alt+t` (everywhere,
+also inside the terminal panel; also `:tabs`, `:buffers`, `:ls`, or the palette) opens a searchable list of all tabs: the open files (`[+]` marks unsaved changes), the
+running shells and *New terminal*. Type to narrow it, `↑`/`↓` choose, `enter` or a click shows the tab (a file in the editor, a shell in the panel), `esc` or the key that
+opened it closes it. `ctrl+t` shows or hides the terminal panel.
 
 **Narrow terminals**: in every view (project window, diff, git, merge, welcome and search) the footer wraps onto a second line when
 the commands do not fit (labels shrink to the `[key]` and then the last commands drop out only when two lines are not enough), and
@@ -132,9 +138,9 @@ Terminal when it runs in **WSL** or Windows, Terminal.app on macOS, and on Linux
 (for example `JD_TERMINAL="kitty"`) to choose another one; jd and the folder are appended to it. The value is split at spaces (no quoting), so a path with spaces needs a wrapper script. Where no terminal can be started (a container, an ssh session) a project
 opens in the current window instead.
 
-Closing: `ctrl+d` from the tree and from the editor's normal mode always asks first, even when nothing changed: a box
-asks *Quit Jelly-Dev?* (from the editor with several tabs: *Close <file>?*), `y` or `enter` closes, `n` or `esc` stays, and pressing
-`ctrl+d` again also closes. A file with unsaved changes asks *Save / Discard / Cancel* instead, for every changed tab when quitting.
+Closing: `ctrl+d` from the tree and from the last editor tab always asks first, even when nothing changed: a box
+asks *Quit Jelly-Dev?*, `y` or `enter` closes, `n` or `esc` stays, and pressing
+`ctrl+d` again also closes. With several tabs `ctrl+d` closes the shown tab at once when it has no unsaved changes. A file with unsaved changes asks *Save / Discard / Cancel* instead, for every changed tab when quitting.
 After a jump (`gd`, `gr`) `ctrl+c` and `ctrl+d` still go back first. `ctrl+c` and `esc` never close anything (`ctrl+c` only returns to
 normal mode, like `esc`); only `ctrl+d`, `:wq`, `:q` and `q` in the tree close. In the terminal panel both belong to the shell. `:q`, `:wq` and `q` in the tree are explicit and close without the box.
 
@@ -213,7 +219,7 @@ files and `.git` directories are skipped.
 Keys (diff): `↓`/`↑` next/previous change, `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, mouse wheel, `q` quit.
 The mouse is captured for wheel scrolling; hold Shift while dragging to select text in most terminals.
 
-Keys in the diff views: `↓`/`↑` next/previous change (in `jd git` and directory diffs with the diff pane focused, past the last or first change of a file they open the next or previous file), `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, `q` quit.
+Keys in the diff views (the defaults; see "Shortcuts and .jdrc"): `↓`/`↑` next/previous change (in `jd git` and directory diffs with the diff pane focused, past the last or first change of a file they open the next or previous file), `j`/`k` scroll, `g`/`G` top/bottom, `t` split/unified, `q` quit.
 In `jd git` (and the *Diff* of the project window) the new side is the working tree, so changes can be undone and edited there, like
 in the merge view. With the diff pane focused (not for `--staged`, two revisions, deleted files or conflicts):
 
@@ -228,7 +234,7 @@ line ends (CRLF) and a missing final newline are kept.
 
 ## Merge
 
-Keys in the merge view (conflicts):
+Keys in the merge view (conflicts; the defaults, see "Shortcuts and .jdrc"):
 
 | Key | Action |
 |---|---|
@@ -312,6 +318,37 @@ after saving.
 Use as git tool: `jd install-git` prints the `git config` commands, `--apply` writes them (`--local` for
 the current repository only), then use `git difftool` and `git mergetool`.
 
+## Shortcuts and .jdrc
+
+Every shortcut of the project window and of the merge, diff, git and directory views can be changed in a `.jdrc` file, and the footers, the
+command palette, the top bar and the messages then show the keys you chose. The vim editing keys, the movement keys of the lists and the answers
+to questions (`y`, `n`, `enter`, `esc`) stay as they are.
+
+`jd rc` prints the shortcuts in force, every command with its keys, in the `.jdrc` syntax. Without a `.jdrc` it prints the defaults
+(also in `docs/jdrc.example`), so `jd rc > ~/.jdrc` gives you a file to start from. Each line ends with a comment that says where the value
+comes from (`default`, `~/.jdrc:3`, `./.jdrc:1`) and what the command does:
+
+```
+tabs      = ctrl+j           # one key
+terminal  = alt+x, f4        # several keys; the first one is shown in the UI
+diff      = none             # no key: the command is unbound and has no hint
+merge.ours = alt+o
+```
+
+- **Files**: `~/.jdrc`, then `jdrc` in `$JD_CONFIG_DIR` (when set), then `.jdrc` in the folder jd starts in (the project folder, else the working
+  directory); a later file overrides an earlier one, per command. The files are read when jd starts.
+- **Syntax**: `command = key[, key ...]`, `#` starts a comment. Keys are written as Bubble Tea names them: `ctrl+x`, `alt+x`, `f1`…`f20`, `esc`,
+  `tab`, `shift+tab`, `enter`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `pgup`, `pgdown`, `home`, `end`, `ctrl+right`, a single
+  character, and `space`, `comma`, `hash` for the characters that cannot stand for themselves. Names are case-insensitive.
+- **Scopes**: a key belongs to one command per scope (`ide`: the project window, `merge`, `diff`: the diff, git and directory views); the same
+  key may do different things in different scopes. Assigning a key that another command has *by default* takes it from that command; a key another
+  line of a file gave away is refused. Swapping two keys therefore works with two lines.
+- **Project window keys** must use `ctrl`, `alt`, `shift` or a function key, because a bare letter would be typed into the editor or the shell. A terminal
+  cannot tell `ctrl+i` from `tab`, `ctrl+m` from `enter`, `ctrl+[` from `esc` and (often) `ctrl+h` from `backspace`: those are refused.
+- **Mistakes** never lock you out: a line with an unknown command, an unknown key or a clash is skipped, jd prints
+  `jd: ~/.jdrc line 3: unknown command "tabz"` on stderr, and the default stays. `jd rc` lists the skipped lines at its end. A `.jdrc` contains
+  key names only; nothing in it is ever run.
+
 ## Command line
 
 ```
@@ -323,6 +360,7 @@ jd merge <file-a> <file-b>            merge b into a without git; the result is 
 jd merge <dir-a> <dir-b>              the same for two directories
 jd [<folder> | <file>]                open the project window (no argument: the most recent project)
 jd install-git [--apply] [--local]    print (or write) the git diff/merge tool settings
+jd rc                                 print the keyboard shortcuts in force (see "Shortcuts and .jdrc")
 ```
 
 With `jd` as git's tools: `git difftool`, `git difftool --dir-diff` and `git mergetool`.

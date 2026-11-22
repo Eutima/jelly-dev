@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/eutima/jelly-dev/internal/keymap"
 
 	"github.com/eutima/jelly-dev/internal/source"
 )
@@ -29,7 +30,11 @@ func (m ProjectModel) topBar() *bar {
 	}
 	result.add(barPart{" ", m.theme.Footer})
 	label := barPart{" Commands ", m.theme.Header}
-	result.button([]string{paletteKey}, []barPart{label, {"(" + paletteKey + ") ", m.theme.Header}}, []barPart{label})
+	if shown := keys.Label(keymap.Palette); shown != "" {
+		result.button([]string{paletteClick}, []barPart{label, {"(" + shown + ") ", m.theme.Header}}, []barPart{label})
+	} else {
+		result.button([]string{paletteClick}, []barPart{label}, []barPart{label})
+	}
 	result.add(barPart{" ", m.theme.Footer})
 	if label := m.conflictsLabel(); label != "" { // merge conflicts: a click starts the merge tool
 		result.button([]string{mergeToolKey}, []barPart{{label, m.theme.Header.Bold(true)}, {"(:mergetool) ", m.theme.Header}}, []barPart{{label, m.theme.Header.Bold(true)}})
@@ -40,12 +45,12 @@ func (m ProjectModel) topBar() *bar {
 
 // clickTopBar runs the action of the button at column x.
 func (m ProjectModel) clickTopBar(x int) (tea.Model, tea.Cmd) {
-	keys := m.topBar().visibleKeysAt(x, m.width)
-	if len(keys) == 0 {
+	clicked := m.topBar().visibleKeysAt(x, m.width)
+	if len(clicked) == 0 {
 		return m, nil
 	}
-	switch keys[0] {
-	case paletteKey:
+	switch clicked[0] {
+	case paletteClick:
 		return m.openPalette()
 	case mergeToolKey:
 		return m.startMergeTool()

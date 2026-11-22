@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/eutima/jelly-dev/internal/keymap"
 
 	"github.com/eutima/jelly-dev/internal/terminal"
 )
@@ -88,7 +90,7 @@ func (m ProjectModel) newTerminal() (tea.Model, tea.Cmd) {
 	m.termShown = wasShown
 	session, err := terminal.Start(cmd, m.root, max(m.editorWidth(), 1), max(panel-1, 1))
 	if err != nil {
-		if err == terminal.ErrUnsupported { // no pseudo terminal here: run the shell in place of the window instead
+		if errors.Is(err, terminal.ErrUnsupported) { // no pseudo terminal here: run the shell in place of the window instead
 			return m.runExternal("terminal", command(m.root))
 		}
 		m.say("E1: "+err.Error(), true)
@@ -139,18 +141,18 @@ func (m ProjectModel) termUpdated(msg termUpdateMsg) (tea.Model, tea.Cmd) {
 }
 
 // terminalKey sends a key to the shell. The keys of the window itself: leaveTermKey gives the focus back to the editor,
-// ctrl+t hides the panel, alt+t opens another tab, alt+w closes the shown one and alt+1 ... alt+9 choose a tab.
+// ctrl+t opens the tab list, alt+t hides the panel, alt+w closes the shown tab and alt+1 ... alt+9 choose one.
 func (m ProjectModel) terminalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	switch {
-	case key == "ctrl+t":
-		return m.openTerminal()
-	case key == leaveTermKey:
+	case keys.Is(keymap.Tabs, key) && key != "shift+tab": // shift+tab belongs to the shell (completion menus), the other keys open the list
+		return m.openTabSwitcher()
+	case keys.Is(keymap.Terminal, key):
+		return m.openTerminal() // hides the panel
+	case keys.Is(keymap.LeaveTerminal, key):
 		m.focus = focusProjectEdit
 		return m.resizeEditor(), nil
-	case key == "alt+t":
-		return m.newTerminal()
-	case key == "alt+w":
+	case keys.Is(keymap.CloseTerminal, key):
 		m.closeTermTab(m.termActive)
 		return m.resizeEditor(), nil
 	case len(key) == 5 && strings.HasPrefix(key, "alt+") && key[4] >= '1' && key[4] <= '9':
@@ -215,7 +217,16 @@ func (m ProjectModel) termHeader() *bar {
 	result.click([]string{actionNewTab}, barPart{"[+]", m.theme.Footer})
 	result.add(barPart{" ", m.theme.Footer})
 	result.click([]string{actionCloseTab}, barPart{"[×]", m.theme.Footer})
-	result.hint(barPart{"  " + leaveTermKey + " editor  alt+t new  alt+w close", m.theme.Footer})
+	var hints []string
+	for _, h := range []struct {
+		command keymap.Command
+		what    string
+	}{{keymap.LeaveTerminal, "editor"}, {keymap.Tabs, "tabs"}, {keymap.Terminal, "hide"}, {keymap.CloseTerminal, "close"}} {
+		if label := panelLabel(h.command); label != "" {
+			hints = append(hints, label+" "+h.what)
+		}
+	}
+	result.hint(barPart{"  " + strings.Join(hints, "  "), m.theme.Footer})
 	return result
 }
 
@@ -283,4 +294,14 @@ func keyBytes(msg tea.KeyMsg) []byte {
 		out = append([]byte{0x1b}, out...)
 	}
 	return out
+}
+
+// panelLabel is the key of a command as the terminal panel can use it: shift+tab belongs to the shell there, so the first other key is shown.
+func panelLabel(command keymap.Command) string {
+	for _, key := range keys.Keys(command) {
+		if key != "shift+tab" {
+			return keymap.Pretty(key)
+		}
+	}
+	return ""
 }

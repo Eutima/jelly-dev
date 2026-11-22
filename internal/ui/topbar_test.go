@@ -49,7 +49,7 @@ func TestTopBar_ShowsOnlyTheCommandsButton(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := strings.Split(model.View(), "\n")[0]
-	if !strings.Contains(first, "Commands") || !strings.Contains(first, paletteKey) {
+	if !strings.Contains(first, "Commands") || !strings.Contains(first, "alt+p") {
 		t.Fatalf("the top bar must offer the palette: %q", first)
 	}
 	for _, gone := range []string{"Project", "Terminal", "Diff"} {
@@ -61,7 +61,7 @@ func TestTopBar_ShowsOnlyTheCommandsButton(t *testing.T) {
 
 func TestTopBar_CommandsButtonOpensThePalette(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
-	model, _ = clickBar(model, buttonX(t, model, paletteKey))
+	model, _ = clickBar(model, buttonX(t, model, paletteClick))
 	if model.palette == nil {
 		t.Fatal("a click on the commands button must open the palette")
 	}
@@ -79,7 +79,7 @@ func TestPalette_TerminalActionRunsShellInProject(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
 	var dir string
 	model.hooks.Terminal = func(d string) *exec.Cmd { dir = d; return exec.Command("true") }
-	model, cmd := runPalette(t, model, "Open terminal")
+	model, cmd := runPalette(t, model, "Show or hide the terminal")
 	if cmd == nil || dir != model.root {
 		t.Fatalf("terminal must start in the project: cmd %v dir %q", cmd != nil, dir)
 	}
@@ -119,7 +119,7 @@ func TestTopBar_ClickInInsertModeOpensThePaletteWithoutTyping(t *testing.T) {
 	model, _ = projectKeys(model, "G", "enter") // opens a file in the editor
 	model, _ = projectKeys(model, "i")
 	before := strings.Join(model.Editor().Lines(), "\n")
-	model, _ = clickBar(model, buttonX(t, model, paletteKey))
+	model, _ = clickBar(model, buttonX(t, model, paletteClick))
 	if got := strings.Join(model.Editor().Lines(), "\n"); got != before {
 		t.Fatalf("a click must not type into the text:\n%q\n%q", before, got)
 	}
@@ -208,7 +208,7 @@ func TestDiff_OpensWhenThereAreChanges(t *testing.T) {
 func TestTerminalPanel_OpensUnderEditorTakesKeysAndCloses(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
 	model.hooks.Terminal = func(string) *exec.Cmd { return exec.Command("/bin/sh", "-c", "read w; echo got-$w; sleep 30") }
-	model, _ = runPalette(t, model, "Open terminal")
+	model, _ = runPalette(t, model, "Show or hide the terminal")
 	if len(model.terms) == 0 || model.focus != focusTerminal || !strings.Contains(stripANSI(model.View()), "TERMINAL") {
 		t.Fatalf("the terminal must open in a panel:\n%s", model.View())
 	}
@@ -229,11 +229,11 @@ func TestTerminalPanel_OpensUnderEditorTakesKeysAndCloses(t *testing.T) {
 	if model.focus != focusProjectEdit || model.termPanelHeight() == 0 {
 		t.Fatal("ctrl+] must give the focus back and keep the panel")
 	}
-	model, _ = runPalette(t, model, "Open terminal") // focuses the running shell again
+	model, _ = runPalette(t, model, "Show or hide the terminal") // focuses the running shell again
 	if model.focus != focusTerminal {
 		t.Fatal("the button must focus the shell")
 	}
-	model, _ = runPalette(t, model, "Open terminal") // and hides it
+	model, _ = runPalette(t, model, "Show or hide the terminal") // and hides it
 	if model.termShown || len(model.terms) == 0 {
 		t.Fatal("a second click must hide the panel but keep the shell")
 	}
@@ -299,10 +299,15 @@ func TestTerminalTabs_OpenSwitchAndClose(t *testing.T) {
 	}
 	t.Cleanup(model.closeTerminal)
 	send(tea.KeyMsg{Type: tea.KeyCtrlT})
-	send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t"), Alt: true})
-	send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t"), Alt: true})
+	for i := 0; i < 2; i++ { // another shell tab comes from the tab list
+		send(keyMsg("alt+t"))
+		for _, r := range "new terminal" {
+			send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		}
+		send(tea.KeyMsg{Type: tea.KeyEnter})
+	}
 	if len(model.terms) != 3 || model.termActive != 2 {
-		t.Fatalf("alt+t must open tabs: %d tabs, active %d", len(model.terms), model.termActive)
+		t.Fatalf("New terminal in the tab list must open tabs: %d tabs, active %d", len(model.terms), model.termActive)
 	}
 	header := stripANSI(strings.Split(model.View(), "\n")[1+model.editorHeight()])
 	for _, want := range []string{"1:sh", "2:sh", "3:sh", "[+]"} {
@@ -391,7 +396,7 @@ func TestClose_TerminalKeepsCtrlCAndCtrlDForTheShell(t *testing.T) {
 	}
 }
 
-func TestClose_CtrlDWithSeveralTabsAsksAboutTheTabAndNoKeepsIt(t *testing.T) {
+func TestClose_CtrlDWithSeveralSavedTabsClosesTheShownTabWithoutAsking(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
 	model, _ = projectKeys(model, "G", "enter")                              // README.md
 	model, _ = projectKeys(model, "ctrl+e", "k", "enter", "j", "j", "enter") // and main.go in a second tab
@@ -400,12 +405,19 @@ func TestClose_CtrlDWithSeveralTabsAsksAboutTheTabAndNoKeepsIt(t *testing.T) {
 	}
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
 	model = settleProject(updated.(ProjectModel), cmd)
-	if view := stripANSI(model.View()); model.dlg == nil || !strings.Contains(view, "Close main.go?") {
-		t.Fatalf("with several tabs the question is about the shown tab:\n%s", view)
+	if model.dlg != nil || len(model.openEditors()) != 1 || isQuit(cmd) {
+		t.Fatalf("a saved tab closes at once: dialog %v, %d tabs", model.dlg != nil, len(model.openEditors()))
 	}
-	model, _ = projectKeys(model, "n")
-	if model.dlg != nil || len(model.openEditors()) != 2 {
-		t.Fatalf("no keeps the tab: %d tabs", len(model.openEditors()))
+}
+
+func TestClose_CtrlDWithSeveralTabsAsksWhenTheShownTabHasChanges(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, sampleFiles)
+	model, _ = projectKeys(model, "G", "enter")
+	model, _ = projectKeys(model, "ctrl+e", "k", "enter", "j", "j", "enter", "x") // an unsaved change in the second tab
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	model = settleProject(updated.(ProjectModel), cmd)
+	if model.dlg == nil || len(model.openEditors()) != 2 {
+		t.Fatalf("unsaved changes must ask what to do first (%d tabs)", len(model.openEditors()))
 	}
 }
 

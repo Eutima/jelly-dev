@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/eutima/jelly-dev/internal/ai"
+	"github.com/eutima/jelly-dev/internal/keymap"
 	"github.com/eutima/jelly-dev/internal/merge"
 	"github.com/eutima/jelly-dev/internal/vimbuf"
 )
@@ -269,7 +270,9 @@ func (m MergeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // allResolvedNotice is shown when the last open conflict was resolved.
-const allResolvedNotice = "✓ All conflicts resolved - press ctrl+s to save"
+func allResolvedNotice() string {
+	return "✓ All conflicts resolved - press " + keyLabel(keymap.MergeSave) + " to save"
+}
 
 // announceAllResolved adds the completion message to the status line, after the message of the action that
 // resolved the last conflict (unless that message says it already).
@@ -277,9 +280,9 @@ func (m *MergeModel) announceAllResolved() {
 	switch {
 	case strings.Contains(strings.ToLower(m.status), "all conflicts resolved"):
 	case m.status == "":
-		m.notice(allResolvedNotice, false)
+		m.notice(allResolvedNotice(), false)
 	default:
-		m.notice(m.status+" · "+allResolvedNotice, false)
+		m.notice(m.status+" · "+allResolvedNotice(), false)
 	}
 }
 
@@ -332,22 +335,24 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	key := msg.String()
 	m.notice("", false) // a message lives until the next key press
-	if key != "q" && key != "esc" && key != "ctrl+c" && key != "ctrl+d" {
+	command, bound := keys.Lookup(keymap.ScopeMerge, key)
+	if command != keymap.MergeQuit {
 		m.quitArmed = false
 	}
-	if key == paletteKey || key == "f1" {
+	if command == keymap.MergePalette {
 		return m.openPalette()
 	}
 	if m.aiBusy {
-		m.notice("Waiting for the assistant... (q quits)", false)
+		m.notice("Waiting for the assistant... ("+keyLabel(keymap.MergeQuit)+" quits)", false)
 	}
-	if assistant, ok := m.assistantFor(key); ok {
-		return m.askAssistant(assistant)
+	if bound {
+		return m.runCommand(command)
+	}
+	if key == "ctrl+c" { // the way out stays, whatever merge.quit is bound to
+		return m.quit()
 	}
 	page := max(m.bodyHeight()-1, 1)
-	switch key {
-	case "q", "esc", "ctrl+c", "ctrl+d":
-		return m.quit()
+	switch key { // the keys that are not commands: moving through the rows
 	case "j", "down":
 		m.moveCursor(1)
 	case "k", "up":
@@ -360,47 +365,62 @@ func (m MergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.setCursor(0)
 	case "G", "end":
 		m.setCursor(len(m.rows) - 1)
-	case "n", "tab":
+	}
+	m.clamp()
+	return m, nil
+}
+
+// runCommand does what a command of the merge view says: a key of it was pressed, or it was chosen in the command palette.
+func (m MergeModel) runCommand(command keymap.Command) (tea.Model, tea.Cmd) {
+	switch command {
+	case keymap.MergeQuit:
+		return m.quit()
+	case keymap.MergeClaude, keymap.MergeCodex:
+		if assistant, ok := m.assistantFor(command); ok {
+			return m.askAssistant(assistant)
+		}
+	case keymap.MergeNext:
 		m.gotoChange(m.changeAfterCursor())
-	case "p", "shift+tab":
+	case keymap.MergePrev:
 		m.gotoChange(m.changeBeforeCursor())
-	case "ctrl+right", "ctrl+o":
+	case keymap.MergeAllOurs:
 		m.resolveAll(ChoiceOurs)
-	case "ctrl+left", "ctrl+t":
+	case keymap.MergeAllTheirs:
 		m.resolveAll(ChoiceTheirs)
-	case "o":
+	case keymap.MergePickOurs:
 		m.resolve(ChoiceOurs)
-	case "t":
+	case keymap.MergePickTheirs:
 		m.resolve(ChoiceTheirs)
-	case "right":
+	case keymap.MergeOurs:
 		m.toggleSide(paneOurs)
-	case "left":
+	case keymap.MergeTheirs:
 		m.toggleSide(paneTheirs)
-	case "backspace", "delete":
+	case keymap.MergeCancel:
 		m.cancelChange()
-	case "x":
+	case keymap.MergeIgnore:
 		m.ignoreChange()
-	case "b":
+	case keymap.MergeBoth:
 		m.resolve(ChoiceBoth)
-	case "r":
+	case keymap.MergeBase:
 		m.resolve(ChoiceBase)
-	case "m":
+	case keymap.MergeAuto:
 		m.autoResolve()
-	case "e", "enter":
+	case keymap.MergeEdit:
 		m.startEdit(false)
-	case "d":
+	case keymap.MergeDelete:
 		m.deleteLine()
-	case "i":
+	case keymap.MergeInsert:
 		m.startEdit(true)
-	case "u":
+	case keymap.MergeUndo:
 		m.undo()
-	case "v":
+	case keymap.MergePane:
 		m.cycleView()
-	case "w":
+	case keymap.MergeWrap:
 		m.noWrap = !m.noWrap
 		m.offset = m.firstRowFor(m.offset)
-		m.notice(map[bool]string{true: "Long lines are cut (w wraps them)", false: "Long lines are wrapped (w cuts them)"}[m.noWrap], false)
-	case "s", "ctrl+s":
+		wrap := keyLabel(keymap.MergeWrap)
+		m.notice(map[bool]string{true: "Long lines are cut (" + wrap + " wraps them)", false: "Long lines are wrapped (" + wrap + " cuts them)"}[m.noWrap], false)
+	case keymap.MergeSave:
 		m.saveResult()
 	}
 	m.clamp()
@@ -420,7 +440,7 @@ func (m MergeModel) quit() (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	m.quitArmed = true
-	m.notice("Unsaved result - press q again (or ctrl+c, ctrl+d) to discard it, or ctrl+s to save", true)
+	m.notice("Unsaved result - press "+quitKeys()+" to discard it, or "+keyLabel(keymap.MergeSave)+" to save", true)
 	return m, nil
 }
 
@@ -466,7 +486,7 @@ func (m MergeModel) resolvedNotice(chunk int, choice Choice) string {
 	if left := m.Unresolved(); left > 0 {
 		return fmt.Sprintf("%s · %d conflict(s) left", text, left)
 	}
-	return text + " · all conflicts resolved, press ctrl+s to save"
+	return text + " · all conflicts resolved, press " + keyLabel(keymap.MergeSave) + " to save"
 }
 
 // nextUnresolved returns the index (into changed) of the next unresolved conflict after the current change.
@@ -535,7 +555,7 @@ func (m *MergeModel) saveResult() {
 	}
 	if err := m.save(m.Result()); err != nil {
 		m.saveFailed = true
-		m.notice("Save failed: "+err.Error()+" - fix the problem and press ctrl+s to retry", true)
+		m.notice("Save failed: "+err.Error()+" - fix the problem and press "+keyLabel(keymap.MergeSave)+" to retry", true)
 		return
 	}
 	m.outcome.Saved = true

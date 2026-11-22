@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/eutima/jelly-dev/internal/keymap"
 
 	"github.com/eutima/jelly-dev/internal/source"
 )
@@ -102,9 +103,10 @@ func (m DirMergeModel) updateChild(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m DirMergeModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.status = ""
-	switch msg.String() {
-	case "q", "esc", "ctrl+c", "ctrl+d":
+	if keys.Is(keymap.DiffQuit, msg.String()) || msg.String() == "ctrl+c" {
 		return m, tea.Quit
+	}
+	switch msg.String() {
 	case "j", "down":
 		m.selected++
 	case "k", "up":
@@ -213,6 +215,6 @@ func (m DirMergeModel) footerBar() *bar {
 	result.add(barPart{" ", m.theme.Footer})
 	result.command("↑↓", "files", true, m.theme)
 	result.command("enter", "merge into "+sanitize(m.leftLabel), true, m.theme)
-	result.command("q", "quit", true, m.theme)
+	result.binding(keymap.DiffQuit, "quit", true, m.theme)
 	return result
 }
