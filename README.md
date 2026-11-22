@@ -8,7 +8,7 @@
   <a href="https://github.com/Eutima/jelly-dev/actions/workflows/release.yml"><img src="https://github.com/Eutima/jelly-dev/actions/workflows/release.yml/badge.svg?branch=master" alt="release"></a>
 </p>
 
-**A terminal IDE with a JetBrains-style diff and merge UI.** A project tree, a vim-style editor with language servers, a shell
+**An intuitive, easy to use terminal IDE with a clear diff and merge UI.** A project tree, a vim-style editor with language servers, a shell
 panel and a command palette, plus side-by-side diffs, a three-pane `git mergetool` and conflict resolution with Claude or Codex.
 One static binary, one command: `jd`.
 
@@ -159,7 +159,7 @@ forgets an entry, `esc` closes the list. `:project <folder>` switches this windo
 with `~`); `:project!` discards unsaved changes, otherwise they block the switch (E37). The file and cursor that were open are
 stored first and come back when you return to a project; the language servers follow the window to the new project.
 
-**New windows** (like JetBrains): `w` in the tree on a folder, `:window [folder]` in the editor and `w` on the welcome screen
+**New windows**: `w` in the tree on a folder, `:window [folder]` in the editor and `w` on the welcome screen
 start a new terminal window running `jd` on that folder. jd uses tmux (`tmux new-window`) when it runs inside tmux, Windows
 Terminal when it runs in **WSL** or Windows, Terminal.app on macOS, and on Linux the first terminal it finds
 (x-terminal-emulator, gnome-terminal, konsole, xfce4-terminal, kitty, wezterm, alacritty, foot, xterm). Set `JD_TERMINAL`
@@ -305,7 +305,7 @@ merged automatically; conflicts start with the base lines. The result pane has a
 
 - `j`/`k`/arrows move the cursor (the change under it is selected), `n`/`p` jump to the next/previous change.
 - Gutter buttons (mouse, three-pane layout only): `»` applies ours, `«` applies theirs; applying the second side of a
-  change gives both. `×` discards that side (the other side stays, or the base when none is left), like JetBrains.
+  change gives both. `×` discards that side (the other side stays, or the base when none is left).
   A click stays on the change instead of jumping to the next conflict, so you can apply both and edit by hand.
   A button disappears (and is no longer clickable) once its action is done, e.g. `»` after ours was applied.
 - `ctrl+→` or `ctrl+o` / `ctrl+←` or `ctrl+t` take ours / theirs for every conflict that is still unresolved (decided conflicts and automatic
