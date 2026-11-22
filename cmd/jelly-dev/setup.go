@@ -209,3 +209,37 @@ func languagesForSetup(configDir string, stderr io.Writer, env environment) (lan
 	}
 	return chosen, true
 }
+
+// exitHint is what jd prints when it ends: the PATH hint after a clean exit in a terminal, nothing otherwise (a script, a failure).
+func exitHint(code int, exe, path, goos string, terminal bool) string {
+	if code != exitOK || !terminal {
+		return ""
+	}
+	return pathHint(exe, path, goos)
+}
+
+// pathHint is the message that tells how to put jd on the PATH, when the folder of the jd binary is not on it (a pip install as a normal
+// user puts jd in ~/.local/bin, which many shells do not search, and `python3 -m jelly_dev` is how it was started). "" when jd is found
+// or the PATH cannot be judged. path is the PATH of the shell the program was started from.
+func pathHint(exe, path, goos string) string {
+	if goos == "windows" || exe == "" || path == "" {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	folder := filepath.Dir(exe)
+	for _, entry := range filepath.SplitList(path) {
+		if entry == "" {
+			continue
+		}
+		if resolved, err := filepath.EvalSymlinks(entry); err == nil {
+			entry = resolved // a PATH entry that is a link to the folder counts
+		}
+		if filepath.Clean(entry) == folder {
+			return ""
+		}
+	}
+	return fmt.Sprintf("jd: jd is not on your PATH yet (it is in %[1]s). Use it in this shell:  export PATH=\"%[1]s:$PATH\"\n"+
+		"jd: new shells find it after the first-start setup added that line to your profile; if it did not, add it to ~/.profile yourself.\n", folder)
+}

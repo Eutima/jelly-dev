@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -113,8 +114,12 @@ func main() {
 	env := environment{homeDir: home, runUI: runProgram, readClipboard: source.ReadClipboard, writeClipboard: source.WriteClipboard, openGit: openGit, gitConfig: runGitConfig, runInstaller: runInstallerScript, interactive: interactiveTerminal, getenv: os.Getenv, namedTheme: ui.NamedTheme, detectTheme: ui.DetectedThemeName, enableAttributes: enableTextAttributes,
 		busy: newBusy(os.Stderr, stderrIsTerminal()), workDir: workDir, detectAssistants: ai.Detect}
 	env.newTools = func(dir string) languageTools { return newInstaller(dir, env) }
+	shellPath := os.Getenv("PATH") // before EnsurePath adds folders: the hint below is about the PATH the user's shell has
 	tools.EnsurePath() // tools installed below ~/.local/bin and the Go bin folder are found even when the shell's PATH lacks them
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, env))
+	code := run(os.Args[1:], os.Stdout, os.Stderr, env)
+	exe, _ := os.Executable()
+	fmt.Fprint(os.Stderr, exitHint(code, exe, shellPath, runtime.GOOS, stderrIsTerminal())) // after the window closed, where the message stays visible
+	os.Exit(code)
 }
 
 func runProgram(model tea.Model) error {

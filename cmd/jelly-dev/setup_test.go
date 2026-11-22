@@ -419,3 +419,55 @@ func TestSetup_TheQuestionStartsWithNothingChecked(t *testing.T) {
 		t.Fatalf("and that is remembered: %v %v", saved, ok)
 	}
 }
+
+func TestPathHint_NamesTheExportLineWhenTheFolderIsNotOnThePath(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "jd")
+	got := pathHint(exe, "/usr/bin:/bin", "linux")
+	if want := `export PATH="` + dir + `:$PATH"`; !strings.Contains(got, want) {
+		t.Errorf("pathHint = %q, want it to contain %q", got, want)
+	}
+}
+
+func TestPathHint_IsEmptyWhenJdIsFoundOrThePathCannotBeJudged(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "jd")
+	cases := map[string]string{
+		"on the path":   pathHint(exe, "/usr/bin:"+dir, "linux"),
+		"windows":       pathHint(exe, "/usr/bin", "windows"),
+		"no path":       pathHint(exe, "", "linux"),
+		"no executable": pathHint("", "/usr/bin", "linux"),
+	}
+	for name, got := range cases {
+		if got != "" {
+			t.Errorf("%s: pathHint = %q, want none", name, got)
+		}
+	}
+}
+
+func TestExitHint_IsOnlyPrintedAfterACleanExitInATerminal(t *testing.T) {
+	exe := filepath.Join(t.TempDir(), "jd")
+	if got := exitHint(exitOK, exe, "/usr/bin", "linux", true); got == "" {
+		t.Error("no hint after a clean exit in a terminal")
+	}
+	if got := exitHint(exitFailure, exe, "/usr/bin", "linux", true); got != "" {
+		t.Errorf("hint after a failure: %q", got)
+	}
+	if got := exitHint(exitOK, exe, "/usr/bin", "linux", false); got != "" {
+		t.Errorf("hint without a terminal: %q", got)
+	}
+}
+
+func TestPathHint_AcceptsALinkedAndATrailingSlashEntry(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Skip("no symlinks here")
+	}
+	exe := filepath.Join(dir, "jd")
+	for _, path := range []string{link, dir + "/"} {
+		if got := pathHint(exe, "/usr/bin:"+path, "linux"); got != "" {
+			t.Errorf("PATH entry %q: hint %q, want none", path, got)
+		}
+	}
+}
