@@ -46,9 +46,11 @@ function Assert-JdRuns([string]$exe) {
         & $exe --version | Out-Null
         if ($LASTEXITCODE -eq 0) { return }
         $reason = "exit code $LASTEXITCODE"
-    } catch { $reason = $_.Exception.Message }
+    } catch { $reason = ($_.Exception.Message -split "`r?`n")[0] } # the first line: the error text of PowerShell is long
+    if (-not $reason) { $reason = 'unknown error' }
     $quoted = $exe.Replace("'", "''") # the path goes into a single quoted PowerShell string below
-    throw @"
+    $message = @"
+
 $exe was installed, but Windows does not let it run ($reason).
 Security software or a policy is blocking the new program. Fix it, then run this installer again. Check:
   - A notice "Attack surface reduction" (German: "Verringerung der Angriffsflaeche", rule "Use advanced protection against ransomware") means Microsoft
@@ -60,6 +62,8 @@ Security software or a policy is blocking the new program. Fix it, then run this
   - Other antivirus or AppLocker / Windows Defender Application Control (company PCs): ask your administrator to allow $exe,
     or set INSTALL_DIR to a folder the policy allows.
 "@
+    Write-Host $message -ForegroundColor Yellow
+    throw "jd.exe cannot be started. If Microsoft Defender blocked it, run this in PowerShell as administrator: Add-MpPreference -AttackSurfaceReductionOnlyExclusions '$quoted' (more above), then run jd --version"
 }
 
 $installDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\jelly-dev' }
