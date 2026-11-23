@@ -91,6 +91,7 @@ func Start(command []string, dir string) (*Client, error) {
 	}
 	cmd := exec.Command(command[0], command[1:]...) // #nosec G204 -- the command comes from the user's own configuration
 	cmd.Dir = dir
+	detach(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -105,7 +106,7 @@ func Start(command []string, dir string) (*Client, error) {
 	var client *Client
 	client = NewClient(stdout, stdin, func() error {
 		_ = stdin.Close()
-		_ = cmd.Process.Kill()
+		killAdapter(cmd)
 		// Wait closes the pipe the read loop reads from: let the loop read what is left first (but do not hang on a grandchild that keeps
 		// the pipe open)
 		select {
@@ -134,6 +135,7 @@ func StartListening(command []string, dir string) (*Client, error) {
 	}
 	cmd := exec.Command(command[0], command[1:]...) // #nosec G204 -- the command comes from the user's own configuration
 	cmd.Dir = dir
+	detach(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
@@ -147,7 +149,7 @@ func StartListening(command []string, dir string) (*Client, error) {
 	}
 	var readers sync.WaitGroup // Wait closes the pipes: let the readers finish first (but not for ever: a grandchild may keep a pipe open)
 	kill := func() {
-		_ = cmd.Process.Kill()
+		killAdapter(cmd)
 		drained := make(chan struct{})
 		go func() { readers.Wait(); close(drained) }()
 		select {
