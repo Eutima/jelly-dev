@@ -43,6 +43,15 @@ var (
 	psesSHA256 = "5084f0326cc88539e9d880b08f6c52ce5be4672bb8ecee8921e35f8895a6b9d7"
 )
 
+// jsDebugVersion and jsDebugURL/jsDebugSHA256 pin the download of js-debug (the debug adapter of Visual Studio Code for Node.js) to one release;
+// raise them together (the checksum is the one of the release asset js-debug-dap-v<version>.tar.gz). Variables so tests can pin their archive.
+const jsDebugVersion = "1.140.0"
+
+var (
+	jsDebugURL    = "https://github.com/microsoft/vscode-js-debug/releases/download/v" + jsDebugVersion + "/js-debug-dap-v" + jsDebugVersion + ".tar.gz"
+	jsDebugSHA256 = "27dab92937ec1ab35821ae955aac867544fe06a1b6307229049f2d789af10968"
+)
+
 // runCommand runs an installer command; its error message ends with the first line of its output.
 func runCommand(ctx context.Context, env []string, name string, args ...string) error {
 	ctx, cancel := context.WithTimeout(ctx, installTimeout)

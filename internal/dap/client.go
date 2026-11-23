@@ -73,6 +73,8 @@ type Client struct {
 	closed  bool
 	closing bool  // Close has begun: the read loop failing now is the expected end
 	cause   error // why the read loop ended, when it was not asked to
+	handler RequestHandler
+	address string // where the adapter listens, "" when it uses stdio
 }
 
 // NewClient talks over a connection that already exists; closer is called by Close (may be nil).
@@ -119,8 +121,8 @@ func Start(command []string, dir string) (*Client, error) {
 	return client, nil
 }
 
-// listeningAddress finds the address in the line an adapter prints when its server is ready ("DAP server listening at: 127.0.0.1:4711").
-var listeningAddress = regexp.MustCompile(`listening at: (\S+)`)
+// listeningAddress finds the address in the line an adapter prints when its server is ready ("DAP server listening at: 127.0.0.1:4711", js-debug: "Debug server listening at 127.0.0.1:4711").
+var listeningAddress = regexp.MustCompile(`listening at:? (\S+)`)
 
 // listenTimeout is how long an adapter that listens on a port gets to say where.
 const listenTimeout = 15 * time.Second
@@ -203,7 +205,9 @@ func Dial(address string, timeout time.Duration) (*Client, error) {
 	for {
 		conn, err := net.DialTimeout("tcp", address, time.Second)
 		if err == nil {
-			return NewClient(conn, conn, conn.Close), nil
+			client := NewClient(conn, conn, conn.Close)
+			client.address = address
+			return client, nil
 		}
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("connect to the debug adapter at %s: %w", address, err)
@@ -255,8 +259,13 @@ func (c *Client) readLoop() {
 				return
 			}
 		case "request":
-			// a request of the adapter (runInTerminal, startDebugging): not supported yet, say so instead of leaving it waiting
-			go c.refuse(msg) // not in the read loop: writing there could deadlock with an adapter that is writing to us
+			// a request of the adapter (startDebugging, runInTerminal): answered on its own goroutine, writing in the read loop could
+			// deadlock with an adapter that is writing to us
+			var request struct {
+				Arguments json.RawMessage `json:"arguments"`
+			}
+			_ = json.Unmarshal(body, &request)
+			go c.answer(msg, request.Arguments)
 		}
 	}
 }
@@ -292,12 +301,37 @@ func (c *Client) closedError() error {
 	return ErrClosed
 }
 
-func (c *Client) refuse(msg message) {
+// RequestHandler answers a request of the adapter: its result becomes the body of the response, an error a refusal.
+type RequestHandler func(command string, arguments json.RawMessage) (body any, err error)
+
+// SetRequestHandler sets who answers the requests of the adapter; without one every request is refused.
+func (c *Client) SetRequestHandler(handler RequestHandler) {
 	c.mu.Lock()
+	c.handler = handler
+	c.mu.Unlock()
+}
+
+// Address is where the adapter listens ("" for an adapter that talks over its standard input and output).
+func (c *Client) Address() string { return c.address }
+
+// answer sends the response to a request of the adapter.
+func (c *Client) answer(request message, arguments json.RawMessage) {
+	c.mu.Lock()
+	handler := c.handler
 	c.nextSeq++
 	seq := c.nextSeq
 	c.mu.Unlock()
-	_ = c.tr.Write(message{Seq: seq, Type: "response", RequestSeq: msg.Seq, Command: msg.Command, Success: false, Message: "not supported by jd"})
+	response := message{Seq: seq, Type: "response", RequestSeq: request.Seq, Command: request.Command, Success: true}
+	if handler == nil {
+		response.Success, response.Message = false, "not supported by jd"
+	} else if body, err := handler(request.Command, arguments); err != nil {
+		response.Success, response.Message = false, err.Error()
+	} else if body != nil {
+		if data, err := json.Marshal(body); err == nil {
+			response.Body = data
+		}
+	}
+	_ = c.tr.Write(response)
 }
 
 func (c *Client) shutdown() {

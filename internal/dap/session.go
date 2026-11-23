@@ -4,7 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
+	"path/filepath"
+	"slices"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -59,12 +64,29 @@ type Session struct {
 	stopped     bool
 	initialized chan struct{}
 	initOnce    sync.Once
+	stopOrder   int64    // when it stopped last, to find the session that stopped most recently
+	inspected   *Session // the session the last Stack came from: frame and variable numbers belong to it
+
+	// Some adapters (js-debug for every program, debugpy for sub processes) ask the client to start another session with them for the program
+	// that was started: the children. Their events join the events of this session and the commands go to the session that is stopped.
+	address     string // where the adapter listens, for the sessions it asks for
+	breakpoints map[string][]int
+	children    []*Session
+	forwarders  sync.WaitGroup
+	gone        bool // the adapter has stopped: no more children
 }
+
+// stopCounter orders the stops of all sessions.
+var stopCounter atomic.Int64
 
 // NewSession wraps a client. The events of the session are the events of the adapter, in order, minus the ones the session handles itself
 // ("initialized"); stopped state is updated before the event is delivered.
-func NewSession(client *Client) *Session {
-	s := &Session{client: client, events: make(chan Event, eventBuffer), initialized: make(chan struct{})}
+func NewSession(client *Client) *Session { return newSession(client, client.Address()) }
+
+// newSession is NewSession for an adapter that listens at address (a child session is told where by its parent).
+func newSession(client *Client, address string) *Session {
+	s := &Session{client: client, events: make(chan Event, eventBuffer), initialized: make(chan struct{}), address: address, breakpoints: map[string][]int{}}
+	client.SetRequestHandler(s.answerRequest)
 	go s.pump()
 	return s
 }
@@ -73,7 +95,17 @@ func NewSession(client *Client) *Session {
 func (s *Session) Events() <-chan Event { return s.events }
 
 func (s *Session) pump() {
-	defer close(s.events)
+	defer func() {
+		s.mu.Lock()
+		s.gone = true
+		children := slices.Clone(s.children)
+		s.mu.Unlock()
+		for _, child := range children {
+			_ = child.client.Close()
+		}
+		s.forwarders.Wait() // the children forward into the channel that is closed now
+		close(s.events)
+	}()
 	for ev := range s.client.Events() {
 		switch ev.Name {
 		case "initialized":
@@ -84,6 +116,7 @@ func (s *Session) pump() {
 			_ = json.Unmarshal(ev.Body, &stop)
 			s.mu.Lock()
 			s.thread, s.lastThread, s.stopped = stop.Thread, stop.Thread, true
+			s.stopOrder = stopCounter.Add(1)
 			s.mu.Unlock()
 		case "continued", "terminated", "exited":
 			s.mu.Lock()
@@ -100,9 +133,146 @@ func (s *Session) pump() {
 
 // Stopped tells whether the program is waiting at a stop, and on which thread.
 func (s *Session) Stopped() (thread int, stopped bool) {
+	return s.active().own()
+}
+
+// own is the state of this session alone.
+func (s *Session) own() (thread int, stopped bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.thread, s.stopped
+}
+
+// active is the session the commands go to: the child that stopped most recently, else this session.
+func (s *Session) active() *Session {
+	s.mu.Lock()
+	children := slices.Clone(s.children)
+	s.mu.Unlock()
+	best, order := s, int64(0)
+	for _, child := range children {
+		candidate := child.active() // a child may have children of its own
+		candidate.mu.Lock()
+		stopped, when := candidate.stopped, candidate.stopOrder
+		candidate.mu.Unlock()
+		if stopped && when > order {
+			best, order = candidate, when
+		}
+	}
+	return best
+}
+
+// inspectTarget is the session that frames and variables are asked from: the one the last stack came from (its numbers belong to it, even
+// when another session has stopped since), else the one that is stopped.
+func (s *Session) inspectTarget() *Session {
+	s.mu.Lock()
+	target := s.inspected
+	s.mu.Unlock()
+	if target != nil {
+		return target
+	}
+	return s.active()
+}
+
+// answerRequest answers what the adapter asks the client to do. Only startDebugging is supported: it starts a child session, for the target
+// of the configuration the adapter sends (a "connect" address of its own, else the address this adapter listens on).
+func (s *Session) answerRequest(command string, arguments json.RawMessage) (any, error) {
+	if command != "startDebugging" {
+		return nil, errors.New("not supported by jd")
+	}
+	var request struct {
+		Request       string         `json:"request"`
+		Configuration map[string]any `json:"configuration"`
+	}
+	if err := json.Unmarshal(arguments, &request); err != nil || request.Configuration == nil {
+		return nil, errors.New("startDebugging without a configuration")
+	}
+	address := s.address
+	if connect, ok := request.Configuration["connect"].(map[string]any); ok {
+		host, _ := connect["host"].(string)
+		if port, ok := connect["port"].(float64); ok && host != "" {
+			address = net.JoinHostPort(host, strconv.Itoa(int(port)))
+		}
+	}
+	if address == "" {
+		return nil, errors.New("this adapter has no address a second session could connect to")
+	}
+	configuration := request.Configuration
+	if request.Request != "" {
+		configuration["request"] = request.Request
+	}
+	s.mu.Lock()
+	if s.gone {
+		s.mu.Unlock()
+		return nil, ErrClosed
+	}
+	s.forwarders.Add(1) // counted before the answer: the session cannot close its events while the child is still being set up
+	snapshot := make(map[string][]int, len(s.breakpoints))
+	for path, lines := range s.breakpoints {
+		snapshot[path] = slices.Clone(lines)
+	}
+	s.mu.Unlock()
+	go s.runChild(address, configuration, snapshot)
+	return nil, nil
+}
+
+// childStartTimeout is how long a child session gets to start.
+const childStartTimeout = time.Minute
+
+// runChild starts a child session, forwards its events to this session and removes it when it is over.
+func (s *Session) runChild(address string, configuration map[string]any, breakpoints map[string][]int) {
+	defer s.forwarders.Done()
+	client, err := Dial(address, 10*time.Second)
+	if err != nil {
+		s.emitOutput("stderr", "debug session could not connect: "+err.Error()+"\n")
+		return
+	}
+	child := newSession(client, address)
+	s.mu.Lock()
+	if s.gone {
+		s.mu.Unlock()
+		_ = client.Close()
+		return
+	}
+	s.children = append(s.children, child)
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.children = slices.DeleteFunc(s.children, func(c *Session) bool { return c == child })
+		s.mu.Unlock()
+		_ = client.Close()
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), childStartTimeout)
+	_, err = child.Start(ctx, configuration, breakpoints)
+	cancel()
+	if err != nil {
+		s.emitOutput("stderr", "debug session could not start: "+err.Error()+"\n")
+		return
+	}
+	for ev := range child.Events() {
+		if ev.Name == "terminated" || ev.Name == "exited" {
+			s.mu.Lock()
+			s.children = slices.DeleteFunc(s.children, func(c *Session) bool { return c == child })
+			others := len(s.children) > 0 // another child is still alive: this one ending is not the end of the program
+			s.mu.Unlock()
+			if others {
+				continue
+			}
+		}
+		select {
+		case s.events <- ev:
+		case <-s.client.Done():
+			return
+		}
+	}
+}
+
+// emitOutput shows a message of jd in the output of the session.
+func (s *Session) emitOutput(category, text string) {
+	body, _ := json.Marshal(map[string]string{"category": category, "output": text})
+	select {
+	case s.events <- Event{Name: "output", Body: body}:
+	case <-s.client.Done():
+	}
 }
 
 // Start runs the opening sequence: initialize, launch (arguments are the launch configuration of the adapter), send the breakpoints
@@ -159,6 +329,19 @@ func (s *Session) Start(ctx context.Context, launch map[string]any, breakpoints 
 
 // SetBreakpoints replaces the breakpoints of one file (an empty list clears them).
 func (s *Session) SetBreakpoints(ctx context.Context, path string, lines []int) ([]Breakpoint, error) {
+	s.mu.Lock()
+	if len(lines) == 0 {
+		delete(s.breakpoints, path)
+	} else {
+		s.breakpoints[path] = slices.Clone(lines)
+	}
+	children := slices.Clone(s.children)
+	s.mu.Unlock()
+	for _, child := range children { // the program runs in the children: they need the breakpoints as well
+		if _, err := child.SetBreakpoints(ctx, path, lines); err != nil {
+			s.emitOutput("stderr", "the breakpoints of "+filepath.Base(path)+" could not be set in a debug session: "+err.Error()+"\n")
+		}
+	}
 	points := make([]map[string]int, 0, len(lines))
 	for _, line := range lines {
 		points = append(points, map[string]int{"line": line})
@@ -186,11 +369,12 @@ func (s *Session) SetBreakpoints(ctx context.Context, path string, lines []int) 
 var errNotStopped = errors.New("the program is not stopped")
 
 func (s *Session) control(ctx context.Context, command string) error {
-	thread, stopped := s.Stopped()
+	target := s.active()
+	thread, stopped := target.own()
 	if !stopped {
 		return errNotStopped
 	}
-	return s.client.Call(ctx, command, map[string]any{"threadId": thread}, nil)
+	return target.client.Call(ctx, command, map[string]any{"threadId": thread}, nil)
 }
 
 // Continue lets the stopped program run on.
@@ -203,6 +387,16 @@ func (s *Session) StepOut(ctx context.Context) error { return s.control(ctx, "st
 
 // Pause stops a running program.
 func (s *Session) Pause(ctx context.Context) error {
+	s.mu.Lock()
+	target := s
+	if len(s.children) > 0 { // the program runs in the newest child
+		target = s.children[len(s.children)-1]
+	}
+	s.mu.Unlock()
+	return target.pauseOwn(ctx)
+}
+
+func (s *Session) pauseOwn(ctx context.Context) error {
 	s.mu.Lock()
 	thread := s.lastThread
 	s.mu.Unlock()
@@ -225,10 +419,14 @@ func (s *Session) Pause(ctx context.Context) error {
 
 // Stack returns the call stack of the stopped thread, innermost first.
 func (s *Session) Stack(ctx context.Context) ([]Frame, error) {
-	thread, stopped := s.Stopped()
+	target := s.active()
+	thread, stopped := target.own()
 	if !stopped {
 		return nil, errNotStopped
 	}
+	s.mu.Lock()
+	s.inspected = target
+	s.mu.Unlock()
 	var result struct {
 		StackFrames []struct {
 			Frame
@@ -237,7 +435,7 @@ func (s *Session) Stack(ctx context.Context) ([]Frame, error) {
 			} `json:"source"`
 		} `json:"stackFrames"`
 	}
-	if err := s.client.Call(ctx, "stackTrace", map[string]any{"threadId": thread}, &result); err != nil {
+	if err := target.client.Call(ctx, "stackTrace", map[string]any{"threadId": thread}, &result); err != nil {
 		return nil, err
 	}
 	frames := make([]Frame, 0, len(result.StackFrames))
@@ -253,7 +451,7 @@ func (s *Session) Scopes(ctx context.Context, frame int) ([]Scope, error) {
 	var result struct {
 		Scopes []Scope `json:"scopes"`
 	}
-	err := s.client.Call(ctx, "scopes", map[string]any{"frameId": frame}, &result)
+	err := s.inspectTarget().client.Call(ctx, "scopes", map[string]any{"frameId": frame}, &result)
 	return result.Scopes, err
 }
 
@@ -262,14 +460,14 @@ func (s *Session) Variables(ctx context.Context, reference int) ([]Variable, err
 	var result struct {
 		Variables []Variable `json:"variables"`
 	}
-	err := s.client.Call(ctx, "variables", map[string]any{"variablesReference": reference}, &result)
+	err := s.inspectTarget().client.Call(ctx, "variables", map[string]any{"variablesReference": reference}, &result)
 	return result.Variables, err
 }
 
-// Evaluate runs an expression in the context of a frame (0: no frame) the way a debug console does, and returns its value.
+// Evaluate runs an expression in the context of a frame (a negative id: no frame; adapters number frames from 0 or from higher numbers) the way a debug console does, and returns its value.
 func (s *Session) Evaluate(ctx context.Context, frame int, expression string) (Variable, error) {
 	args := map[string]any{"expression": expression, "context": "repl"}
-	if frame != 0 {
+	if frame >= 0 {
 		args["frameId"] = frame
 	}
 	var result struct {
@@ -277,7 +475,7 @@ func (s *Session) Evaluate(ctx context.Context, frame int, expression string) (V
 		Type      string `json:"type"`
 		Reference int    `json:"variablesReference"`
 	}
-	if err := s.client.Call(ctx, "evaluate", args, &result); err != nil {
+	if err := s.inspectTarget().client.Call(ctx, "evaluate", args, &result); err != nil {
 		return Variable{}, err
 	}
 	return Variable{Name: expression, Value: result.Result, Type: result.Type, Reference: result.Reference}, nil
@@ -288,6 +486,12 @@ func (s *Session) Stop(ctx context.Context) error {
 	// an adapter that already stopped is fine, and one that hangs must not keep Stop from killing it
 	ctx, cancel := context.WithTimeout(ctx, stopTimeout)
 	defer cancel()
+	s.mu.Lock()
+	children := slices.Clone(s.children)
+	s.mu.Unlock()
+	for _, child := range children {
+		_ = child.client.Call(ctx, "disconnect", map[string]any{"terminateDebuggee": true}, nil)
+	}
 	_ = s.client.Call(ctx, "disconnect", map[string]any{"terminateDebuggee": true}, nil)
 	return s.client.Close()
 }

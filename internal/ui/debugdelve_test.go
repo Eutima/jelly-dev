@@ -131,3 +131,47 @@ func texts(rows []varRow) []string {
 	}
 	return out
 }
+
+// TestDebug_RealNodeFromTheEditor runs the chain with the real js-debug (it asks for a session of its own for the program); skipped where
+// js-debug-adapter or node are missing.
+func TestDebug_RealNodeFromTheEditor(t *testing.T) {
+	for _, command := range []string{"js-debug-adapter", "node"} {
+		if _, err := exec.LookPath(command); err != nil {
+			t.Skip(command + " is not installed")
+		}
+	}
+	model, pf := newProjectFixture(t, 120, map[string]string{"main.js": "const x = 21;\nconst y = x * 2;\nconsole.log('answer', y);\n"})
+	file := filepath.Join(pf.root, "main.js")
+	model.hooks.StartDebug = func(ctx context.Context, f string, bps map[string][]int) (DebugSession, error) {
+		session, _, err := dap.Debug(ctx, dap.DefaultAdapters(), exec.LookPath, f, pf.root, bps)
+		if err != nil {
+			return nil, err
+		}
+		return session, nil
+	}
+	if err := model.openFile(file, true); err != nil {
+		t.Fatal(err)
+	}
+	model.focus = focusProjectEdit
+	model.editor = model.editor.At(1, 0) // line 2
+	model = f9(model)
+
+	p := newPumper(t, model)
+	p.send(tea.KeyMsg{Type: tea.KeyF5})
+	p.until(func(m ProjectModel) bool {
+		return m.dbg != nil && (m.dbg.state == debugEnded || (m.dbg.state == debugStopped && len(m.dbg.frames) > 0 && !m.dbg.varsLoading && len(m.dbg.vars) > 0))
+	})
+	defer p.model.stopDebugNow(false)
+	if p.model.dbg.state != debugStopped || !p.model.marks.stoppedAt(file, 2) {
+		t.Fatalf("stopped at the breakpoint on line 2: %+v", p.model.dbg)
+	}
+	updated, evalCmd := p.model.runProjectCommand("eval x + 1")
+	p.model = updated.(ProjectModel)
+	p.run(evalCmd)
+	p.until(func(m ProjectModel) bool { return strings.Contains(strings.Join(m.dbg.console, "\n"), "> x + 1\n  22") })
+	p.send(tea.KeyMsg{Type: tea.KeyF5}) // continue: the program ends
+	p.until(func(m ProjectModel) bool { return m.dbg.state == debugEnded })
+	if console := strings.Join(p.model.dbg.console, "\n"); !strings.Contains(console, "answer 42") {
+		t.Fatalf("the output of the program is in the console:\n%s", console)
+	}
+}

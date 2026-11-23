@@ -34,6 +34,11 @@ func DefaultAdapters() []Adapter {
 			},
 		},
 		{
+			// js-debug listens on the port it is given (0: any) and prints where; it asks for a session per program (see Session)
+			Name: "js-debug", Command: []string{"js-debug-adapter", "0", "127.0.0.1"}, Listens: true,
+			Extensions: []string{".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}, Launch: nodeLaunch,
+		},
+		{
 			Name: "debugpy", Command: []string{"debugpy-adapter"}, Extensions: []string{".py"},
 			Launch: pythonLaunch,
 		},

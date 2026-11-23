@@ -22,7 +22,7 @@ func TestHelperAdapter(t *testing.T) {
 	if os.Getenv("GO_FAKE_DAP") != "1" {
 		t.Skip("helper process")
 	}
-	serveFake(jsonframe.New(os.Stdin, os.Stdout))
+	serveFake(jsonframe.New(os.Stdin, os.Stdout), false)
 }
 
 // TestHelperListeningAdapter is the same fake adapter, but it listens on a TCP port and prints where, as delve does.
@@ -39,10 +39,32 @@ func TestHelperListeningAdapter(t *testing.T) {
 	if err != nil {
 		return
 	}
-	serveFake(jsonframe.New(conn, conn))
+	serveFake(jsonframe.New(conn, conn), false)
 }
 
-func serveFake(tr *jsonframe.Transport) {
+// TestHelperTreeAdapter is a fake adapter like js-debug: the first connection is the parent session, which asks the client for a child session
+// (startDebugging) and has no program of its own; every later connection is a child that runs the program.
+func TestHelperTreeAdapter(t *testing.T) {
+	if os.Getenv("GO_FAKE_DAP") != "1" {
+		t.Skip("helper process")
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("Debug server listening at " + listener.Addr().String())
+	for first := true; ; first = false {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		go serveFake(jsonframe.New(conn, conn), first)
+	}
+}
+
+// serveFake answers like a debug adapter. As a parent it starts no program: it asks for a child session once the configuration is done and
+// refuses the commands that need a program.
+func serveFake(tr *jsonframe.Transport, parent bool) {
 	logFile, _ := os.OpenFile(os.Getenv("GO_FAKE_LOG"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	seq := 100
 	send := func(m map[string]any) {
@@ -66,6 +88,10 @@ func serveFake(tr *jsonframe.Transport) {
 		_ = json.Unmarshal(raw, &req)
 		if logFile != nil {
 			logFile.WriteString(req.Command + " " + string(req.Args) + "\n")
+		}
+		if parent && strings.Contains(" stackTrace next stepIn stepOut continue scopes variables evaluate ", " "+req.Command+" ") {
+			send(map[string]any{"type": "response", "request_seq": req.Seq, "command": req.Command, "success": false, "message": "the parent has no program"})
+			continue
 		}
 		switch req.Command {
 		case "initialize":
@@ -91,6 +117,10 @@ func serveFake(tr *jsonframe.Transport) {
 		case "configurationDone":
 			respond(req.message, nil)
 			send(map[string]any{"type": "response", "request_seq": launchSeq, "command": "launch", "success": true})
+			if parent {
+				send(map[string]any{"type": "request", "command": "startDebugging", "arguments": map[string]any{"request": "launch", "configuration": map[string]any{"type": "child", "name": "child"}}})
+				continue
+			}
 			send(map[string]any{"type": "event", "event": "stopped", "body": map[string]any{"reason": "breakpoint", "threadId": 7}})
 		case "stackTrace":
 			respond(req.message, map[string]any{"stackFrames": []map[string]any{{"id": 1, "name": "main.main", "line": 12, "column": 1, "source": map[string]any{"path": "/p/main.go"}}}})
@@ -526,5 +556,128 @@ func TestSession_StopDoesNotHangOnAnAdapterThatNeverAnswers(t *testing.T) {
 		}
 	case <-time.After(stopTimeout + 5*time.Second):
 		t.Fatal("Stop must give up on the adapter and close it")
+	}
+}
+
+func fakeTreeAdapter(t *testing.T) (Adapter, string) {
+	t.Helper()
+	t.Setenv("GO_FAKE_DAP", "1")
+	log := t.TempDir() + "/log"
+	t.Setenv("GO_FAKE_LOG", log)
+	return Adapter{
+		Name: "tree", Command: []string{os.Args[0], "-test.run=^TestHelperTreeAdapter$"}, Listens: true, Extensions: []string{".tree"},
+		Launch: func(file, root string) map[string]any { return map[string]any{"request": "launch", "program": file} },
+	}, log
+}
+
+func TestSession_AChildSessionOfTheAdapterRunsTheProgramAndTakesTheCommands(t *testing.T) {
+	adapter, log := fakeTreeAdapter(t)
+	root := t.TempDir()
+	file := root + "/main.tree"
+	session, _, err := Debug(ctxT(t), []Adapter{adapter}, lookPathOK, file, root, map[string][]int{file: {12}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Stop(context.Background())
+	// the stop happens in the child: its event reaches the events of the session, and the commands go to the child (the parent refuses them)
+	nextEvent(t, session, "stopped")
+	frames, err := session.Stack(ctxT(t))
+	if err != nil || len(frames) != 1 || frames[0].Name != "main.main" {
+		t.Fatalf("the stack comes from the child: %+v %v", frames, err)
+	}
+	if v, err := session.Evaluate(ctxT(t), frames[0].ID, "x"); err != nil || v.Value != "84" {
+		t.Fatalf("evaluate goes to the child: %+v %v", v, err)
+	}
+	if err := session.Next(ctxT(t)); err != nil {
+		t.Fatalf("a step goes to the child: %v", err)
+	}
+	nextEvent(t, session, "stopped")
+	if thread, stopped := session.Stopped(); !stopped || thread != 7 {
+		t.Fatalf("the state is the one of the child: %d %v", thread, stopped)
+	}
+	// breakpoints that change later reach the parent and the child
+	if _, err := session.SetBreakpoints(ctxT(t), file, []int{3, 4}); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(log)
+	if got := strings.Count(string(data), "setBreakpoints"); got < 3 { // the start sent them to the parent and the child, now both again
+		t.Fatalf("the breakpoints must reach both sessions (%d requests):\n%s", got, data)
+	}
+	if got := strings.Count(string(data), `"breakpoints":[{"line":3},{"line":4}]`); got != 2 {
+		t.Fatalf("both sessions get the new lines: %d\n%s", got, data)
+	}
+}
+
+func TestSession_AnAdapterThatCannotBeReachedAgainRefusesChildSessions(t *testing.T) {
+	// a stdio adapter has no address: the request for a child session is refused, as before
+	c, _ := fakeAdapter(t)
+	s := NewSession(c)
+	args, _ := json.Marshal(map[string]any{"request": "launch", "configuration": map[string]any{"type": "x"}})
+	if _, err := s.answerRequest("startDebugging", args); err == nil || !strings.Contains(err.Error(), "no address") {
+		t.Fatalf("no address: %v", err)
+	}
+	if _, err := s.answerRequest("runInTerminal", nil); err == nil {
+		t.Fatal("runInTerminal is not supported")
+	}
+	if _, err := s.answerRequest("startDebugging", []byte(`{"request":"launch"}`)); err == nil {
+		t.Fatal("a request without a configuration is refused")
+	}
+	// the adapter names its own address (debugpy): the session would connect there
+	connect, _ := json.Marshal(map[string]any{"request": "attach", "configuration": map[string]any{"connect": map[string]any{"host": "127.0.0.1", "port": 1}}})
+	if body, err := s.answerRequest("startDebugging", connect); err != nil || body != nil {
+		t.Fatalf("a connect address is enough: %v", err)
+	}
+}
+
+func TestSession_EvaluateKnowsFrameZeroAndNoFrame(t *testing.T) {
+	c, log := fakeAdapter(t)
+	s := NewSession(c)
+	if _, err := s.Start(ctxT(t), map[string]any{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	nextEvent(t, s, "stopped")
+	if _, err := s.Evaluate(ctxT(t), 0, "a"); err != nil { // js-debug numbers its frames from 0
+		t.Fatal(err)
+	}
+	if _, err := s.Evaluate(ctxT(t), -1, "b"); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(log)
+	if !strings.Contains(string(data), `"expression":"a"`) || !strings.Contains(string(data), `"frameId":0`) {
+		t.Fatalf("frame 0 is a frame:\n%s", data)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, `"expression":"b"`) && strings.Contains(line, "frameId") {
+			t.Fatalf("a negative id sends no frame: %s", line)
+		}
+	}
+}
+
+func TestSession_ActiveFindsTheNewestStopAmongChildrenAndTheirChildren(t *testing.T) {
+	grandchild := &Session{stopped: true, stopOrder: 30}
+	older := &Session{stopped: true, stopOrder: 10}
+	child := &Session{children: []*Session{grandchild}}
+	root := &Session{children: []*Session{older, child}}
+	if got := root.active(); got != grandchild {
+		t.Fatalf("the newest stop is in the grandchild: %p", got)
+	}
+	grandchild.stopped = false
+	if got := root.active(); got != older {
+		t.Fatal("the grandchild runs again: the older stop is the one that waits")
+	}
+	older.stopped = false
+	if got := root.active(); got != root {
+		t.Fatal("nothing stopped: the session itself")
+	}
+	// the frames of the last stack belong to the session they came from, also when another one stops after that
+	older.stopped = true
+	root.inspected = older
+	newer := &Session{stopped: true, stopOrder: 99}
+	root.children = append(root.children, newer)
+	if got := root.inspectTarget(); got != older {
+		t.Fatal("variables are asked from the session the stack came from")
+	}
+	if got := root.active(); got != newer {
+		t.Fatal("the commands go to the newest stop")
 	}
 }
