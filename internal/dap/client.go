@@ -3,6 +3,7 @@
 package dap
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"net"
 	"os/exec"
+	"regexp"
 	"sync"
 	"time"
 
@@ -117,6 +119,84 @@ func Start(command []string, dir string) (*Client, error) {
 	return client, nil
 }
 
+// listeningAddress finds the address in the line an adapter prints when its server is ready ("DAP server listening at: 127.0.0.1:4711").
+var listeningAddress = regexp.MustCompile(`listening at: (\S+)`)
+
+// listenTimeout is how long an adapter that listens on a port gets to say where.
+const listenTimeout = 15 * time.Second
+
+// StartListening runs an adapter that opens a TCP port, reads the address it prints on its standard output and connects to it.
+func StartListening(command []string, dir string) (*Client, error) {
+	if len(command) == 0 {
+		return nil, errors.New("empty adapter command")
+	}
+	cmd := exec.Command(command[0], command[1:]...) // #nosec G204 -- the command comes from the user's own configuration
+	cmd.Dir = dir
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	var readers sync.WaitGroup // Wait closes the pipes: let the readers finish first (but not for ever: a grandchild may keep a pipe open)
+	kill := func() {
+		_ = cmd.Process.Kill()
+		drained := make(chan struct{})
+		go func() { readers.Wait(); close(drained) }()
+		select {
+		case <-drained:
+		case <-time.After(2 * time.Second):
+		}
+		_ = cmd.Wait()
+	}
+	readers.Add(2)
+	go func() { defer readers.Done(); _, _ = io.Copy(io.Discard, stderr) }()
+	found := make(chan string, 1)
+	go func() {
+		defer readers.Done()
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 0, 64<<10), 1<<20)
+		sent := false
+		for scanner.Scan() { // keep reading after the address: a full pipe would stop the adapter
+			if match := listeningAddress.FindStringSubmatch(scanner.Text()); match != nil && !sent {
+				found <- match[1]
+				sent = true
+			}
+		}
+		_, _ = io.Copy(io.Discard, stdout) // a line that was too long stops the scanner: the pipe must still be emptied
+		if !sent {
+			close(found)
+		}
+	}()
+	select {
+	case address, ok := <-found:
+		if !ok {
+			kill()
+			return nil, fmt.Errorf("%s stopped before it said where it listens", command[0])
+		}
+		client, err := Dial(address, 5*time.Second)
+		if err != nil {
+			kill()
+			return nil, err
+		}
+		inner := client.closer
+		client.closer = func() error {
+			err := inner()
+			kill()
+			return err
+		}
+		return client, nil
+	case <-time.After(listenTimeout):
+		kill()
+		return nil, fmt.Errorf("%s did not say where it listens within %s", command[0], listenTimeout)
+	}
+}
+
 // Dial connects to an adapter that listens on a TCP address (delve, js-debug).
 func Dial(address string, timeout time.Duration) (*Client, error) {
 	deadline := time.Now().Add(timeout)
@@ -166,7 +246,7 @@ func (c *Client) readLoop() {
 			if msg.Success {
 				ch <- response{body: msg.Body}
 			} else {
-				ch <- response{err: &ResponseError{Command: msg.Command, Message: msg.Message}}
+				ch <- response{err: &ResponseError{Command: msg.Command, Message: refusalText(msg)}}
 			}
 		case "event":
 			select {
@@ -179,6 +259,20 @@ func (c *Client) readLoop() {
 			go c.refuse(msg) // not in the read loop: writing there could deadlock with an adapter that is writing to us
 		}
 	}
+}
+
+// refusalText is the message of a failed response with the details of its error body, where adapters put the real reason ("could not
+// launch process: ...").
+func refusalText(msg message) string {
+	var body struct {
+		Error struct {
+			Format string `json:"format"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(msg.Body, &body); err == nil && body.Error.Format != "" && body.Error.Format != msg.Message {
+		return msg.Message + ": " + body.Error.Format
+	}
+	return msg.Message
 }
 
 // fail remembers why the adapter is gone, unless Close ended it.

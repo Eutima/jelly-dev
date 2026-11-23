@@ -82,6 +82,7 @@ func Defaults() []Tool {
 		{Name: "rust-analyzer", Binary: "rust-analyzer", Kind: Rustup, Packages: []string{"rust-analyzer"}, Purpose: "language server for Rust"},
 		{Name: "rustfmt", Binary: "rustfmt", Kind: Rustup, Packages: []string{"rustfmt"}, Purpose: "formatter for Rust"},
 		{Name: "jdtls", Binary: "jdtls", Kind: Download, Purpose: "language server for Java"},
+		{Name: "delve", Binary: "dlv", Kind: Go, Packages: []string{"github.com/go-delve/delve/cmd/dlv"}, Purpose: "debugger for Go"},
 		{Name: "bash-language-server", Binary: "bash-language-server", Kind: NPM, Packages: []string{"bash-language-server"}, Purpose: "language server for shell scripts (Bash, sh)"},
 		{Name: "csharp-ls", Binary: "csharp-ls", Kind: Dotnet, Packages: []string{"csharp-ls"}, Purpose: "language server for C# (needs the .NET SDK)"},
 		{Name: "powershell-editor-services", Binary: "powershell-editor-services", Kind: Download, Purpose: "language server for PowerShell (needs PowerShell 7, pwsh)"},

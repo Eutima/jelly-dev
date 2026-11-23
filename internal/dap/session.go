@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"time"
 )
 
 // Breakpoint is a line the program should stop at (1-based, as the user sees it).
@@ -43,6 +44,9 @@ type Stop struct {
 	Thread int    `json:"threadId"`
 	Text   string `json:"text"`
 }
+
+// stopTimeout is how long Stop waits for the adapter to end the program before it kills the adapter.
+const stopTimeout = 3 * time.Second
 
 // Session is one debugging run: the adapter, the state of the program, and the commands that control it.
 type Session struct {
@@ -281,6 +285,9 @@ func (s *Session) Evaluate(ctx context.Context, frame int, expression string) (V
 
 // Stop ends the run: the adapter terminates the program it started (or detaches from one it attached to) and the adapter itself is closed.
 func (s *Session) Stop(ctx context.Context) error {
-	_ = s.client.Call(ctx, "disconnect", map[string]any{"terminateDebuggee": true}, nil) // an adapter that already stopped is fine
+	// an adapter that already stopped is fine, and one that hangs must not keep Stop from killing it
+	ctx, cancel := context.WithTimeout(ctx, stopTimeout)
+	defer cancel()
+	_ = s.client.Call(ctx, "disconnect", map[string]any{"terminateDebuggee": true}, nil)
 	return s.client.Close()
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -20,7 +22,27 @@ func TestHelperAdapter(t *testing.T) {
 	if os.Getenv("GO_FAKE_DAP") != "1" {
 		t.Skip("helper process")
 	}
-	tr := jsonframe.New(os.Stdin, os.Stdout)
+	serveFake(jsonframe.New(os.Stdin, os.Stdout))
+}
+
+// TestHelperListeningAdapter is the same fake adapter, but it listens on a TCP port and prints where, as delve does.
+func TestHelperListeningAdapter(t *testing.T) {
+	if os.Getenv("GO_FAKE_DAP") != "1" {
+		t.Skip("helper process")
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("DAP server listening at: " + listener.Addr().String())
+	conn, err := listener.Accept()
+	if err != nil {
+		return
+	}
+	serveFake(jsonframe.New(conn, conn))
+}
+
+func serveFake(tr *jsonframe.Transport) {
 	logFile, _ := os.OpenFile(os.Getenv("GO_FAKE_LOG"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	seq := 100
 	send := func(m map[string]any) {
@@ -374,5 +396,135 @@ func TestClient_NamesTheReasonWhenTheAdapterSendsGarbage(t *testing.T) {
 	err := c.Call(ctxT(t), "threads", nil, nil)
 	if !errors.Is(err, ErrClosed) || !strings.Contains(err.Error(), "unreadable message") {
 		t.Fatalf("want ErrClosed with the reason: %v", err)
+	}
+}
+
+func fakeListeningAdapter(t *testing.T) Adapter {
+	t.Helper()
+	t.Setenv("GO_FAKE_DAP", "1")
+	t.Setenv("GO_FAKE_LOG", t.TempDir()+"/log")
+	return Adapter{
+		Name: "fake", Command: []string{os.Args[0], "-test.run=^TestHelperListeningAdapter$"}, Listens: true, Extensions: []string{".fake"},
+		Launch: func(file, root string) map[string]any { return map[string]any{"request": "launch", "program": file} },
+	}
+}
+
+func lookPathOK(string) (string, error) { return "/bin/x", nil }
+
+func TestDebug_StartsAnAdapterThatListensAndRunsToTheBreakpoint(t *testing.T) {
+	adapter := fakeListeningAdapter(t)
+	root := t.TempDir()
+	session, verified, err := Debug(ctxT(t), []Adapter{adapter}, lookPathOK, root+"/main.fake", root, map[string][]int{root + "/main.fake": {12}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Stop(context.Background())
+	if got := verified[root+"/main.fake"]; len(got) != 1 || !got[0].Verified {
+		t.Fatalf("breakpoints: %+v", got)
+	}
+	nextEvent(t, session, "stopped")
+}
+
+func TestDebug_SaysWhyItCannotStart(t *testing.T) {
+	adapter := fakeListeningAdapter(t)
+	root := t.TempDir()
+	if _, _, err := Debug(ctxT(t), []Adapter{adapter}, lookPathOK, root+"/main.txt", root, nil); err != ErrNoAdapter {
+		t.Fatalf("an unknown file type: %v", err)
+	}
+	missing := func(string) (string, error) { return "", os.ErrNotExist }
+	_, _, err := Debug(ctxT(t), []Adapter{adapter}, missing, root+"/main.fake", root, nil)
+	var notInstalled *NotInstalledError
+	if !errors.As(err, &notInstalled) || notInstalled.Adapter != "fake" || !strings.Contains(err.Error(), "jd install-lsp debug") {
+		t.Fatalf("a missing adapter: %v", err)
+	}
+	silent := Adapter{Name: "silent", Command: []string{os.Args[0], "-test.run=^$"}, Listens: true, Extensions: []string{".s"}}
+	if _, _, err := Debug(ctxT(t), []Adapter{silent}, lookPathOK, root+"/a.s", root, nil); err == nil || !strings.Contains(err.Error(), "before it said where it listens") {
+		t.Fatalf("an adapter that never says where it listens: %v", err)
+	}
+}
+
+func TestDelve_LaunchesTheFolderOfAFileAndTestFilesAsTests(t *testing.T) {
+	adapter, ok := AdapterFor(DefaultAdapters(), "/proj/cmd/app/Main.GO")
+	if !ok || adapter.Name != "delve" {
+		t.Fatalf("a Go file belongs to delve: %+v %v", adapter, ok)
+	}
+	if got := adapter.Launch("/proj/cmd/app/main.go", "/proj"); got["mode"] != "debug" || got["program"] != "/proj/cmd/app" || got["cwd"] != "/proj" || got["request"] != "launch" {
+		t.Fatalf("program: %v", got)
+	}
+	if got := adapter.Launch("/proj/pkg/x_test.go", "/proj"); got["mode"] != "test" || got["program"] != "/proj/pkg" {
+		t.Fatalf("test: %v", got)
+	}
+	if _, ok := AdapterFor(DefaultAdapters(), "/proj/readme.md"); ok {
+		t.Fatal("markdown is not debugged")
+	}
+}
+
+// TestDelve_DebugsARealProgram runs the real delve against a tiny program; it is skipped where delve is not installed.
+func TestDelve_DebugsARealProgram(t *testing.T) {
+	if _, err := exec.LookPath("dlv"); err != nil {
+		t.Skip("dlv is not installed")
+	}
+	root := t.TempDir()
+	source := "package main\n\nfunc main() {\n\tx := 21\n\ty := x * 2\n\tprintln(y)\n}\n"
+	file := root + "/main.go"
+	if err := os.WriteFile(file, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(root+"/go.mod", []byte("module demo\n\ngo 1.21\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	session, verified, err := Debug(ctx, DefaultAdapters(), exec.LookPath, file, root, map[string][]int{file: {5}})
+	if err != nil && strings.Contains(err.Error(), "too old for this version of Delve") {
+		t.Skip("this Go is older than the delve that is installed:", err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Stop(context.Background())
+	if got := verified[file]; len(got) != 1 || !got[0].Verified {
+		t.Fatalf("breakpoint: %+v", got)
+	}
+	nextEvent(t, session, "stopped")
+	frames, err := session.Stack(ctx)
+	if err != nil || len(frames) == 0 || frames[0].Line != 5 || !strings.HasSuffix(frames[0].Path, "main.go") {
+		t.Fatalf("stack: %+v %v", frames, err)
+	}
+	scopes, err := session.Scopes(ctx, frames[0].ID)
+	if err != nil || len(scopes) == 0 {
+		t.Fatalf("scopes: %+v %v", scopes, err)
+	}
+	found := false
+	vars, _ := session.Variables(ctx, scopes[0].Reference)
+	for _, v := range vars {
+		found = found || (v.Name == "x" && v.Value == "21")
+	}
+	if !found {
+		t.Fatalf("x = 21 not in %+v", vars)
+	}
+	if v, err := session.Evaluate(ctx, frames[0].ID, "x + 1"); err != nil || v.Value != "22" {
+		t.Fatalf("evaluate: %+v %v", v, err)
+	}
+	if err := session.Next(ctx); err != nil {
+		t.Fatal(err)
+	}
+	nextEvent(t, session, "stopped")
+}
+
+func TestSession_StopDoesNotHangOnAnAdapterThatNeverAnswers(t *testing.T) {
+	client, server := net.Pipe()
+	defer server.Close()
+	go func() { _, _ = io.Copy(io.Discard, server) }() // reads the disconnect request, never answers it
+	s := NewSession(NewClient(client, client, client.Close))
+	finished := make(chan error, 1)
+	go func() { finished <- s.Stop(context.Background()) }()
+	select {
+	case err := <-finished:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(stopTimeout + 5*time.Second):
+		t.Fatal("Stop must give up on the adapter and close it")
 	}
 }

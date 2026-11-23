@@ -9,7 +9,7 @@
 #   JD_DEPS              dependency groups to handle, comma separated (default basics,terminal,runtimes,lsp)
 #   JD_DRY_RUN=1         print what would be installed instead of installing it
 #   JD_LANGS=<ids>       languages to install language servers and formatters for, comma separated: python html css json yaml docker compose
-#                        javascript angular go rust c cpp java bash, all, or none (default: all; jd asks on its first start). csharp and
+#                        javascript angular go rust c cpp java bash, all, or none (default: all; jd asks on its first start). debug, csharp and
 #                        powershell are installed only when they are named: all and the default leave them out
 #   JD_BIN=<path>        jd is already installed there (pip, jd runs this script itself on its first start): do not download
 #                        jd; the dependencies are installed, git is configured and the PATH of new shells gets the tool folders
@@ -583,6 +583,7 @@ deps_lsp() {
     lang_enabled rust && lsp_rust
     ! lang_explicit csharp || lsp_opt_in csharp
     ! lang_explicit powershell || lsp_opt_in powershell
+    ! lang_explicit debug || lsp_opt_in debug
     return 0
 }
 
