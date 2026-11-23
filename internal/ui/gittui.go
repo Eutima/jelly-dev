@@ -214,8 +214,6 @@ func (m GitModel) diffCommand(key string) keymap.Command {
 		return ""
 	case (command == keymap.DiffEdit || command == keymap.DiffRevert) && m.focus != focusDiff && (key == "enter" || key == "backspace" || key == "delete"):
 		return ""
-	case m.focus != focusDiff && (command == keymap.DiffNext || command == keymap.DiffPrev):
-		return ""
 	}
 	return command
 }
@@ -386,6 +384,12 @@ func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.forwardToDiff(msg)
 	}
+	switch command { // the arrows step through the changes from the list as well, over file borders
+	case keymap.DiffNext:
+		return m.stepChange(msg, 1)
+	case keymap.DiffPrev:
+		return m.stepChange(msg, -1)
+	}
 	var cmd tea.Cmd
 	selecting := false // a key that chooses a file
 	switch key {
@@ -476,7 +480,7 @@ func (m GitModel) listView() string {
 func (m GitModel) listFooterBar() *bar {
 	result := &bar{}
 	result.add(barPart{" ", m.theme.Footer})
-	for _, h := range [][2]string{{"↑↓", "files"}, {"enter", "open"}, {"tab", "focus"}} {
+	for _, h := range [][2]string{{"↑↓", "changes"}, {"j/k", "files"}, {"enter", "open"}, {"tab", "focus"}} {
 		result.command(h[0], h[1], true, m.theme)
 	}
 	result.binding(keymap.DiffQuit, "quit", true, m.theme)

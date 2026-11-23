@@ -403,3 +403,19 @@ func TestGitUpdate_KeysThatChooseNoFileKeepAPendingJump(t *testing.T) {
 		t.Fatalf("a key that chooses no file must leave the pending jump alone: %d", updated.(GitModel).arrive)
 	}
 }
+
+func TestGitUpdate_ArrowsStepChangesAndCrossFiles_WhenListHasFocus(t *testing.T) {
+	model, _ := newGitTestModel(100, 12)
+	model = gitPress(model, "down") // the only change of a.txt
+	if model.selected != 0 || model.diff.current != 0 {
+		t.Fatalf("file %d change %d", model.selected, model.diff.current)
+	}
+	model = gitPress(model, "down") // no change left: on to b.txt
+	if model.selected != 1 || model.loadedFile != 1 || model.diff.current != 0 || model.focus != focusList {
+		t.Fatalf("file %d loaded %d change %d", model.selected, model.loadedFile, model.diff.current)
+	}
+	model = gitPress(model, "up")
+	if model.selected != 0 || model.loadedFile != 0 {
+		t.Fatalf("file %d loaded %d", model.selected, model.loadedFile)
+	}
+}
