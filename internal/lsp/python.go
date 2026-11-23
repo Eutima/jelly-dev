@@ -122,3 +122,7 @@ func (f pythonFinder) isUvProject(root string) bool {
 	// [tool.uv] and [tool.uv.sources], not [tool.uvicorn]
 	return err == nil && (strings.Contains(text, "[tool.uv]") || strings.Contains(text, "[tool.uv."))
 }
+
+// FindPython returns the Python interpreter of the project in root (see pythonFinder); "" means the one on the PATH. The debugger runs
+// the program with it, so the packages of the project's environment are there.
+func FindPython(root string) string { return newPythonFinder().Find(root) }

@@ -160,7 +160,7 @@ func TestLanguages_ScrollInASmallWindowAndKeepTheHintsVisible(t *testing.T) {
 	}
 	m = languageKeys(m, "G")
 	view = stripANSI(m.View())
-	if !strings.Contains(view, "PowerShell") || strings.Contains(view, "Python") || !strings.Contains(view, "[enter] install") {
+	if !strings.Contains(view, "PowerShell") || strings.Contains(view, "[x] Python") || !strings.Contains(view, "[enter] install") {
 		t.Fatalf("G scrolls to the last language and the hints stay:\n%s", view)
 	}
 	// a click on the last visible row toggles that language, not the one at the same row of the unscrolled list

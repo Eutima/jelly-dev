@@ -33,6 +33,10 @@ func DefaultAdapters() []Adapter {
 				return map[string]any{"request": "launch", "mode": mode, "program": filepath.Dir(file), "cwd": root, "outputMode": "remote"}
 			},
 		},
+		{
+			Name: "debugpy", Command: []string{"debugpy-adapter"}, Extensions: []string{".py"},
+			Launch: pythonLaunch,
+		},
 	}
 }
 

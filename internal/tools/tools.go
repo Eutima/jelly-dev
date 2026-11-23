@@ -83,6 +83,7 @@ func Defaults() []Tool {
 		{Name: "rustfmt", Binary: "rustfmt", Kind: Rustup, Packages: []string{"rustfmt"}, Purpose: "formatter for Rust"},
 		{Name: "jdtls", Binary: "jdtls", Kind: Download, Purpose: "language server for Java"},
 		{Name: "delve", Binary: "dlv", Kind: Go, Packages: []string{"github.com/go-delve/delve/cmd/dlv"}, Purpose: "debugger for Go"},
+		{Name: "debugpy", Binary: "debugpy-adapter", Kind: Download, Purpose: "debugger for Python (needs Python 3 with the venv module)"},
 		{Name: "bash-language-server", Binary: "bash-language-server", Kind: NPM, Packages: []string{"bash-language-server"}, Purpose: "language server for shell scripts (Bash, sh)"},
 		{Name: "csharp-ls", Binary: "csharp-ls", Kind: Dotnet, Packages: []string{"csharp-ls"}, Purpose: "language server for C# (needs the .NET SDK)"},
 		{Name: "powershell-editor-services", Binary: "powershell-editor-services", Kind: Download, Purpose: "language server for PowerShell (needs PowerShell 7, pwsh)"},
@@ -296,6 +297,8 @@ func (e Env) installDownload(ctx context.Context, t Tool) error {
 		return e.installJdtls(ctx, t)
 	case "powershell-editor-services":
 		return e.installPses(ctx, t)
+	case "debugpy":
+		return e.installDebugpy(ctx, t)
 	}
 	return fmt.Errorf("%s: %w", t.Name, errNoTool)
 }
