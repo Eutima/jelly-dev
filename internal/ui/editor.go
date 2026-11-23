@@ -36,6 +36,8 @@ type EditorModel struct {
 	left     int               // first screen column shown
 	showNums bool
 
+	marks *debugMarks // the breakpoints, shared by the editors of the project window; nil: no marker column
+
 	syntax *syntaxCache // the colors of the text; a pointer, because View (a value receiver) fills it and the model is copied on every key
 
 	status string
@@ -471,10 +473,11 @@ func (m *EditorModel) set(argument string) {
 
 // numberWidth is the width of the line number column.
 func (m EditorModel) numberWidth() int {
+	width := m.markWidth()
 	if !m.showNums {
-		return 0
+		return width
 	}
-	return len(fmt.Sprint(max(m.vim.LineCount(), 1))) + 1
+	return width + len(fmt.Sprint(max(m.vim.LineCount(), 1))) + 1
 }
 
 func (m EditorModel) textWidth() int { return max(m.width-m.numberWidth(), 1) }
@@ -529,9 +532,36 @@ func (m EditorModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			return replay(m, keys)
 		}
+		if line, ok := m.markerClick(msg.X, msg.Y); ok {
+			path := m.doc.Path
+			return m, func() tea.Msg { return ToggleBreakpointMsg{Path: path, Line: line} }
+		}
 		m.clickText(msg.X, msg.Y)
 	}
 	return m, nil
+}
+
+// markWidth is the width of the marker column, 0 when there is none.
+func (m EditorModel) markWidth() int {
+	if m.marks == nil {
+		return 0
+	}
+	return breakpointColumn
+}
+
+// markerClick returns the line whose marker cell was clicked; ok is false outside the marker column and below the text.
+func (m EditorModel) markerClick(x, y int) (line int, ok bool) {
+	row := m.top + y - 1
+	if m.marks == nil || x < 0 || x >= breakpointColumn || m.doc.Path == "" || y < 1 || y > m.textHeight() || row >= m.vim.LineCount() {
+		return 0, false
+	}
+	return row + 1, true
+}
+
+// WithMarks gives the editor the breakpoints of the project window and the marker column that shows them.
+func (m EditorModel) WithMarks(marks *debugMarks) EditorModel {
+	m.marks = marks
+	return m
 }
 
 // clickText puts the cursor where the text was clicked.
@@ -645,12 +675,19 @@ func (m EditorModel) View() string {
 			out.WriteByte('\n')
 			continue
 		}
-		if numWidth > 0 {
+		if m.marks != nil {
+			mark := "  "
+			if m.marks.has(m.doc.Path, i+1) {
+				mark = m.theme.Warning.Render(breakpointMark + " ")
+			}
+			out.WriteString(mark)
+		}
+		if m.showNums {
 			style := m.theme.LineNumber
 			if i == row {
 				style = style.Bold(true)
 			}
-			out.WriteString(style.Render(fmt.Sprintf("%*d ", numWidth-1, i+1)))
+			out.WriteString(style.Render(fmt.Sprintf("%*d ", numWidth-m.markWidth()-1, i+1)))
 		}
 		cursor, from, to := -1, 0, 0
 		if i == row && !m.blurred {

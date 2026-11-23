@@ -21,7 +21,7 @@ const (
 
 // newEditor builds the editor of a tab.
 func (m ProjectModel) newEditor(doc editor.Document) EditorModel {
-	return NewEditorModel(doc).WithForwardedCommands().WithNavigator(m.hooks.Navigator, m.root).
+	return NewEditorModel(doc).WithForwardedCommands().WithNavigator(m.hooks.Navigator, m.root).WithMarks(m.marks).
 		WithClipboard(m.hooks.ReadClipboard, m.hooks.WriteClipboard).WithTheme(m.theme).WithStyle(CurrentEditorStyle())
 }
 
@@ -338,6 +338,12 @@ func (m ProjectModel) session() project.Session {
 		if i == m.tab {
 			session.Active = rel
 		}
+	}
+	for path, lines := range m.marks.all() { // the breakpoints of files that are not open stay
+		if session.Breakpoints == nil {
+			session.Breakpoints = map[string][]int{}
+		}
+		session.Breakpoints[m.relative(path)] = lines
 	}
 	return session
 }

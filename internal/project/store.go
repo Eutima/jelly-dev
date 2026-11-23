@@ -32,6 +32,8 @@ type Session struct {
 	Files   []string          `json:"files,omitempty"`
 	Active  string            `json:"active,omitempty"`
 	Cursors map[string]Cursor `json:"cursors,omitempty"`
+	// Breakpoints are the lines (1-based) of the debugger breakpoints by file, relative to the project.
+	Breakpoints map[string][]int `json:"breakpoints,omitempty"`
 }
 
 // Entry is one project of the list.

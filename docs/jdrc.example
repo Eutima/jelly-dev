@@ -15,6 +15,7 @@ focus         = ctrl+e                 # default: switch focus between the tree 
 leaveterminal = ctrl+]                 # default: give the focus back from the terminal panel to the editor
 closeterminal = ctrl+d                 # default: end the shown terminal tab
 back          = ctrl+b                 # default: go back to where the last jump started
+breakpoint    = f9                     # default: set or remove the debugger breakpoint of the cursor line
 hover         = alt+ctrl+space         # default: show the documentation of the symbol under the cursor (language server)
 save          = ctrl+s                 # default: save the file (in every editor mode)
 

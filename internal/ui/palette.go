@@ -65,6 +65,7 @@ func (m ProjectModel) paletteActions() []paletteAction {
 		{"Refactor: rename the symbol under the cursor", ":refactor <name>", command("refactor")},
 		{"Refactor: rename this file", ":refactor file <name>", command("refactor file")},
 		{"Refactor: undo the last refactoring", ":refactor undo", command("refactor undo")},
+		{"Set or remove a breakpoint on the cursor line", keys.Label(keymap.ToggleBreakpoint), command("break")},
 		{"Format file", ":format", editorCommand("format")},
 		{"Go to definition", "gd", navigate(navDefinition)},
 		{"Find references", "gr", navigate(navReferences)},

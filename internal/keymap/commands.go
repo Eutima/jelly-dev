@@ -44,19 +44,20 @@ type Command string
 
 // The project window.
 const (
-	Palette       Command = "palette"
-	Tabs          Command = "tabs"
-	Terminal      Command = "terminal"
-	Projects      Command = "projects"
-	Find          Command = "find"
-	Grep          Command = "grep"
-	Diff          Command = "diff"
-	Focus         Command = "focus"
-	LeaveTerminal Command = "leaveterminal"
-	CloseTerminal Command = "closeterminal"
-	Back          Command = "back"
-	Hover         Command = "hover"
-	Save          Command = "save"
+	Palette          Command = "palette"
+	Tabs             Command = "tabs"
+	Terminal         Command = "terminal"
+	Projects         Command = "projects"
+	Find             Command = "find"
+	Grep             Command = "grep"
+	Diff             Command = "diff"
+	Focus            Command = "focus"
+	LeaveTerminal    Command = "leaveterminal"
+	CloseTerminal    Command = "closeterminal"
+	Back             Command = "back"
+	Hover            Command = "hover"
+	ToggleBreakpoint Command = "breakpoint"
+	Save             Command = "save"
 )
 
 // The merge view.
@@ -222,6 +223,7 @@ var definitions = []definition{
 	{LeaveTerminal, ScopeIDE, "give the focus back from the terminal panel to the editor", []string{"ctrl+]"}},
 	{CloseTerminal, ScopeIDE, "end the shown terminal tab", []string{"ctrl+d"}},
 	{Back, ScopeIDE, "go back to where the last jump started", []string{"ctrl+b"}},
+	{ToggleBreakpoint, ScopeIDE, "set or remove the debugger breakpoint of the cursor line", []string{"f9"}},
 	{Hover, ScopeIDE, "show the documentation of the symbol under the cursor (language server)", []string{"ctrl+alt+space"}},
 	{Save, ScopeIDE, "save the file (in every editor mode)", []string{"ctrl+s"}},
 

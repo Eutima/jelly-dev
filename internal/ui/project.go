@@ -105,6 +105,7 @@ type ProjectModel struct {
 	conflictsChecked time.Time           // when they were looked for last
 	pick             *formatPick         // the list of formatters to choose from, nil when closed
 	langs            *languagePick       // the list of languages (:addlang), nil when closed
+	marks            *debugMarks         // the breakpoints of the project, shared with the editors
 	terms            []*terminal.Session // the shells (tabs) of the panel under the editor
 	termActive       int                 // the tab that is shown
 	termShown        bool                // whether the panel is visible (hidden shells keep running)
@@ -121,7 +122,13 @@ func NewProjectModel(root, file string, session project.Session, hooks ProjectHo
 	if err != nil {
 		return ProjectModel{}, err
 	}
-	m := ProjectModel{theme: DarkTheme(), root: tree.Root.Path, tree: tree, hooks: hooks, focus: focusTree}
+	m := ProjectModel{theme: DarkTheme(), root: tree.Root.Path, tree: tree, hooks: hooks, focus: focusTree, marks: newDebugMarks()}
+	for path, lines := range session.Breakpoints { // the breakpoints of files that are not open are kept as well
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(m.root, path)
+		}
+		m.marks.set(path, lines)
+	}
 	if inGitRepository(m.root) { // the merge conflicts are known from the start
 		m.conflicts, _ = source.UnmergedFiles(m.root)
 		m.conflictsChecked = time.Now()
@@ -359,6 +366,8 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.say("Reloaded "+strings.Join(reloaded, ", ")+" (changed on disk)", false)
 		}
 		return m, m.checkConflicts()
+	case ToggleBreakpointMsg:
+		return m.toggleBreakpoint(msg.Path, msg.Line)
 	case ExCommandMsg:
 		return m.runProjectCommand(msg.Command)
 	case JumpMsg:
@@ -555,6 +564,8 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openPalette()
 	case keymap.Diff:
 		return m.showDiff()
+	case keymap.ToggleBreakpoint:
+		return m.toggleBreakpointAtCursor()
 	case keymap.Terminal: // shows or hides the terminal panel, whatever has the focus (the panel itself handles it as well)
 		return m.openTerminal()
 	}
@@ -733,6 +744,8 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 			return m.newTerminal()
 		}
 		return m.openTerminal()
+	case "break", "breakpoint":
+		return m.toggleBreakpointAtCursor()
 	case "refactor", "ref":
 		return m.refactorCommand(argument)
 	case "copypath", "cpath", "yankpath":

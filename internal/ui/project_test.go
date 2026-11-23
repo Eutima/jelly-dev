@@ -266,7 +266,7 @@ func TestProject_ClicksSelectTreeRowsAndEditor(t *testing.T) {
 	if filepath.Base(model.Editor().Path()) != "README.md" || model.focus != focusProjectEdit {
 		t.Fatalf("path %q focus %d", model.Editor().Path(), model.focus)
 	}
-	x := model.editorOffset() + 2 + 2 // text column 2 of the first line (line numbers take two columns)
+	x := model.editorOffset() + breakpointColumn + 2 + 2 // text column 2 of the first line (the breakpoint column and the line numbers come first)
 	model = click(model, x, 1)
 	if _, col := model.Editor().Cursor(); col != 2 {
 		t.Fatalf("editor click must place the cursor, col %d", col)
