@@ -132,7 +132,9 @@ func (m ProjectModel) debugScopesReady(msg debugScopesMsg) (tea.Model, tea.Cmd) 
 	}
 	run.varsLoading = false
 	if msg.err != nil {
-		run.say("cannot read the variables: " + msg.err.Error())
+		if run.state == debugStopped { // an error because the program went on meanwhile (continue was pressed) is no news
+			run.say("cannot read the variables: " + msg.err.Error())
+		}
 		return m, nil
 	}
 	for i, scope := range msg.scopes {

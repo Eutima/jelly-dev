@@ -436,7 +436,7 @@ func fakeListeningAdapter(t *testing.T) Adapter {
 	t.Setenv("GO_FAKE_DAP", "1")
 	t.Setenv("GO_FAKE_LOG", t.TempDir()+"/log")
 	return Adapter{
-		Name: "fake", Command: []string{os.Args[0], "-test.run=^TestHelperListeningAdapter$"}, Listens: true, Extensions: []string{".fake"},
+		Name: "fake", Language: "fake", Command: []string{os.Args[0], "-test.run=^TestHelperListeningAdapter$"}, Listens: true, Extensions: []string{".fake"},
 		Launch: func(file, root string) map[string]any { return map[string]any{"request": "launch", "program": file} },
 	}
 }
@@ -466,7 +466,7 @@ func TestDebug_SaysWhyItCannotStart(t *testing.T) {
 	missing := func(string) (string, error) { return "", os.ErrNotExist }
 	_, _, err := Debug(ctxT(t), []Adapter{adapter}, missing, root+"/main.fake", root, nil)
 	var notInstalled *NotInstalledError
-	if !errors.As(err, &notInstalled) || notInstalled.Adapter != "fake" || !strings.Contains(err.Error(), "jd install-lsp debug") {
+	if !errors.As(err, &notInstalled) || notInstalled.Adapter != "fake" || !strings.Contains(err.Error(), "jd install-lsp fake") {
 		t.Fatalf("a missing adapter: %v", err)
 	}
 	silent := Adapter{Name: "silent", Command: []string{os.Args[0], "-test.run=^$"}, Listens: true, Extensions: []string{".s"}}

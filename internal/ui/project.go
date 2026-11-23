@@ -738,9 +738,12 @@ func (m ProjectModel) activate(node *filetree.Node, toggle bool) (tea.Model, tea
 
 func (m ProjectModel) toggleFocus() ProjectModel {
 	m.editor.resolver.Reset() // a half typed key sequence does not follow to the other pane
-	if m.focus == focusTree {
+	switch {
+	case m.focus == focusTree:
 		m.focus = focusProjectEdit
-	} else {
+	case m.focus == focusProjectEdit && m.debugPanelHeight() > 0: // the debug panel is the third stop, while a run is shown
+		m.focus = focusDebug
+	default:
 		m.focus = focusTree
 	}
 	return m.resizeEditor()

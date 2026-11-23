@@ -7,6 +7,8 @@ home and config folder.
 
   pip install pyte pillow
   playground/setup.sh                 # builds bin/jd and creates playground/sandbox/
+  # the debugger shots need delve (dlv) and debugpy (debugpy-adapter): `jd install-lsp go python`, then
+  # JD_SCREENSHOT_TOOLS=~/.local/bin (a shot whose program is missing is skipped)
   python3 playground/screenshots.py   # writes docs/screenshots/*.png   (--only diff ide ... takes some)
 """
 
@@ -51,6 +53,8 @@ ANSI = {
 
 # key names that are sent as they are; everything else is typed
 KEYS = {"enter": "\r", "esc": "\x1b", "tab": "\t", "down": "\x1b[B", "up": "\x1b[A", "right": "\x1b[C", "left": "\x1b[D",
+        "f5": "\x1b[15~", "f6": "\x1b[17~", "f7": "\x1b[18~", "f8": "\x1b[19~", "f9": "\x1b[20~", "ctrl+b": "\x02", "ctrl+space": "\x00",
+        "ctrl+n": "\x0e", "ctrl+]": "\x1d", "alt+down": "\x1b[1;3B", "alt+up": "\x1b[1;3A",
         "ctrl+t": "\x14", "ctrl+f": "\x06", "ctrl+g": "\x07", "ctrl+p": "\x10", "ctrl+o": "\x0f", "ctrl+e": "\x05", "ctrl+a": "\x01", "ctrl+w": "\x17", "space": " "}
 
 class Shot(NamedTuple):
@@ -63,6 +67,7 @@ class Shot(NamedTuple):
     env: dict = {}  # extra environment of jd
     first_start: bool = False  # keep the first-start setup on (it is skipped otherwise): the question is what is shown
     jdrc: str = ""  # the text of a ~/.jdrc of the throw-away home
+    needs: tuple = ()  # programs that must be found (on the PATH or in $JD_SCREENSHOT_TOOLS), or the shot is skipped: the debuggers
 
 
 # every screenshot
@@ -82,6 +87,15 @@ SHOTS = [
      ["down", "down", "down", "down", "enter", "ctrl+a", "~Open the notes", "enter", "~# Ideas", "enter", "enter", "~- palette in the diff", "enter", "~- refactor with undo"], (118, 30), {}),
     Shot("nano", "jd repo-changes   (the nano-style editor: ctrl+w searches)", "repo-changes", ["."],
      ["down", "down", "down", "down", "enter", "down", "down", "down", "~// a nano-style editor", "ctrl+w", "~greet"], (118, 30), {}),
+    # the debugger: a breakpoint (ctrl+b) in the sample program, f5 runs it to the breakpoint ("@4" waits four seconds for the adapter), ctrl+e
+    # moves the focus to the debug panel
+    Shot("debug", "jd debug   (f5: debug calc.py, stopped at the breakpoint)", "debug", ["."],
+         ["ctrl+f", "~calc", "enter"] + ["down"] * 12 + ["ctrl+b", "f5", "@4", "ctrl+e", "down", "@1"], (170, 34), {}, needs=("debugpy-adapter",)),
+    Shot("debug-console", "jd debug   (the debug console: expressions, history and completion)", "debug", ["."],
+         ["ctrl+f", "~calc", "enter"] + ["down"] * 12 + ["ctrl+b", "f5", "@4", "ctrl+e", "~numbers", "enter", "@1", "~sum(numbers) / 2", "enter", "@1", "~numb", "ctrl+space", "@2"],
+         (170, 34), {}, needs=("debugpy-adapter",)),
+    Shot("debug-go", "jd debug/go   (delve: the call stack of the stop)", "debug/go", ["."],
+         ["ctrl+f", "~main.go", "enter"] + ["down"] * 13 + ["ctrl+b", "f5", "@8", "ctrl+e", "right", "@1"], (170, 34), {"GOTOOLCHAIN": "local", "GOFLAGS": "-mod=mod"}, needs=("dlv",)),
     Shot("jdrc", "~/.jdrc   (jd checks the file and tells what is wrong)", "repo-changes", ["."], [], (118, 8), {},
          jdrc="palette = ctrl+q, f1\nfind = ctrl+g\ntabz = ctrl+j\nvim.bottom = G G\n"),
     Shot("addlang", "jd repo-changes   (:addlang: add a language)", "repo-changes", ["."], ["ctrl+a", "~addlang", "enter"], (118, 30), {}),
@@ -124,7 +138,7 @@ def capture(shot, cwd, pause=0.7):
     columns, rows = shot.size
     home = tempfile.mkdtemp(prefix="jd-shot-")
     env = {
-        "PATH": f"{JD.parent}:/usr/local/bin:/usr/bin:/bin", "HOME": home, "TERM": "xterm-256color", "COLORTERM": "truecolor",
+        "PATH": ":".join(filter(None, [str(JD.parent), os.environ.get("JD_SCREENSHOT_TOOLS", ""), "/usr/local/bin:/usr/bin:/bin"])), "HOME": home, "TERM": "xterm-256color", "COLORTERM": "truecolor",
         "LANG": "C.UTF-8", "JD_CONFIG_DIR": os.path.join(home, "config"), "GIT_CONFIG_GLOBAL": os.path.join(home, "gitconfig"),
         "JD_NO_AUTO_INSTALL": "1", "JD_SKIP_DEPS": "1", "GIT_PAGER": "cat", "SHELL": "/bin/sh", "PS1": "$ ",
     }
@@ -165,6 +179,11 @@ def capture(shot, cwd, pause=0.7):
 
         drain(1.5)
         for key in shot.keys:
+            if key.startswith("@"):  # wait: a program starts, a build runs
+                end = time.time() + float(key[1:])
+                while time.time() < end:
+                    drain(0.2)
+                continue
             if key.startswith("~"):  # typed text: one key after the other
                 for char in key[1:]:
                     os.write(fd, char.encode())
@@ -250,6 +269,12 @@ def main():
     try:
         for shot in SHOTS:
             if options.only and shot.name not in options.only:
+                continue
+            tools = os.environ.get("JD_SCREENSHOT_TOOLS", "")
+            search = ":".join(filter(None, [tools, os.environ.get("PATH", "")]))  # no empty entry: it would mean the current directory
+            missing = [name for name in shot.needs if not shutil.which(name, path=search)]
+            if missing:
+                print(f"skipped {shot.name}: {', '.join(missing)} not found (install the debuggers, or point JD_SCREENSHOT_TOOLS at a folder that has them)")
                 continue
             prepare_demo()  # every shot starts from the sandbox as it is: what one shot writes (notes, a session) does not show in the next
             screen = capture(shot, DEMO / shot.directory)

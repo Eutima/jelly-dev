@@ -72,7 +72,7 @@ func TestInstallLSP_InstallsTheNamedLanguagesAndAddsThemToTheChosenOnes(t *testi
 	if saved, _ := tools.LoadLanguages(dir); strings.Join(saved, ",") != "python,html,css,json,yaml,docker,compose,go,java" {
 		t.Fatalf("they are added to the defaults (nothing was chosen before): %v", saved)
 	}
-	for _, want := range []string{"Installing the language servers and formatters for: go, java", "gopls", "jdtls", "installed", "2 installed, 0 were there already, 0 failed"} {
+	for _, want := range []string{"Installing the language servers and formatters for: go, java", "gopls", "jdtls", "installed", "3 installed, 0 were there already, 0 failed"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("the output lacks %q:\n%s", want, stdout.String())
 		}
@@ -145,7 +145,7 @@ func TestInstallLSP_ListShowsWhatIsChosenAndInstalledAndBadInputIsRefused(t *tes
 }
 
 func TestInstallLSP_UpdateBringsTheInstalledToolsToTheirNewestVersions(t *testing.T) {
-	dir, fake := t.TempDir(), &toolsFake{installed: map[string]bool{"pyright": true, "black": true}}
+	dir, fake := t.TempDir(), &toolsFake{installed: map[string]bool{"pyright": true, "black": true, "debugpy": true}}
 	var stdout, stderr bytes.Buffer
 	if err := tools.SaveLanguages(dir, []string{"python"}); err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestInstallLSP_UpdateBringsTheInstalledToolsToTheirNewestVersions(t *testin
 	if len(fake.updatedLanguages) != 1 || strings.Join(fake.updatedLanguages[0], ",") != "python" || len(fake.asked) != 0 {
 		t.Fatalf("--update updates the chosen languages and installs nothing new: %v %v", fake.updatedLanguages, fake.asked)
 	}
-	for _, want := range []string{"Updating the language servers and formatters for: python", "pyright", "updating ...", "2 updated, 0 installed, 0 failed"} {
+	for _, want := range []string{"Updating the language servers and formatters for: python", "pyright", "updating ...", "3 updated, 0 installed, 0 failed"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("the output lacks %q:\n%s", want, stdout.String())
 		}

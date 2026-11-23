@@ -29,22 +29,21 @@ type Language struct {
 // Languages are all the languages jd knows tools for, in the order they are shown.
 func Languages() []Language {
 	return []Language{
-		{ID: "python", Name: "Python", Tools: []string{"pyright", "black"}},
+		{ID: "python", Name: "Python", Tools: []string{"pyright", "black", "debugpy"}},
 		{ID: "html", Name: "HTML", Tools: []string{"vscode-langservers-extracted", "prettier"}},
 		{ID: "css", Name: "CSS, SCSS, Less", Tools: []string{"vscode-langservers-extracted", "prettier"}},
 		{ID: "json", Name: "JSON", Tools: []string{"vscode-langservers-extracted", "prettier"}},
 		{ID: "yaml", Name: "YAML", Tools: []string{"yaml-language-server", "prettier"}},
 		{ID: "docker", Name: "Dockerfile", Tools: []string{"dockerfile-language-server"}},
 		{ID: "compose", Name: "Docker Compose", Tools: []string{"compose-language-service"}},
-		{ID: "javascript", Name: "JavaScript and TypeScript", Tools: []string{"typescript-language-server", "prettier"}},
+		{ID: "javascript", Name: "JavaScript and TypeScript", Tools: []string{"typescript-language-server", "prettier", "js-debug"}},
 		{ID: "angular", Name: "Angular", Tools: []string{"angular-language-server", "typescript-language-server", "prettier"}},
-		{ID: "go", Name: "Go", Tools: []string{"gopls"}},
+		{ID: "go", Name: "Go", Tools: []string{"gopls", "delve"}},
 		{ID: "rust", Name: "Rust", Tools: []string{"rust-analyzer", "rustfmt"}},
 		{ID: "c", Name: "C", Tools: []string{"clangd", "clang-format"}},
 		{ID: "cpp", Name: "C++", Tools: []string{"clangd", "clang-format"}},
 		{ID: "java", Name: "Java", Tools: []string{"jdtls"}},
 		{ID: "bash", Name: "Shell (Bash, sh)", Tools: []string{"bash-language-server"}},
-		{ID: "debug", Name: "Debuggers (Go, Python, JavaScript)", Tools: []string{"delve", "debugpy", "js-debug"}, OptIn: true},
 		{ID: "csharp", Name: "C# (.NET)", Tools: []string{"csharp-ls"}, OptIn: true},
 		{ID: "powershell", Name: "PowerShell", Tools: []string{"powershell-editor-services"}, OptIn: true},
 	}
@@ -122,7 +121,7 @@ func ToolsFor(languages []string) []string {
 }
 
 // retiredLanguages were offered once and are gone; a saved choice that still names one keeps its other languages.
-var retiredLanguages = []string{"groovy"}
+var retiredLanguages = []string{"groovy", "debug"} // "debug" was the opt-in group of the debuggers, which now come with their language
 
 // LoadLanguages returns the languages the user chose; ok is false when nothing was chosen yet (or the file is unreadable).
 func LoadLanguages(configDir string) (languages []string, ok bool) {

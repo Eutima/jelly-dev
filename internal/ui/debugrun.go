@@ -49,6 +49,14 @@ func (s debugState) String() string {
 	return [...]string{"starting", "running", "stopped", "ended"}[s]
 }
 
+// delveBanner is the line delve prints when it starts: a message of delve, no output of the program.
+const delveBanner = "Type 'dlv help' for list of commands."
+
+// isDelveBanner tells whether an output event is that banner (only delve sends it, as a console message, never as stdout of the program).
+func isDelveBanner(category, output string) bool {
+	return category == "console" && strings.HasPrefix(strings.TrimSpace(output), delveBanner)
+}
+
 // debugRun is one debugging run of the project window: its session and what the panel shows.
 type debugRun struct {
 	session DebugSession // nil while the adapter starts
@@ -230,7 +238,7 @@ func (m ProjectModel) debugEvent(msg debugEventMsg) (tea.Model, tea.Cmd) {
 			Category string `json:"category"`
 			Output   string `json:"output"`
 		}
-		if json.Unmarshal(msg.event.Body, &body) == nil && body.Category != "telemetry" {
+		if json.Unmarshal(msg.event.Body, &body) == nil && body.Category != "telemetry" && !isDelveBanner(body.Category, body.Output) {
 			run.write(body.Output)
 		}
 	case "stopped":

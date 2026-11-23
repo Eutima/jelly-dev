@@ -55,7 +55,7 @@ if [ "$updates" -eq 1 ]; then echo "ok   apt-get update runs once"; else echo "F
 out=$(FAKE_WAYLAND=1 plan apt-get "git xterm go npm java")
 expect "wayland gets wl-clipboard" "$out" "install -y wl-clipboard"
 
-out=$(plan dnf "git xterm go npm javac java python3 pyright-langserver typescript-language-server jdtls gopls xclip vscode-html-language-server ngserver prettier black yaml-language-server docker-langserver docker-compose-langserver bash-language-server clangd clang-format rustup rust-analyzer rustfmt")
+out=$(plan dnf "git xterm go npm javac java python3 pyright-langserver typescript-language-server jdtls gopls xclip vscode-html-language-server ngserver prettier black yaml-language-server docker-langserver docker-compose-langserver bash-language-server dlv debugpy-adapter js-debug-adapter clangd clang-format rustup rust-analyzer rustfmt")
 expect "everything present is reported" "$out" "All dependencies are in place."
 expect_not "nothing is installed when everything is there" "$out" "[dry-run] sudo"
 
@@ -121,7 +121,16 @@ expect_not "yaml, docker and compose need no python tool" "$out" "black"
 expect_not "yaml, docker and compose need no pyright" "$out" "pyright"
 out=$(FAKE_LANGS="bash" plan apt-get "git xclip xterm" "runtimes,lsp")
 expect "bash needs node" "$out" "install -y nodejs npm"
+out=$(FAKE_LANGS="bash" plan apt-get "git xclip xterm go npm java python3 pipx" "lsp")
 expect "the Bash server" "$out" "bash-language-server"
+out=$(FAKE_LANGS="go python javascript" plan apt-get "git xclip xterm go npm java python3 pipx" "lsp")
+expect "the debugger of Go is installed through jd" "$out" "install-lsp go"
+expect "the debugger of Python is installed through jd" "$out" "install-lsp python"
+expect "the debugger of JavaScript is installed through jd" "$out" "install-lsp javascript"
+out=$(FAKE_LANGS="go python javascript" plan apt-get "git xclip xterm go npm java python3 pipx dlv debugpy-adapter js-debug-adapter" "lsp")
+expect_not "no debugger is installed when it is there" "$out" "install-lsp"
+out=$(FAKE_LANGS="html css" plan apt-get "git xclip xterm go npm java python3 pipx" "lsp")
+expect_not "languages without a debugger install none" "$out" "install-lsp"
 out=$(FAKE_LANGS="docker" plan apt-get "git xclip xterm" "runtimes,lsp")
 expect "docker needs node" "$out" "install -y nodejs npm"
 expect_not "docker alone needs no prettier" "$out" "prettier"

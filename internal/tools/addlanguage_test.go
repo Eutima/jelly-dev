@@ -27,24 +27,25 @@ func TestLanguageStates_ShowMissingToolsAndTheChosenLanguages(t *testing.T) {
 		t.Fatalf("every language is listed: %d", len(states))
 	}
 	python := states["python"]
-	if !python.Chosen || !reflect.DeepEqual(python.Tools, []string{"pyright", "black"}) || !reflect.DeepEqual(python.Missing, []string{"black"}) {
-		t.Fatalf("python is chosen and misses its formatter: %+v", python)
+	if !python.Chosen || !reflect.DeepEqual(python.Tools, []string{"pyright", "black", "debugpy"}) || !reflect.DeepEqual(python.Missing, []string{"black", "debugpy"}) {
+		t.Fatalf("python is chosen and misses its formatter and its debugger: %+v", python)
 	}
-	if go1 := states["go"]; go1.Chosen || !reflect.DeepEqual(go1.Missing, []string{"gopls"}) {
-		t.Fatalf("go is not chosen and misses gopls: %+v", go1)
+	if go1 := states["go"]; go1.Chosen || !reflect.DeepEqual(go1.Missing, []string{"gopls", "delve"}) {
+		t.Fatalf("go is not chosen and misses gopls and delve: %+v", go1)
 	}
 }
 
 func TestAddLanguage_ChoosesTheLanguageAndInstallsItsServerAndFormatter(t *testing.T) {
-	m, env := newMachine(t, "pipx", "npm")
+	m, env := newMachine(t, "pipx", "npm", "python3")
 	m.installs["pyright"] = "pyright-langserver"
 	m.installs["black"] = "black"
+	m.installs["debugpy"] = "debugpy-adapter"
 	dir := t.TempDir()
 	installer := NewInstaller(dir)
 	installer.env = env
 	results, err := installer.AddLanguage(context.Background(), "go")
 	var missingRuntime *MissingRuntimeError
-	if err != nil || len(results) != 1 || !errors.As(results[0].Err, &missingRuntime) { // go needs go, which this machine lacks
+	if err != nil || len(results) != 2 || !errors.As(results[0].Err, &missingRuntime) || !errors.As(results[1].Err, &missingRuntime) { // gopls and delve need go, which this machine lacks
 		t.Fatalf("gopls cannot be installed without Go: %v %+v", err, results)
 	}
 	if saved, ok := LoadLanguages(dir); !ok || !strings.Contains(strings.Join(saved, ","), "go") || !strings.Contains(strings.Join(saved, ","), "python") {
@@ -67,7 +68,7 @@ func TestAddLanguage_ChoosesTheLanguageAndInstallsItsServerAndFormatter(t *testi
 			installed = append(installed, r.Tool)
 		}
 	}
-	if !reflect.DeepEqual(installed, []string{"pyright", "black"}) {
+	if !reflect.DeepEqual(installed, []string{"pyright", "debugpy", "black"}) {
 		t.Fatalf("the server and the formatter are installed: %v (%+v)", installed, results)
 	}
 	again, _ := installer.AddLanguage(context.Background(), "python")

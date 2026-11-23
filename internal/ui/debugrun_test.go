@@ -528,3 +528,36 @@ func TestDebug_F5RestartsARunThatExistsAndF9ContinuesIt(t *testing.T) {
 		t.Fatalf("F9 continues: %v", calls)
 	}
 }
+
+func TestDebug_CtrlEReachesTheDebugPanelWhileARunIsShown(t *testing.T) {
+	fx := debugProject(t)
+	press := func(m ProjectModel) ProjectModel { return update(m, tea.KeyMsg{Type: tea.KeyCtrlE}) }
+	fx.model = press(fx.model) // editor -> tree: no panel yet
+	if fx.model.focus != focusTree {
+		t.Fatalf("without a run: %d", fx.model.focus)
+	}
+	fx.model = press(fx.model) // tree -> editor
+	fx.start(t)
+	fx.model = press(fx.model) // editor -> debug panel
+	if fx.model.focus != focusDebug {
+		t.Fatalf("ctrl+e goes on to the debug panel: %d", fx.model.focus)
+	}
+	fx.model = typeInPanel(fx.model, "x") // the panel takes the keys
+	if string(fx.model.dbg.input) != "x" {
+		t.Fatal("typing goes to the console of the panel")
+	}
+	fx.model = press(fx.model) // debug panel -> tree
+	if fx.model.focus != focusTree {
+		t.Fatalf("and back to the tree: %d", fx.model.focus)
+	}
+}
+
+func TestDebug_TheBannerOfDelveIsNoOutputOfTheProgram(t *testing.T) {
+	fx := debugProject(t)
+	fx.start(t)
+	fx.event("output", map[string]any{"category": "console", "output": "Type 'dlv help' for list of commands.\n"})
+	fx.event("output", map[string]any{"category": "stdout", "output": "hello\n"})
+	if console := strings.Join(fx.model.dbg.console, "\n"); strings.Contains(console, "dlv help") || !strings.Contains(console, "hello") {
+		t.Fatalf("console: %q", console)
+	}
+}

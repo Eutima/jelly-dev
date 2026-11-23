@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"github.com/eutima/jelly-dev/internal/dap"
 	"strings"
 	"testing"
@@ -676,5 +677,23 @@ func TestDebugConsole_ThePopupClosesWhenTheListGetsTheKeysOrTheProgramMoves(t *t
 	fx.model = update(fx.model, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket}) // leave the panel
 	if fx.model.dbg.popup != nil || fx.model.focus != focusProjectEdit {
 		t.Fatal("leaving the panel closes the suggestions")
+	}
+}
+
+func TestDebugVariables_AReadThatFailsBecauseTheProgramWentOnSaysNothing(t *testing.T) {
+	fx := debugProject(t)
+	fx.start(t)
+	fx.stop(t)
+	run := fx.model.dbg
+	gen := run.gen
+	run.state = debugRunning // continue was pressed: the adapter answered the read with "debuggee is running"
+	fx.model = update(fx.model, debugScopesMsg{run: run, gen: gen, err: errors.New("debuggee is running")})
+	if strings.Contains(strings.Join(run.console, "\n"), "cannot read the variables") {
+		t.Fatalf("no message for that: %q", run.console)
+	}
+	run.state = debugStopped
+	fx.model = update(fx.model, debugScopesMsg{run: run, gen: gen, err: errors.New("boom")})
+	if !strings.Contains(strings.Join(run.console, "\n"), "cannot read the variables: boom") {
+		t.Fatalf("a real failure is shown: %q", run.console)
 	}
 }

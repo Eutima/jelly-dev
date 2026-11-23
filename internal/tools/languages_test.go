@@ -17,8 +17,8 @@ func TestParseLanguages_KeepsTheCatalogOrderAndKnowsAll(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got, []string{"python", "html", "css"}) {
 		t.Fatalf("order of the catalog, no doubles: %v %v", got, err)
 	}
-	if all, _ := ParseLanguages("all"); len(all) != len(Languages())-3 || slices.Contains(all, "csharp") || slices.Contains(all, "powershell") || slices.Contains(all, "debug") {
-		t.Fatalf("all names every language but the opt-in ones (debug, C#, PowerShell): %v", all)
+	if all, _ := ParseLanguages("all"); len(all) != len(Languages())-2 || slices.Contains(all, "csharp") || slices.Contains(all, "powershell") {
+		t.Fatalf("all names every language but the opt-in ones (C#, PowerShell): %v", all)
 	}
 	if none, err := ParseLanguages("NONE"); err != nil || len(none) != 0 || none == nil {
 		t.Fatalf("none names no language, in any case: %#v %v", none, err)
@@ -33,7 +33,7 @@ func TestParseLanguages_KeepsTheCatalogOrderAndKnowsAll(t *testing.T) {
 
 func TestToolsFor_LanguageServersAndFormattersOnceEach(t *testing.T) {
 	got := ToolsFor(DefaultLanguages())
-	want := []string{"pyright", "vscode-langservers-extracted", "yaml-language-server", "dockerfile-language-server", "compose-language-service", "prettier", "black"} // the order of Defaults() is the order of the tools
+	want := []string{"pyright", "vscode-langservers-extracted", "yaml-language-server", "dockerfile-language-server", "compose-language-service", "debugpy", "prettier", "black"} // the order of Defaults() is the order of the tools
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("the default languages need %v, got %v", want, got)
 	}
@@ -88,8 +88,8 @@ func TestInstaller_OnlyInstallsToolsOfTheChosenLanguages(t *testing.T) {
 	}
 	installer := NewInstaller(dir)
 	installer.env = env
-	if got := installer.Pending(true); !reflect.DeepEqual(got, []string{"black", "pyright"}) {
-		t.Fatalf("python needs its server and its formatter, nothing else: %v", got)
+	if got := installer.Pending(true); !reflect.DeepEqual(got, []string{"black", "debugpy", "pyright"}) {
+		t.Fatalf("python needs its server, its formatter and its debugger, nothing else: %v", got)
 	}
 	status := strings.Join(installer.Status(), "\n")
 	if strings.Contains(status, "gopls") || strings.Contains(status, "jdtls") {
@@ -98,7 +98,7 @@ func TestInstaller_OnlyInstallsToolsOfTheChosenLanguages(t *testing.T) {
 	// without any choice the defaults decide
 	fresh := NewInstaller(t.TempDir())
 	fresh.env = env
-	if got := fresh.Pending(true); !reflect.DeepEqual(got, []string{"black", "compose-language-service", "dockerfile-language-server", "prettier", "pyright", "vscode-langservers-extracted", "yaml-language-server"}) {
+	if got := fresh.Pending(true); !reflect.DeepEqual(got, []string{"black", "compose-language-service", "debugpy", "dockerfile-language-server", "prettier", "pyright", "vscode-langservers-extracted", "yaml-language-server"}) {
 		t.Fatalf("the defaults need these tools: %v", got)
 	}
 }
@@ -170,6 +170,12 @@ func TestLoadLanguages_IgnoresARetiredLanguage(t *testing.T) {
 
 func TestLoadLanguages_AsksAgainWhenOnlyARetiredLanguageWasChosen(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, languagesFile), []byte(`{"languages":["python","debug"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := LoadLanguages(dir); !ok || !reflect.DeepEqual(got, []string{"python"}) {
+		t.Fatalf("a saved choice that names the retired debug group keeps its other languages: %v %v", got, ok)
+	}
 	if err := os.WriteFile(filepath.Join(dir, languagesFile), []byte(`{"languages":["groovy"]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}

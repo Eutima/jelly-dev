@@ -11,6 +11,7 @@ import (
 // Adapter is a debug adapter jd knows how to start and the files it debugs.
 type Adapter struct {
 	Name       string
+	Language   string   // the language of jd that installs the adapter (jd install-lsp <language>)
 	Command    []string // started in the project folder
 	Listens    bool     // the adapter opens a TCP port and prints its address ("... listening at: 127.0.0.1:4711") instead of using stdio
 	Extensions []string // file types it debugs, lower case with the dot
@@ -22,7 +23,7 @@ type Adapter struct {
 func DefaultAdapters() []Adapter {
 	return []Adapter{
 		{
-			Name: "delve", Command: []string{"dlv", "dap", "--listen=127.0.0.1:0"}, Listens: true, Extensions: []string{".go"},
+			Name: "delve", Language: "go", Command: []string{"dlv", "dap", "--listen=127.0.0.1:0"}, Listens: true, Extensions: []string{".go"},
 			Launch: func(file, root string) map[string]any {
 				// a test file is debugged as a test (its package), anything else as the program of its folder
 				mode := "debug"
@@ -35,11 +36,11 @@ func DefaultAdapters() []Adapter {
 		},
 		{
 			// js-debug listens on the port it is given (0: any) and prints where; it asks for a session per program (see Session)
-			Name: "js-debug", Command: []string{"js-debug-adapter", "0", "127.0.0.1"}, Listens: true,
+			Name: "js-debug", Language: "javascript", Command: []string{"js-debug-adapter", "0", "127.0.0.1"}, Listens: true,
 			Extensions: []string{".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}, Launch: nodeLaunch,
 		},
 		{
-			Name: "debugpy", Command: []string{"debugpy-adapter"}, Extensions: []string{".py"},
+			Name: "debugpy", Language: "python", Command: []string{"debugpy-adapter"}, Extensions: []string{".py"},
 			Launch: pythonLaunch,
 		},
 	}
@@ -49,10 +50,10 @@ func DefaultAdapters() []Adapter {
 var ErrNoAdapter = errors.New("no debug adapter for this file type")
 
 // NotInstalledError is returned when the adapter of a file is not on the PATH.
-type NotInstalledError struct{ Adapter, Command string }
+type NotInstalledError struct{ Adapter, Command, Language string }
 
 func (e *NotInstalledError) Error() string {
-	return fmt.Sprintf("debug adapter %s not found: %q is not on the PATH (jd install-lsp debug installs it)", e.Adapter, e.Command)
+	return fmt.Sprintf("debug adapter %s not found: %q is not on the PATH (jd install-lsp %s installs it)", e.Adapter, e.Command, e.Language)
 }
 
 // AdapterFor returns the adapter that debugs a file.
@@ -79,7 +80,7 @@ func Debug(ctx context.Context, adapters []Adapter, lookPath func(string) (strin
 		return nil, nil, fmt.Errorf("debug adapter %s has no command", adapter.Name)
 	}
 	if _, err := lookPath(adapter.Command[0]); err != nil {
-		return nil, nil, &NotInstalledError{Adapter: adapter.Name, Command: adapter.Command[0]}
+		return nil, nil, &NotInstalledError{Adapter: adapter.Name, Command: adapter.Command[0], Language: adapter.Language}
 	}
 	var client *Client
 	var err error

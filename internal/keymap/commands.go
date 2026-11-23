@@ -227,7 +227,7 @@ var definitions = []definition{
 	{Find, ScopeIDE, "find a file by name", []string{"ctrl+f"}},
 	{Grep, ScopeIDE, "search text in the project", []string{"ctrl+g"}},
 	{Diff, ScopeIDE, "show the git diff", []string{"alt+d"}},
-	{Focus, ScopeIDE, "switch focus between the tree and the editor", []string{"ctrl+e"}},
+	{Focus, ScopeIDE, "switch focus between the tree, the editor and the debug panel (while one is shown)", []string{"ctrl+e"}},
 	{LeaveTerminal, ScopeIDE, "give the focus back from the terminal panel to the editor", []string{"ctrl+]"}},
 	{CloseTerminal, ScopeIDE, "end the shown terminal tab", []string{"ctrl+d"}},
 	{Back, ScopeIDE, "go back to where the last jump started", []string{"alt+left"}},

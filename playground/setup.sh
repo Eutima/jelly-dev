@@ -77,6 +77,9 @@ echo "left" > "$sandbox/dirs/left/.git/config"; echo "right" > "$sandbox/dirs/ri
 # ---------------------------------------------------------------- merge inputs
 cp "$here"/merge/*.txt "$sandbox/merge/"
 
+# ---------------------------------------------------------------- debugger examples
+cp -R "$here/debug" "$sandbox/debug"
+
 # ---------------------------------------------------------------- helpers for the repositories
 new_repo() { # new_repo <path>: empty repository with a local identity and the jelly-dev tools configured
   git init -q -b main "$1"

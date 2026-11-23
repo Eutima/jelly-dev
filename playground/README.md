@@ -29,7 +29,7 @@ What is where:
 | Folder | Content |
 |---|---|
 | `files/` | committed sample file pairs (`*_v1` / `*_v2`), see `files/README.md` |
-| `dirs/`, `merge/` | committed templates, copied into the sandbox by the script |
+| `dirs/`, `merge/`, `debug/` | committed templates, copied into the sandbox by the script (`debug/`: a Python and a Go program to try the debugger, see `debug/README.md`) |
 | `sandbox/files/` | the sample files plus generated extras: binary, CRLF, escape sequences, big files |
 | `sandbox/dirs/` | two directory trees: `left/` and `right/` |
 | `sandbox/merge/` | inputs for `jelly-dev merge` |

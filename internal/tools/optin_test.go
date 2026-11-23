@@ -14,8 +14,8 @@ import (
 	"testing"
 )
 
-func TestLanguages_DebugCSharpAndPowerShellAreOptIn(t *testing.T) {
-	for _, id := range []string{"debug", "csharp", "powershell"} {
+func TestLanguages_CSharpAndPowerShellAreOptIn(t *testing.T) {
+	for _, id := range []string{"csharp", "powershell"} {
 		if got, err := ParseLanguages(id); err != nil || !slices.Equal(got, []string{id}) {
 			t.Errorf("%s must be known when named: %v %v", id, got, err)
 		}

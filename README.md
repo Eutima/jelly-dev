@@ -117,6 +117,15 @@ Taken from the [playground](playground/README.md) examples (`python3 playground/
 ![`:addlang` adds a language](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/addlang.png)
 *`:addlang` lists all languages: pick one and its language server and formatter are installed.*
 
+![The debugger stopped at a breakpoint](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/debug.png)
+*The debugger (`ctrl+b` sets a breakpoint, `f5` runs the file; Python here, Go and JavaScript/TypeScript work the same way): the stopped line is marked and highlighted, the panel under the editor shows the variables and the output of the program; `f9` continues, `f8`/`f7`/`f6` step over, in and out, the buttons in the header can be clicked.*
+
+![The debug console](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/debug-console.png)
+*The debug console: type an expression and press `enter` to evaluate it in the stopped frame, `up`/`down` bring back earlier lines, `tab` or `ctrl+space` completes (a popup like the editor's).*
+
+![The call stack with delve](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/debug-go.png)
+*The call stack of a Go program stopped in delve (`ctrl+e` moves the focus to the panel, `left`/`right` switch between the variables and the call stack, a click on a frame shows its line).*
+
 ![The first start asks which editor you want.](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/editor-choice.png)
 *The first start asks which editor you want: nano-style (beginner-friendly) or vim-style (more advanced: modes and keyboard commands); `:editor` changes it later.*
 
@@ -291,7 +300,7 @@ the ones for the file type come first, missing ones are dim): type to narrow it,
 for that file type once its result was applied (`formatters.json` in the config folder; delete the entry there to forget it), `esc` cancels. `ctrl+space` (or `ctrl+n`) in insert mode opens the completion popup with the server's
 suggestions and the words of the file as a fallback: typing narrows it, `ctrl+n`/`ctrl+p` or the arrows choose, `tab` or `enter`
 accept, `esc` closes it. Defaults: gopls (Go), typescript-language-server (JavaScript, TypeScript, JSX), pyright (Python),
-vscode-html/css/json-language-server, jdtls (Java), bash-language-server (shell scripts: `.sh`, `.bash`; installed with npm, part of `all`); the installer sets them up. Two more are **opt-in**, installed only when you name them (`jd install-lsp csharp powershell`, or `:addlang`): csharp-ls for C# (`.cs`; needs the .NET SDK, installed with `dotnet tool` into `~/.local/bin`) and PowerShell Editor Services for PowerShell (`.ps1`, `.psm1`, `.psd1`; needs PowerShell 7, `pwsh`; downloaded as a pinned release). jd installs neither .NET nor PowerShell and says so when `dotnet` or `pwsh` is missing. A third opt-in, `debug`, installs the debuggers (delve, `dlv`, for Go, needs a Go version the delve release supports; debugpy for Python, in an environment of its own below `~/.local/share`, needs Python 3 with the `venv` module; js-debug for JavaScript and TypeScript, a pinned download that needs Node.js; `jd install-lsp debug`; see **Debugger** below). Delve listens on `127.0.0.1` without a password, so on a shared machine other users can reach it while you debug. Add or change servers in
+vscode-html/css/json-language-server, jdtls (Java), bash-language-server (shell scripts: `.sh`, `.bash`; installed with npm, part of `all`); the installer sets them up. Two more are **opt-in**, installed only when you name them (`jd install-lsp csharp powershell`, or `:addlang`): csharp-ls for C# (`.cs`; needs the .NET SDK, installed with `dotnet tool` into `~/.local/bin`) and PowerShell Editor Services for PowerShell (`.ps1`, `.psm1`, `.psd1`; needs PowerShell 7, `pwsh`; downloaded as a pinned release). jd installs neither .NET nor PowerShell and says so when `dotnet` or `pwsh` is missing. The debuggers come with their language, no extra step: Go installs delve (`dlv`, needs a Go version the delve release supports), Python installs debugpy (in an environment of its own below `~/.local/share`, needs Python 3 with the `venv` module) and JavaScript/TypeScript installs js-debug (a pinned download that needs Node.js); see **Debugger** below. Delve listens on `127.0.0.1` without a password, so on a shared machine other users can reach it while you debug. Add or change servers in
 `<config dir>/jd/lsp.json`: `{"servers": [{"name": "rust", "command": ["rust-analyzer"], "extensions": [".rs"], "languageId": "rust",
 "rootMarkers": ["Cargo.toml"], "formatter": ["rustfmt", "--emit", "stdout"]}]}` (an entry with the name of a default replaces it).
 
@@ -308,7 +317,7 @@ ones now and `:tools status` lists what is missing. `JD_NO_AUTO_INSTALL=1` turns
 `~/.local/bin` (and Go's bin folder), which jd adds to its own PATH. Angular templates (`*.component.html`) use the Angular
 language server (it finds `typescript` and `@angular/language-service` in the project's `node_modules` or the global ones).
 
-**Debugger** (Go with delve, Python with debugpy, JavaScript and TypeScript with js-debug; `jd install-lsp debug` installs them): `ctrl+b` (or `:break`, or a click on the two-cell column in front of the line
+**Debugger** (Go with delve, Python with debugpy, JavaScript and TypeScript with js-debug; they are installed with their language, `jd install-lsp go`, `python` or `javascript` adds one later): `ctrl+b` (or `:break`, or a click on the two-cell column in front of the line
 numbers) sets or removes a breakpoint on the cursor line, shown as a red dot; breakpoints are kept per project. `f5` (or `:debug`; again while a run exists: restart) runs the
 shown file under the debugger (the file must be saved: a Go file runs the program of its folder, a `_test.go` file runs that package's tests; a Python file runs as a script with the interpreter of the project, found like the one of the language server: `VIRTUAL_ENV`, `.venv`, `venv`, `JD_PYTHON` ...) and
 opens the **debug panel** under the editor, in the place of the terminal panel (stop debugging first to get the terminal back). At a
@@ -582,7 +591,7 @@ which needs no root rights:
 jd install-lsp --list                 # the languages, the chosen ones marked, and which tools are installed
 jd install-lsp go java                # install the server and the formatter of Go and Java and add them to the chosen ones
 jd install-lsp                        # install what is missing for the chosen languages
-jd install-lsp --all                  # every language except the opt-in ones (debug, C#, PowerShell: name them)
+jd install-lsp --all                  # every language except the opt-in ones (C#, PowerShell: name them)
 jd install-lsp --update               # bring the installed tools of the chosen languages to their newest versions
 jd install-lsp --update go python     # the same for the named languages (missing tools are installed)
 ```
@@ -593,7 +602,7 @@ it": choosing it brings its language server and formatter to their newest versio
 upgrade, `rustup update` for Rust; `clangd` comes from your package manager and is updated there). Rust uses `rustup` (`rustup component add rust-analyzer
 rustfmt`), C and C++ use `clangd` from your package manager and `clang-format` (pipx). A missing runtime (Node.js, Python, Go, a JDK,
 rustup) is reported; `jd setup` installs those. The installer script takes the same
-choice as `JD_LANGS=python,html,css,json,yaml,docker,compose` (also `all` or `none`; `debug`, `csharp` and `powershell` only when named, `all` leaves them out).
+choice as `JD_LANGS=python,html,css,json,yaml,docker,compose` (also `all` or `none`; `csharp` and `powershell` only when named, `all` leaves them out).
 
 **Python environments**: the Python language server (pyright) is told which interpreter belongs to the project, so imports of the
 project's packages resolve in a plain venv, with uv and with the normal system Python. In this order: `JD_PYTHON` (the interpreter

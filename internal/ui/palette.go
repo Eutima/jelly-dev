@@ -81,7 +81,7 @@ func (m ProjectModel) paletteActions() []paletteAction {
 		{"Close tab", ":bd", command("bd")},
 		{"Close the other tabs", ":closeother", command("closeother")},
 		{"Close all tabs", ":closeall", command("closeall")},
-		{"Switch focus between tree and editor", keys.Label(keymap.Focus), func(m ProjectModel) (tea.Model, tea.Cmd) { return m.toggleFocus(), nil }},
+		{"Switch focus between tree, editor and debug panel", keys.Label(keymap.Focus), func(m ProjectModel) (tea.Model, tea.Cmd) { return m.toggleFocus(), nil }},
 		{"New terminal tab", ":terminal new", command("terminal new")},
 		{"Open this project in a new window", ":window", command("window")},
 		{"Refresh the file tree", "R", func(m ProjectModel) (tea.Model, tea.Cmd) {
