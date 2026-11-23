@@ -43,6 +43,7 @@ func Languages() []Language {
 		{ID: "c", Name: "C", Tools: []string{"clangd", "clang-format"}},
 		{ID: "cpp", Name: "C++", Tools: []string{"clangd", "clang-format"}},
 		{ID: "java", Name: "Java", Tools: []string{"jdtls"}},
+		{ID: "bash", Name: "Shell (Bash, sh)", Tools: []string{"bash-language-server"}},
 		{ID: "csharp", Name: "C# (.NET)", Tools: []string{"csharp-ls"}, OptIn: true},
 		{ID: "powershell", Name: "PowerShell", Tools: []string{"powershell-editor-services"}, OptIn: true},
 	}

@@ -64,6 +64,8 @@ func DefaultServers() []ServerSpec {
 		},
 		{Name: "rust-analyzer", Command: []string{"rust-analyzer"}, Extensions: []string{".rs"}, LanguageID: "rust", RootMarkers: []string{"Cargo.toml", "rust-project.json"}, Formatter: []string{"rustfmt", "--emit=stdout", "--edition=2021"}}, // the edition is fixed: rustfmt reads none from stdin
 		{Name: "jdtls", Command: []string{"jdtls"}, Extensions: []string{".java"}, LanguageID: "java", RootMarkers: []string{"pom.xml", "build.gradle", "build.gradle.kts"}},
+		// no root markers: a shell script has no project file, the server then works on the folder of the file
+		{Name: "bash-language-server", Command: []string{"bash-language-server", "start"}, Extensions: []string{".sh", ".bash"}, LanguageID: "shellscript"},
 		// the servers of the opt-in languages (C#, PowerShell): they work once the user has installed them (jd install-lsp csharp powershell)
 		{Name: "csharp-ls", Command: []string{"csharp-ls"}, Extensions: []string{".cs", ".csx"}, LanguageID: "csharp", RootMarkers: []string{"*.sln", "*.slnx", "*.csproj", "global.json"}},
 		{Name: "powershell-editor-services", Command: []string{"powershell-editor-services"}, Extensions: []string{".ps1", ".psm1", ".psd1"}, LanguageID: "powershell"},

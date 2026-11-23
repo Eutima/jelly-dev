@@ -9,7 +9,7 @@
 #   JD_DEPS              dependency groups to handle, comma separated (default basics,terminal,runtimes,lsp)
 #   JD_DRY_RUN=1         print what would be installed instead of installing it
 #   JD_LANGS=<ids>       languages to install language servers and formatters for, comma separated: python html css json yaml docker compose
-#                        javascript angular go rust c cpp java, all, or none (default: all; jd asks on its first start). csharp and
+#                        javascript angular go rust c cpp java bash, all, or none (default: all; jd asks on its first start). csharp and
 #                        powershell are installed only when they are named: all and the default leave them out
 #   JD_BIN=<path>        jd is already installed there (pip, jd runs this script itself on its first start): do not download
 #                        jd; the dependencies are installed, git is configured and the PATH of new shells gets the tool folders
@@ -433,12 +433,12 @@ deps_runtimes() {
     if user_runtimes; then
         lang_enabled go && { runtime_go || true; }
         # Node.js also runs the Python server (pyright)
-        any_lang python html css json yaml docker compose javascript angular && { runtime_node || true; }
+        any_lang python html css json yaml docker compose javascript angular bash && { runtime_node || true; }
         any_lang java && { runtime_jdk || true; }
         lang_enabled rust && { runtime_rust || true; }
     else
         lang_enabled go && { ensure_tool go "Go" go || true; }
-        any_lang python html css json yaml docker compose javascript angular && { ensure_tool node "Node.js and npm" npm || true; }
+        any_lang python html css json yaml docker compose javascript angular bash && { ensure_tool node "Node.js and npm" npm || true; }
         any_lang java && { ensure_tool jdk "Java JDK" javac || true; }
         lang_enabled rust && { ensure_tool rustup "Rust toolchain (rustup)" rustup || true; }
     fi
@@ -574,6 +574,7 @@ deps_lsp() {
     lang_enabled yaml && npm_tool "YAML language server" yaml-language-server yaml-language-server
     lang_enabled docker && npm_tool "Dockerfile language server" docker-langserver dockerfile-language-server-nodejs
     lang_enabled compose && npm_tool "Docker Compose language server" docker-compose-langserver @microsoft/compose-language-service
+    lang_enabled bash && npm_tool "Bash language server" bash-language-server bash-language-server
     lang_enabled angular && npm_tool "Angular language server" ngserver @angular/language-server @angular/language-service typescript@5
     lang_enabled java && lsp_jdtls
     any_lang html css json yaml javascript angular && npm_tool "prettier (HTML, CSS, JavaScript, TypeScript, JSON formatter)" prettier prettier

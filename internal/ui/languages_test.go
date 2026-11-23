@@ -155,7 +155,7 @@ func TestLanguages_ScrollInASmallWindowAndKeepTheHintsVisible(t *testing.T) {
 	if !strings.Contains(view, "[enter] install") || !strings.Contains(view, "[x] Python") || strings.Contains(view, "PowerShell") {
 		t.Fatalf("a small window shows the first languages and the hints:\n%s", view)
 	}
-	if !strings.Contains(view, "5 of 16 shown") {
+	if !strings.Contains(view, "5 of 17 shown") {
 		t.Errorf("the list must say that it scrolls:\n%s", view)
 	}
 	m = languageKeys(m, "G")

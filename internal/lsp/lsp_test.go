@@ -702,6 +702,15 @@ func TestParseWorkspaceEdit_RefusesFileDeletion_AndReadsChangesMap(t *testing.T)
 	}
 }
 
+func TestSpecFor_KnowsShellScripts(t *testing.T) {
+	for _, file := range []string{"run.sh", "scripts/Install.BASH"} {
+		spec, id, ok := specFor(DefaultServers(), file)
+		if !ok || spec.Name != "bash-language-server" || id != "shellscript" {
+			t.Errorf("%s: got %s %s %v", file, spec.Name, id, ok)
+		}
+	}
+}
+
 func TestSpecFor_KnowsCSharpAndPowerShellFiles(t *testing.T) {
 	servers := DefaultServers()
 	for file, want := range map[string][2]string{
