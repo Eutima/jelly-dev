@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/eutima/jelly-dev/internal/jsonframe"
 )
 
 // ErrClosed is returned for requests to a server that has stopped.
@@ -51,7 +53,7 @@ type document struct {
 type Client struct {
 	name string
 	cmd  *exec.Cmd
-	tr   *transport
+	tr   *jsonframe.Transport
 
 	mu       sync.Mutex
 	nextID   int
@@ -89,7 +91,7 @@ func Start(ctx context.Context, name string, command []string, root string) (*Cl
 }
 
 func newClient(name string, cmd *exec.Cmd, r io.Reader, w io.Writer) *Client {
-	c := &Client{name: name, cmd: cmd, tr: newTransport(r, w), pending: map[int]chan response{}, docs: map[string]document{}, done: make(chan struct{}),
+	c := &Client{name: name, cmd: cmd, tr: jsonframe.New(r, w), pending: map[int]chan response{}, docs: map[string]document{}, done: make(chan struct{}),
 		activity: time.Now(), progress: map[string]bool{}}
 	go c.readLoop()
 	return c
@@ -134,7 +136,7 @@ func handshake(ctx context.Context, c *Client, root string) (*Client, error) {
 func (c *Client) readLoop() {
 	defer c.shutdown()
 	for {
-		body, err := c.tr.read()
+		body, err := c.tr.Read()
 		if err != nil {
 			return
 		}
@@ -247,7 +249,7 @@ func (c *Client) answerServerRequest(msg message) {
 		c.mu.Unlock()
 		result = answers
 	}
-	_ = c.tr.write(map[string]any{"jsonrpc": "2.0", "id": msg.ID, "result": result})
+	_ = c.tr.Write(map[string]any{"jsonrpc": "2.0", "id": msg.ID, "result": result})
 }
 
 // shutdown fails every request that is still waiting.
@@ -278,7 +280,7 @@ func (c *Client) call(ctx context.Context, method string, params, result any) er
 	ch := make(chan response, 1)
 	c.pending[id] = ch
 	c.mu.Unlock()
-	if err := c.tr.write(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); err != nil {
+	if err := c.tr.Write(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); err != nil {
 		c.forget(id)
 		return err
 	}
@@ -293,7 +295,7 @@ func (c *Client) call(ctx context.Context, method string, params, result any) er
 		return nil
 	case <-ctx.Done():
 		c.forget(id)
-		_ = c.tr.write(map[string]any{"jsonrpc": "2.0", "method": "$/cancelRequest", "params": map[string]int{"id": id}})
+		_ = c.tr.Write(map[string]any{"jsonrpc": "2.0", "method": "$/cancelRequest", "params": map[string]int{"id": id}})
 		return fmt.Errorf("%s: %s: %w", c.name, method, ctx.Err())
 	}
 }
@@ -305,7 +307,7 @@ func (c *Client) forget(id int) {
 }
 
 func (c *Client) notify(method string, params any) error {
-	return c.tr.write(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
+	return c.tr.Write(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
 }
 
 // Sync makes the server's copy of a file equal to text: it opens the file, or sends the change when the text differs

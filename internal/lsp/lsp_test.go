@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/eutima/jelly-dev/internal/jsonframe"
 )
 
 // TestHelperServer is not a test: it is the fake language server that the other tests start as a subprocess.
@@ -20,11 +21,11 @@ func TestHelperServer(t *testing.T) {
 	if os.Getenv("GO_FAKE_LSP") != "1" {
 		t.Skip("helper process")
 	}
-	tr := newTransport(os.Stdin, os.Stdout)
+	tr := jsonframe.New(os.Stdin, os.Stdout)
 	texts := map[string]string{}
-	send := func(v any) { _ = tr.write(v) }
+	send := func(v any) { _ = tr.Write(v) }
 	for {
-		body, err := tr.read()
+		body, err := tr.Read()
 		if err != nil {
 			os.Exit(0)
 		}
@@ -399,19 +400,6 @@ func TestURIConversionRoundTrips(t *testing.T) {
 	}
 	if _, ok := URIToPath("jar:file:///x.jar!/A.class"); ok {
 		t.Fatal("other schemes are not files")
-	}
-}
-
-func TestTransport_RejectsBrokenFrames(t *testing.T) {
-	for name, input := range map[string]string{
-		"no length":  "X-Other: 1\r\n\r\n{}",
-		"bad length": "Content-Length: abc\r\n\r\n",
-		"too large":  "Content-Length: 99999999999\r\n\r\n",
-		"cut body":   "Content-Length: 10\r\n\r\n{}",
-	} {
-		if _, err := newTransport(bufio.NewReader(strings.NewReader(input)), io.Discard).read(); err == nil {
-			t.Errorf("%s: an error is expected", name)
-		}
 	}
 }
 

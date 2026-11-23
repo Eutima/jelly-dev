@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/eutima/jelly-dev/internal/jsonframe"
 )
 
 func idleClient() *Client {
@@ -88,7 +90,7 @@ func TestManager_OpensProjectFilesOfTypeScriptWithoutTsconfig(t *testing.T) {
 	manager := NewManager(root, DefaultServers())
 	c := idleClient()
 	c.docs = map[string]document{}
-	c.tr = newTransport(os.Stdin, discard{})
+	c.tr = jsonframe.New(os.Stdin, discard{})
 	spec, _, _ := specFor(manager.servers, "a.ts")
 	manager.preload(c, spec, root)
 	if len(c.docs) != 2 {

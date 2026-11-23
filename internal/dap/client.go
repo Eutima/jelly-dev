@@ -60,7 +60,8 @@ type Client struct {
 	tr     *jsonframe.Transport
 	closer func() error // ends the adapter: kills the process or closes the connection
 	once   sync.Once
-	err    error // what closer returned
+	ended  chan struct{} // closed when the read loop has finished
+	err    error         // what closer returned
 	events chan Event
 	done   chan struct{}
 
@@ -68,11 +69,13 @@ type Client struct {
 	nextSeq int
 	pending map[int]chan response
 	closed  bool
+	closing bool  // Close has begun: the read loop failing now is the expected end
+	cause   error // why the read loop ended, when it was not asked to
 }
 
 // NewClient talks over a connection that already exists; closer is called by Close (may be nil).
 func NewClient(r io.Reader, w io.Writer, closer func() error) *Client {
-	c := &Client{tr: jsonframe.New(r, w), closer: closer, events: make(chan Event, eventBuffer), done: make(chan struct{}), pending: map[int]chan response{}}
+	c := &Client{tr: jsonframe.New(r, w), closer: closer, events: make(chan Event, eventBuffer), done: make(chan struct{}), ended: make(chan struct{}), pending: map[int]chan response{}}
 	go c.readLoop()
 	return c
 }
@@ -95,11 +98,23 @@ func Start(command []string, dir string) (*Client, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	return NewClient(stdout, stdin, func() error {
+	var client *Client
+	client = NewClient(stdout, stdin, func() error {
 		_ = stdin.Close()
 		_ = cmd.Process.Kill()
-		return cmd.Wait()
-	}), nil
+		// Wait closes the pipe the read loop reads from: let the loop read what is left first (but do not hang on a grandchild that keeps
+		// the pipe open)
+		select {
+		case <-client.ended:
+		case <-time.After(2 * time.Second):
+		}
+		var exit *exec.ExitError
+		if err := cmd.Wait(); err != nil && !errors.As(err, &exit) { // an exit status is the kill Close asked for
+			return err
+		}
+		return nil
+	})
+	return client, nil
 }
 
 // Dial connects to an adapter that listens on a TCP address (delve, js-debug).
@@ -126,15 +141,18 @@ func (c *Client) Done() <-chan struct{} { return c.done }
 
 func (c *Client) readLoop() {
 	defer close(c.events) // only this goroutine sends, so only it may close
+	defer close(c.ended)
 	defer c.shutdown()
 	for {
 		body, err := c.tr.Read()
 		if err != nil {
+			c.fail(err)
 			return
 		}
 		var msg message
 		if err := json.Unmarshal(body, &msg); err != nil {
-			continue
+			c.fail(fmt.Errorf("unreadable message: %w", err)) // a broken protocol: do not guess what comes next
+			return
 		}
 		switch msg.Type {
 		case "response":
@@ -163,6 +181,23 @@ func (c *Client) readLoop() {
 	}
 }
 
+// fail remembers why the adapter is gone, unless Close ended it.
+func (c *Client) fail(cause error) {
+	c.mu.Lock()
+	if !c.closed && !c.closing && !errors.Is(cause, io.EOF) {
+		c.cause = cause
+	}
+	c.mu.Unlock()
+}
+
+// closedError is what a request gets once the adapter is gone: ErrClosed, with the reason when there is one. Call with c.mu held.
+func (c *Client) closedError() error {
+	if c.cause != nil {
+		return fmt.Errorf("%w: %v", ErrClosed, c.cause)
+	}
+	return ErrClosed
+}
+
 func (c *Client) refuse(msg message) {
 	c.mu.Lock()
 	c.nextSeq++
@@ -181,15 +216,19 @@ func (c *Client) shutdown() {
 	pending := c.pending
 	c.pending = map[int]chan response{}
 	close(c.done)
+	err := c.closedError()
 	c.mu.Unlock()
 	for _, ch := range pending {
-		ch <- response{err: ErrClosed}
+		ch <- response{err: err}
 	}
 }
 
 // Close ends the adapter.
 func (c *Client) Close() error {
 	c.once.Do(func() {
+		c.mu.Lock()
+		c.closing = true
+		c.mu.Unlock()
 		if c.closer != nil {
 			c.err = c.closer()
 		}
@@ -203,8 +242,9 @@ func (c *Client) send(command string, arguments any) (int, chan response, error)
 	ch := make(chan response, 1)
 	c.mu.Lock()
 	if c.closed {
+		err := c.closedError()
 		c.mu.Unlock()
-		return 0, nil, ErrClosed
+		return 0, nil, err
 	}
 	c.nextSeq++
 	seq := c.nextSeq

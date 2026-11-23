@@ -3,6 +3,8 @@ package dap
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -107,7 +109,7 @@ func fakeAdapter(t *testing.T) (*Client, string) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	c := NewClient(stdout, stdin, func() error { _ = stdin.Close(); _ = cmd.Process.Kill(); return cmd.Wait() })
+	c := NewClient(stdout, stdin, func() error { _ = stdin.Close(); _ = cmd.Process.Kill(); _ = cmd.Wait(); return nil })
 	t.Cleanup(func() { _ = c.Close() })
 	return c, log
 }
@@ -224,7 +226,7 @@ func TestClient_ReportsRefusalsAndAnswersRequestsOfTheAdapter(t *testing.T) {
 func TestClient_FailsPendingCallsWhenTheAdapterStops(t *testing.T) {
 	c, _ := fakeAdapter(t)
 	s := NewSession(c)
-	if err := s.Stop(ctxT(t)); err != nil && !strings.Contains(err.Error(), "exit") && !strings.Contains(err.Error(), "signal") {
+	if err := s.Stop(ctxT(t)); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.Call(ctxT(t), "threads", nil, nil); err != ErrClosed {
@@ -294,5 +296,83 @@ func TestClient_ForgetsACallThatTimedOut(t *testing.T) {
 	c.mu.Unlock()
 	if left != 0 {
 		t.Fatalf("%d calls still wait for an answer", left)
+	}
+}
+
+func TestStart_RunsTheAdapterProcessAndCloseEndsIt(t *testing.T) {
+	t.Setenv("GO_FAKE_DAP", "1")
+	t.Setenv("GO_FAKE_LOG", t.TempDir()+"/log")
+	c, err := Start([]string{os.Args[0], "-test.run=^TestHelperAdapter$"}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Call(ctxT(t), "initialize", map[string]any{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatalf("a normal Close is not an error: %v", err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatalf("closing twice: %v", err)
+	}
+	if _, err := Start(nil, ""); err == nil {
+		t.Fatal("an empty command must fail")
+	}
+	if _, err := Start([]string{"/no/such/adapter"}, t.TempDir()); err == nil {
+		t.Fatal("a missing adapter must fail")
+	}
+}
+
+func TestDial_ConnectsOverTCPAndGivesUpWhenNothingListens(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skip("no local TCP:", err)
+	}
+	address := listener.Addr().String()
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		tr := jsonframe.New(conn, conn)
+		raw, err := tr.Read()
+		if err != nil {
+			return
+		}
+		var req message
+		_ = json.Unmarshal(raw, &req)
+		_ = tr.Write(map[string]any{"seq": 1, "type": "response", "request_seq": req.Seq, "command": req.Command, "success": true, "body": map[string]any{"ok": true}})
+	}()
+	c, err := Dial(address, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct{ OK bool }
+	if err := c.Call(ctxT(t), "initialize", nil, &body); err != nil || !body.OK {
+		t.Fatalf("%+v %v", body, err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Call(ctxT(t), "threads", nil, nil); err != ErrClosed {
+		t.Fatalf("a deliberate Close leaves no other reason behind: %v", err)
+	}
+	listener.Close()
+	if _, err := Dial(address, 200*time.Millisecond); err == nil {
+		t.Fatal("nothing listens any more: Dial must give up")
+	}
+}
+
+func TestClient_NamesTheReasonWhenTheAdapterSendsGarbage(t *testing.T) {
+	client, server := net.Pipe()
+	defer server.Close()
+	c := NewClient(client, client, client.Close)
+	defer c.Close()
+	go func() { _, _ = server.Write([]byte("Content-Length: 3\r\n\r\nxyz")) }()
+	<-c.Done()
+	err := c.Call(ctxT(t), "threads", nil, nil)
+	if !errors.Is(err, ErrClosed) || !strings.Contains(err.Error(), "unreadable message") {
+		t.Fatalf("want ErrClosed with the reason: %v", err)
 	}
 }
