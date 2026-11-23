@@ -164,7 +164,7 @@ to the shell; `ctrl+]` (or a click on the editor) gives the focus back, `ctrl+t`
 palette entry hides the panel (the shells keep running). The panel has **tabs**, one shell each: `[+]` (or `:terminal new`, or *New terminal* in the
 tab list) opens another, a click or `alt+1` … `alt+9`
 chooses one, `ctrl+d` or `[×]` ends the shown one; a shell that exits closes its tab, the last one takes the panel with it. On Windows the panel runs `$SHELL`, else PowerShell 7 (`pwsh`), else Windows PowerShell, else `%ComSpec%` (cmd.exe), in a ConPTY (Windows 10 version 1809 or newer), so the shell is inside the window
-like on Linux and macOS; on an older Windows it runs in place of the window until you `exit`.
+like on Linux and macOS; on an older Windows it runs in place of the window until you `exit`. The wheel of the mouse (or `ctrl+pgup` / `ctrl+pgdn`, a page at a time) scrolls back through the output of the shell (the last 10000 lines are kept, the title says how far back the view is, typing shows the live screen again); a program that draws on the whole screen (vim, less) gets the wheel as the arrow keys.
 
 **File tabs**: every file you open from the tree, a search or `gd`/`gr` gets a tab above the editor (an open file is shown, not
 opened twice); each tab keeps its own text, undo history and cursor. `gt` / `gT` (or `:tabn` / `:tabp`, `:bn` / `:bp`) show the next /

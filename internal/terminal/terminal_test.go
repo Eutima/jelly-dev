@@ -157,3 +157,86 @@ func TestSession_PasteAndResizeAfterTheShellEndedDoNotBlock(t *testing.T) {
 		t.Fatal("paste or resize after the end of the shell blocks")
 	}
 }
+
+func TestSession_ScrollsBackIntoTheHistoryAndBackToTheLiveScreen(t *testing.T) {
+	s := start(t, "i=1; while [ $i -le 60 ]; do echo line-$i; i=$((i+1)); done; sleep 30")
+	waitFor(t, s, "line-60")
+	if offset, history := s.Scrolled(); offset != 0 || history < 50 {
+		t.Fatalf("the live screen, and the lines that left it are kept: offset %d history %d", offset, history)
+	}
+	if strings.Contains(plain(s.Lines(false)), "line-1\n") {
+		t.Fatal("the first lines are above the screen")
+	}
+	if got := s.ScrollBy(30); got != 30 {
+		t.Fatalf("scrolled back 30 lines: %d", got)
+	}
+	view := plain(s.Lines(true))
+	if strings.Contains(view, "line-60") || !strings.Contains(view, "line-") {
+		t.Fatalf("the view shows older lines, not the live ones:\n%s", view)
+	}
+	cells := s.Cells()
+	if len(cells) != 5 || strings.TrimSpace(strings.Join(cells[0], "")) == "" {
+		t.Fatalf("the cells (the selection works on them) follow the view: %q", cells[0])
+	}
+	_, history := s.Scrolled()
+	if got := s.ScrollBy(10000); got != history {
+		t.Fatalf("scrolling stops at the oldest line: %d of %d", got, history)
+	}
+	if view := plain(s.Lines(false)); !strings.Contains(view, "line-1") {
+		t.Fatalf("the oldest lines are there:\n%s", view)
+	}
+	s.ScrollBy(-10000)
+	if offset, _ := s.Scrolled(); offset != 0 {
+		t.Fatalf("back at the live screen: %d", offset)
+	}
+	s.ScrollBy(20)
+	s.ScrollToLive()
+	if offset, _ := s.Scrolled(); offset != 0 || !strings.Contains(plain(s.Lines(false)), "line-60") {
+		t.Fatalf("ScrollToLive shows the live screen: %d", offset)
+	}
+}
+
+func TestSession_AViewInTheHistoryStaysWhereItIsWhileNewLinesCome(t *testing.T) {
+	s := start(t, "i=1; while [ $i -le 40 ]; do echo line-$i; i=$((i+1)); done; read go; i=41; while [ $i -le 60 ]; do echo line-$i; i=$((i+1)); done; sleep 30")
+	waitFor(t, s, "line-40")
+	s.ScrollBy(10)
+	_, historyBefore := s.Scrolled()
+	shown := plain(s.Lines(false))
+	s.Write([]byte("\r")) // the shell goes on: twenty more lines
+	deadline := time.After(5 * time.Second)
+	for {
+		if _, history := s.Scrolled(); history >= historyBefore+15 {
+			break
+		}
+		select {
+		case <-s.Updates():
+		case <-deadline:
+			t.Fatal("the shell printed no more lines")
+		}
+	}
+	offset, history := s.Scrolled()
+	if offset < 10+15 || offset > history {
+		t.Fatalf("new lines push the view further back, so that it stays on the same lines: offset %d history %d", offset, history)
+	}
+	if now := plain(s.Lines(false)); now != shown {
+		t.Fatalf("the view must not move:\n%s\nwas\n%s", now, shown)
+	}
+}
+
+func TestSession_AProgramOnTheAlternateScreenHasNoHistoryAndGetsTheWheelAsArrows(t *testing.T) {
+	// the program switches to the alternate screen and asks for the application cursor keys (vim does), then prints what it reads
+	script := `printf '\033[?1049h\033[?1h'; echo alt-screen; stty raw -echo; dd bs=1 count=6 2>/dev/null | od -An -c; sleep 30`
+	s := start(t, script)
+	waitFor(t, s, "alt-screen")
+	if !s.AltScreen() {
+		t.Fatal("the program is on the alternate screen")
+	}
+	if got := s.ScrollBy(5); got != 0 {
+		t.Fatalf("no history there: %d", got)
+	}
+	if offset, history := s.Scrolled(); offset != 0 || history != 0 {
+		t.Fatalf("Scrolled on the alternate screen: %d %d", offset, history)
+	}
+	s.Arrows(true, 2) // two times up: in application mode that is ESC O A
+	waitFor(t, s, "033   O   A")
+}

@@ -45,6 +45,7 @@ type Session struct {
 	// screenMu keeps the output of the shell (pump) and the readers of the screen (Lines, Resize) apart: the emulator hands out
 	// pointers into its live buffer, so its own lock does not cover copying a cell
 	screenMu   sync.Mutex
+	offset     int // how many lines the view is scrolled back into the history, 0: the live screen (guarded by screenMu)
 	closeOnce  sync.Once
 	answerDone chan struct{} // closed when the goroutine that forwards the screen's answers has ended
 	stopping   atomic.Bool   // Close was called: the goroutine that forwards the answers of the screen ends
@@ -71,7 +72,13 @@ func (s *Session) pump() {
 		n, err := s.proc.Read(buf)
 		if n > 0 {
 			s.screenMu.Lock()
+			before := s.screen.ScrollbackLen()
 			_, _ = s.screen.Write(buf[:n])
+			// a view that is scrolled back stays on the lines it shows while new ones come (once the history is full, 10000 lines, the oldest
+			// ones are dropped and the length no longer grows: the emulator does not say how many went, so the view then drifts slowly)
+			if s.offset > 0 {
+				s.offset = min(s.offset+max(s.screen.ScrollbackLen()-before, 0), s.screen.ScrollbackLen())
+			}
 			s.screenMu.Unlock()
 			select {
 			case s.updates <- struct{}{}:
@@ -144,6 +151,21 @@ func (s *Session) Paste(text string) {
 	s.bounded(func() { s.screen.Paste(text) })
 }
 
+// Arrows sends the arrow key up or down n times the way the screen encodes it for the program: with the plain or the application cursor-key
+// sequences, as the program asked (vim and less often ask for the application ones).
+func (s *Session) Arrows(up bool, n int) {
+	if s.ended() {
+		return
+	}
+	code := uv.KeyDown
+	if up {
+		code = uv.KeyUp
+	}
+	for range n {
+		s.bounded(func() { s.screen.SendKey(uv.KeyPressEvent{Code: code}) })
+	}
+}
+
 // ended reports whether the session was closed or its shell has ended: nothing is sent to it any more.
 func (s *Session) ended() bool { return s.stopping.Load() || s.Done() }
 
@@ -173,6 +195,7 @@ func (s *Session) Resize(width, height int) {
 	}
 	s.screenMu.Lock()
 	s.bounded(func() { s.screen.Resize(width, height) })
+	s.offset = min(s.offset, s.screen.ScrollbackLen())
 	s.screenMu.Unlock()
 	_ = s.proc.Resize(width, height)
 }
@@ -185,18 +208,71 @@ func (s *Session) Close() {
 	})
 }
 
-// Lines renders the screen as width x height styled lines; when showCursor is set the cursor cell is drawn reversed.
+// ScrollBy scrolls the view into the history of the shell (positive: back in time) or towards the live screen (negative), and returns how far
+// back it is now. A program on the alternate screen (vim, less) has no history: there the view does not move.
+func (s *Session) ScrollBy(lines int) int {
+	s.screenMu.Lock()
+	defer s.screenMu.Unlock()
+	if s.screen.IsAltScreen() {
+		s.offset = 0
+		return 0
+	}
+	s.offset = min(max(s.offset+lines, 0), s.screen.ScrollbackLen())
+	return s.offset
+}
+
+// ScrollToLive brings the view back to the live screen (typing does that).
+func (s *Session) ScrollToLive() {
+	s.screenMu.Lock()
+	s.offset = 0
+	s.screenMu.Unlock()
+}
+
+// Scrolled returns how many lines the view is scrolled back, and how many lines of history there are.
+func (s *Session) Scrolled() (offset, history int) {
+	s.screenMu.Lock()
+	defer s.screenMu.Unlock()
+	if s.screen.IsAltScreen() {
+		return 0, 0
+	}
+	return s.offset, s.screen.ScrollbackLen()
+}
+
+// AltScreen tells whether a program that draws on the alternate screen (vim, less, htop) is running: it keeps no history, so a wheel turn
+// is sent to it as the arrow keys.
+func (s *Session) AltScreen() bool {
+	s.screenMu.Lock()
+	defer s.screenMu.Unlock()
+	return s.screen.IsAltScreen()
+}
+
+// cellAt is the cell of the view at column x and row y: a line of the history while the view is scrolled back, else of the live screen.
+// Call with screenMu held.
+func (s *Session) cellAt(x, y int) *uv.Cell {
+	if s.offset == 0 || s.screen.IsAltScreen() {
+		return s.screen.CellAt(x, y)
+	}
+	history := s.screen.ScrollbackLen()
+	line := history - min(s.offset, history) + y // the first row of the view is this line of history plus the screen
+	if line < history {
+		return s.screen.ScrollbackCellAt(x, line)
+	}
+	return s.screen.CellAt(x, line-history)
+}
+
+// Lines renders the screen as width x height styled lines; when showCursor is set the cursor cell is drawn reversed (not while the view is
+// scrolled back: the cursor is on the live screen).
 func (s *Session) Lines(showCursor bool) []string {
 	s.screenMu.Lock()
 	defer s.screenMu.Unlock()
 	width, height := s.screen.Width(), s.screen.Height()
 	cursor := s.screen.CursorPosition()
-	hidden := s.screen.CursorHidden()
+	hidden := s.screen.CursorHidden() || (s.offset > 0 && !s.screen.IsAltScreen())
 	lines := make([]string, height)
 	for y := range height {
 		row := make(uv.Line, width)
 		for x := range width {
-			if cell := s.screen.CellAt(x, y); cell != nil {
+			if cell := s.cellAt(x, y); cell != nil {
 				row[x] = *cell
 			}
 			if showCursor && !hidden && x == cursor.X && y == cursor.Y {
@@ -225,7 +301,7 @@ func (s *Session) Cells() [][]string {
 	for y := range height {
 		row := make([]string, width)
 		for x := range width {
-			if cell := s.screen.CellAt(x, y); cell != nil && cell.Width > 0 {
+			if cell := s.cellAt(x, y); cell != nil && cell.Width > 0 {
 				row[x] = cell.Content
 				if row[x] == "" {
 					row[x] = " "

@@ -151,6 +151,10 @@ func (m ProjectModel) termUpdated(msg termUpdateMsg) (tea.Model, tea.Cmd) {
 	return m, nil // an answer of a shell that was closed
 }
 
+// termPage is how many lines ctrl+pgup and ctrl+pgdn scroll: the rows of the screen of the shell (the panel without its header), less two lines
+// that stay in view to keep the place.
+func (m ProjectModel) termPage() int { return max(m.termPanelHeight()-1-2, 1) }
+
 // terminalKey sends a key to the shell. The keys of the window itself: leaveTermKey gives the focus back to the editor,
 // ctrl+t opens the tab list, alt+t hides the panel, ctrl+d closes the shown tab and alt+1 ... alt+9 choose one.
 func (m ProjectModel) terminalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -177,6 +181,15 @@ func (m ProjectModel) terminalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.termSel = nil
+	switch key { // the history of the shell: a page back and forth (the wheel of the mouse scrolls as well)
+	case "ctrl+pgup":
+		session.ScrollBy(m.termPage())
+		return m, nil
+	case "ctrl+pgdown":
+		session.ScrollBy(-m.termPage())
+		return m, nil
+	}
+	session.ScrollToLive()
 	if msg.Paste {
 		session.Paste(string(msg.Runes))
 		return m, nil
@@ -227,6 +240,11 @@ func (m ProjectModel) termHeader() *bar {
 			tab = m.theme.Header
 		}
 		result.click([]string{actionSelectTab + strconv.Itoa(i)}, barPart{fmt.Sprintf(" %d:%s ", i+1, sanitize(session.Name())), tab})
+	}
+	if session := m.activeTerm(); session != nil {
+		if offset, _ := session.Scrolled(); offset > 0 { // the view is in the history: say how far and how to get back
+			result.add(barPart{fmt.Sprintf(" ↑ %d lines back (wheel or ctrl+pgdn, any key: live) ", offset), m.theme.Warning})
+		}
 	}
 	result.add(barPart{" ", m.theme.Footer})
 	result.click([]string{actionNewTab}, barPart{"[+]", m.theme.Footer})

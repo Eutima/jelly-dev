@@ -7,6 +7,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// terminalWheelLines is how many lines one turn of the wheel scrolls the terminal panel.
+const terminalWheelLines = 3
+
 // termSelection is the text that is selected with the mouse in the terminal panel (cells of the screen, row and column).
 type termSelection struct {
 	anchorX, anchorY int
@@ -71,6 +74,19 @@ func (m ProjectModel) mouseInTerminal(msg tea.MouseMsg, x, y int) (ProjectModel,
 	rows := len(cells)
 	if rows == 0 {
 		return m, false
+	}
+	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+		direction := 1 // wheel up: back into the history
+		if msg.Button == tea.MouseButtonWheelDown {
+			direction = -1
+		}
+		if session.AltScreen() { // vim, less: no history, the program scrolls (the arrows are what a terminal sends for the wheel there, in the form the program asked for)
+			session.Arrows(direction > 0, terminalWheelLines)
+		} else {
+			session.ScrollBy(direction * terminalWheelLines)
+		}
+		m.termSel = nil // the selection was of the rows that were on screen
+		return m, true
 	}
 	column := func(v int) int { return min(max(v, 0), max(len(cells[0])-1, 0)) }
 	row := func(v int) int { return min(max(v-1, 0), rows-1) } // the panel's first row is its header
