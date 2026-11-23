@@ -158,7 +158,7 @@ or the palette entry runs `git mergetool` with jd as the tool (whatever git is c
 is staged when you save. The window looks again after the merge tool ends and now and then while you type.
 
 **Top bar and shortcuts**: *Diff* shows the git changes of the project as in `jd git` (`alt+d`, `D` in the tree or `:diff`; `q` returns to
-the editor; save first, the diff shows what is on disk). `ctrl+o` works in the tree and in the editor's normal mode (`ctrl+t` and `alt+d` everywhere) (`ctrl+b` is the way
+the editor; save first, the diff shows what is on disk). `ctrl+o` works in the tree and in the editor's normal mode (`ctrl+t` and `alt+d` everywhere) (`alt+left` is the way
 back after `gd`/`gr`). *Terminal* opens a shell in the project in a panel under the editor, like VS Code. Everything you type goes
 to the shell; `ctrl+]` (or a click on the editor) gives the focus back, `ctrl+t` (also from the editor and the tree, where it shows the panel) or the
 palette entry hides the panel (the shells keep running). The panel has **tabs**, one shell each: `[+]` (or `:terminal new`, or *New terminal* in the
@@ -241,7 +241,7 @@ on a hint presses it; all of them can be changed with `nano.*` in `.jdrc`):
 | `alt+u` / `alt+e` | undo / redo (typing in one go is one step) |
 | `ctrl+left`, `ctrl+right`, `ctrl+home`, `ctrl+end`, `ctrl+y`, `ctrl+v` | a word left/right, start/end of the file, page up/down |
 
-The keys of the project window go first: `ctrl+a` (actions), `ctrl+e` (focus), `ctrl+f` / `ctrl+g` (search in the project), `ctrl+o` (projects), `ctrl+b` (back after a jump), `ctrl+d` (close the
+The keys of the project window go first: `ctrl+a` (actions), `ctrl+e` (focus), `ctrl+f` / `ctrl+g` (search in the project), `ctrl+o` (projects), `alt+left` (back after a jump), `ctrl+b` (breakpoint), `ctrl+d` (close the
 tab, asks when there are changes), `ctrl+t` (terminal) - nano's own meaning of those is on `home`, `end`, `delete` and the actions. `ctrl+space` completes (language server), `:`-commands are in
 the actions. `ctrl+\`, `ctrl+_` and `ctrl+^` are not sent by every terminal: their `alt+` alternatives always work.
 
@@ -281,7 +281,7 @@ never overwritten. Edits outside the project folder are never applied.
 **Select text in the terminal**: press and drag in the terminal panel to select text; letting go copies it to the clipboard.
 
 **Language servers** (started when first needed, per project): `gd` jumps to the definition of the symbol under the cursor, `gr` lists
-its references (`j`/`k`, `enter` or a click jump), `ctrl+alt+space` (command `hover`, in every mode) shows the documentation of the symbol under the cursor above the status line, as does resting the mouse pointer on an identifier for half a second (any key or pointer movement hides it; some terminals do not send ctrl+alt+space, rebind it in `~/.jdrc`), `ctrl+b` returns to where the last jump started (also after a search jump), also
+its references (`j`/`k`, `enter` or a click jump), `ctrl+alt+space` (command `hover`, in every mode) shows the documentation of the symbol under the cursor above the status line, as does resting the mouse pointer on an identifier for half a second (any key or pointer movement hides it; some terminals do not send ctrl+alt+space, rebind it in `~/.jdrc`), `alt+left` returns to where the last jump started (also after a search jump), also
 across files; so do `ctrl+c` and `ctrl+d` in normal mode, one step at a time, and only when there is no jump left to undo `ctrl+d` closes the
 window (`ctrl+c` does nothing) (unsaved changes block going back to another file, E37). `:format` (`:fmt`) formats the file as one undoable change: with the file type's formatter command when installed (Go: `gofmt`;
 HTML, CSS, SCSS, JavaScript, TypeScript, JSON: `prettier`; Python: `black`), otherwise with the language server (Java is formatted
@@ -308,19 +308,25 @@ ones now and `:tools status` lists what is missing. `JD_NO_AUTO_INSTALL=1` turns
 `~/.local/bin` (and Go's bin folder), which jd adds to its own PATH. Angular templates (`*.component.html`) use the Angular
 language server (it finds `typescript` and `@angular/language-service` in the project's `node_modules` or the global ones).
 
-**Debugger** (Go with delve, Python with debugpy, JavaScript and TypeScript with js-debug; `jd install-lsp debug` installs them): `f9` (or `:break`, or a click on the two-cell column in front of the line
-numbers) sets or removes a breakpoint on the cursor line, shown as a red dot; breakpoints are kept per project. `f5` (or `:debug`) runs the
+**Debugger** (Go with delve, Python with debugpy, JavaScript and TypeScript with js-debug; `jd install-lsp debug` installs them): `ctrl+b` (or `:break`, or a click on the two-cell column in front of the line
+numbers) sets or removes a breakpoint on the cursor line, shown as a red dot; breakpoints are kept per project. `f5` (or `:debug`; again while a run exists: restart) runs the
 shown file under the debugger (the file must be saved: a Go file runs the program of its folder, a `_test.go` file runs that package's tests; a Python file runs as a script with the interpreter of the project, found like the one of the language server: `VIRTUAL_ENV`, `.venv`, `venv`, `JD_PYTHON` ...) and
 opens the **debug panel** under the editor, in the place of the terminal panel (stop debugging first to get the terminal back). At a
-breakpoint the editor jumps to the line and marks it (`▶`, highlighted). The left of the panel is a list you switch with `tab` (or a click on
-its title): the **variables** of the selected frame (the first scope is open, `right`/`left`/`enter` or a click open and close a variable, its
-fields are read when it is first opened) or the **call stack** (up/down or a click choose a frame and show its line). The right of the panel is
-the console: the output of the program and messages; long lines wrap. Type an expression into its last line (`> `) and press `enter` to
-evaluate it in the selected frame (`esc` clears the line, then leaves the panel); `:eval <expression>` does the same from the editor, and
+breakpoint the editor jumps to the line and marks it (`▶`, highlighted). The panel has two parts and the keys act on one of them (a click chooses, `tab` goes from one to the other,
+and typing text goes to the console). The left is a list: the **variables** of the selected frame (the first scope is open, `enter` or a click opens
+and closes a variable, its fields are read when it is first opened) or the **call stack**; `up`/`down` choose a row (in the call stack the line of the
+frame is shown), `left`/`right` or a click on the title switch between the variables and the call stack. The right is the console: the output of the
+program and messages; long lines wrap. Type an expression into its last line (`> `) and press `enter` to evaluate it in the selected frame. The line is a
+small editor: `left`/`right`/`home`/`end` move the cursor, `backspace`/`delete` erase, `ctrl+u` clears it, `up`/`down` bring back the expressions typed before
+(kept from run to run, the line you were typing comes back after the newest) and `tab` or `ctrl+space` (also `ctrl+n`, the keys of `insert.complete`) completes the name at the cursor with the suggestions of the debugger
+(the part they have in common is put in; with several choices a popup opens above the line like the editor's: `ctrl+n`/`ctrl+p` or `down`/`up` choose, `tab` or `enter`
+accept, typing narrows the list, `esc` closes it; delve cannot complete, so the names of the variables that are on screen are used, `user.Na` gives `user.Name`
+once `user` is open; `ctrl+space` also asks on an empty line, `tab` on an empty line goes back to the list); `alt+up`/`alt+down` choose a row of the list from the
+console; `esc` clears the line, then leaves the panel; `:eval <expression>` does the same from the editor, and
 `:eval` alone evaluates the text selected in visual mode or else the name under the cursor (`user.name` counts as one name); the answer also
-shows in the status line. `f5` continues, `f10` steps over, `f11` steps in, `f12` steps out, `alt+f5` (or `shift+f5`) stops the program and
+shows in the status line. The header of the panel has clickable buttons for continue, over, in, out, restart and stop (dim while the program runs). `f9` continues, `f8` steps over, `f7` steps in, `f6` steps out, `f5` starts the run again (a run that exists is stopped first), `alt+f5` (or `shift+f5`) stops the program and
 closes the panel; `ctrl+]` gives the focus back to the editor. A breakpoint set while the program runs is sent to delve at once. All keys can
-be changed in `.jdrc` (`debug`, `stepover`, `stepin`, `stepout`, `debugstop`, `breakpoint`). **Django**: where a `manage.py` is at or above the file, a Python file that is not a script of its own (no `if __name__ == "__main__"`) is debugged through it: a test file (`test_*.py`, `*_test.py`, `tests.py`, a `tests` folder) runs `manage.py test <module>`, any other file runs `manage.py runserver --noreload`, so a breakpoint in a view stops at the next request (the output of the server is in the console). **JavaScript and TypeScript**: a `.js`, `.mjs` or `.cjs` file runs with Node.js; a `.ts`, `.mts` or `.cts` file runs with `tsx` or `ts-node` when the project has them in `node_modules/.bin`, else with the type stripping of Node.js itself (22.6 or newer). Programs that start more programs (Node.js child processes and workers, Python sub processes) are debugged as well: the adapter asks jd for a session per program, and the keys and the panel follow the one that is stopped. Not there yet: conditional breakpoints, watches,
+be changed in `.jdrc` (`debug`, `continue`, `stepover`, `stepin`, `stepout`, `debugstop`, `breakpoint`). **Django**: where a `manage.py` is at or above the file, a Python file that is not a script of its own (no `if __name__ == "__main__"`) is debugged through it: a test file (`test_*.py`, `*_test.py`, `tests.py`, a `tests` folder) runs `manage.py test <module>`, any other file runs `manage.py runserver --noreload`, so a breakpoint in a view stops at the next request (the output of the server is in the console). **JavaScript and TypeScript**: a `.js`, `.mjs` or `.cjs` file runs with Node.js; a `.ts`, `.mts` or `.cts` file runs with `tsx` or `ts-node` when the project has them in `node_modules/.bin`, else with the type stripping of Node.js itself (22.6 or newer). Programs that start more programs (Node.js child processes and workers, Python sub processes) are debugged as well: the adapter asks jd for a session per program, and the keys and the panel follow the one that is stopped. Not there yet: conditional breakpoints, watches,
 browser debugging, pytest, an expression result that can be opened like a variable. Breakpoints do not move when you insert or delete lines above them.
 
 **Clipboard**: copied and deleted text (`y`, `d`, `x`, ...) is also put on the system clipboard, and `p` pastes what is on it, so text
@@ -408,8 +414,8 @@ merged automatically; conflicts start with the base lines. The result pane has a
   `READ-ONLY`) but any attempt to change them is refused:
   - motions: `h j k l` and arrows, `w b e`, `0 ^ $`, `gg G` and `{n}G`, `ctrl+u`, `pgup`/`pgdn`, counts (`3j`, `2dw`);
   - insert mode: `i a I A o O`; `esc` returns to normal mode;
-  - changes: `x X D C`, operators `d c y` with a motion (`dd cc yy dw cw d$ dj dG ...`), `p P`, `r{char}`, `J`, `~`, `u`, `ctrl+r`;
-  - visual mode: `v` (characters) and `V` (lines), then `d x y c`;
+  - changes: `x X D C s S`, operators `d c y` with a motion (`dd cc yy dw cw d$ dj dG ...`), `p P`, `r{char}`, `J`, `~`, `u`, `ctrl+r`;
+  - visual mode: `v` (characters) and `V` (lines), then `d x y c s S`;
   - Ex commands: `:w` applies the text to the merge and stays, `:wq` or `:x` applies and leaves, `:q` leaves (refuses
     while there are unapplied changes), `:q!` discards them, `:{n}` goes to line n. `ctrl+d` works like `q` in the merge view: it leaves right away when
     nothing changed, otherwise it asks whether to apply (`y`), discard (`n`) or keep editing (any other key).

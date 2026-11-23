@@ -234,9 +234,9 @@ func TestSearch_BackJumpReturnsToPlaceBeforeSearch(t *testing.T) {
 	if model.Editor().Path() != filepath.Join(fx.root, "src", "util", "needle.go") {
 		t.Fatalf("path %q", model.Editor().Path())
 	}
-	model = projectSend(model, tea.KeyMsg{Type: tea.KeyCtrlB})
+	model = projectSend(model, tea.KeyMsg{Type: tea.KeyLeft, Alt: true})
 	if row, _ := model.Editor().Cursor(); model.Editor().Path() != filepath.Join(fx.root, "src", "main.go") || row != 2 {
-		t.Fatalf("ctrl+b must return to the place before the search: %q row %d", model.Editor().Path(), row)
+		t.Fatalf("alt+left must return to the place before the search: %q row %d", model.Editor().Path(), row)
 	}
 }
 

@@ -377,6 +377,10 @@ func (b *Buffer) normalCommand(key string, n int) {
 		b.charwiseOperator('d', b.row, b.col, b.row, min(b.col+n, len(b.lines[b.row])))
 	case "X":
 		b.charwiseOperator('d', b.row, max(b.col-n, 0), b.row, b.col)
+	case "s": // substitute: delete the characters under the cursor and insert in their place
+		b.charwiseOperator('c', b.row, b.col, b.row, min(b.col+n, len(b.lines[b.row])))
+	case "S": // the same for whole lines (cc)
+		b.linewiseOperator('c', b.row, min(b.row+n-1, len(b.lines)-1))
 	case "D":
 		b.charwiseOperator('d', b.row, b.col, min(b.row+n-1, len(b.lines)-1), len(b.lines[min(b.row+n-1, len(b.lines)-1)]))
 	case "C":
@@ -427,6 +431,15 @@ func (b *Buffer) handleVisualKey(key string, n int) Result {
 		return None
 	case "d", "x", "y", "c":
 		b.visualOperator(key)
+		b.resetPending()
+		return None
+	case "s": // like c
+		b.visualOperator("c")
+		b.resetPending()
+		return None
+	case "S": // c on the whole lines of the selection
+		b.mode = VisualLine
+		b.visualOperator("c")
 		b.resetPending()
 		return None
 	}

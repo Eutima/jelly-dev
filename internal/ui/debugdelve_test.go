@@ -85,7 +85,7 @@ func TestDebug_RealDelveFromTheEditorToTheStopAndTheEnd(t *testing.T) {
 	}
 	model.focus = focusProjectEdit
 	model.editor = model.editor.At(4, 0) // line 5
-	model = f9(model)
+	model = toggleBreakpointKey(model)
 
 	p := newPumper(t, model)
 	p.send(tea.KeyMsg{Type: tea.KeyF5})
@@ -111,9 +111,9 @@ func TestDebug_RealDelveFromTheEditorToTheStopAndTheEnd(t *testing.T) {
 	p.model = updated.(ProjectModel)
 	p.run(evalCmd)
 	p.until(func(m ProjectModel) bool { return strings.Contains(strings.Join(m.dbg.console, "\n"), "> x + 1\n  22") })
-	p.send(tea.KeyMsg{Type: tea.KeyF10}) // over line 5
+	p.send(tea.KeyMsg{Type: tea.KeyF8}) // over line 5
 	p.until(func(m ProjectModel) bool { return m.marks.stoppedAt(file, 6) })
-	p.send(tea.KeyMsg{Type: tea.KeyF5}) // continue: the program ends
+	p.send(tea.KeyMsg{Type: tea.KeyF9}) // continue: the program ends
 	p.until(func(m ProjectModel) bool { return m.dbg.state == debugEnded })
 	model = p.model
 	if console := strings.Join(model.dbg.console, "\n"); !strings.Contains(console, "answer 42") || !strings.Contains(console, "the program has ended") {
@@ -154,7 +154,7 @@ func TestDebug_RealNodeFromTheEditor(t *testing.T) {
 	}
 	model.focus = focusProjectEdit
 	model.editor = model.editor.At(1, 0) // line 2
-	model = f9(model)
+	model = toggleBreakpointKey(model)
 
 	p := newPumper(t, model)
 	p.send(tea.KeyMsg{Type: tea.KeyF5})
@@ -169,7 +169,7 @@ func TestDebug_RealNodeFromTheEditor(t *testing.T) {
 	p.model = updated.(ProjectModel)
 	p.run(evalCmd)
 	p.until(func(m ProjectModel) bool { return strings.Contains(strings.Join(m.dbg.console, "\n"), "> x + 1\n  22") })
-	p.send(tea.KeyMsg{Type: tea.KeyF5}) // continue: the program ends
+	p.send(tea.KeyMsg{Type: tea.KeyF9}) // continue: the program ends
 	p.until(func(m ProjectModel) bool { return m.dbg.state == debugEnded })
 	if console := strings.Join(p.model.dbg.console, "\n"); !strings.Contains(console, "answer 42") {
 		t.Fatalf("the output of the program is in the console:\n%s", console)

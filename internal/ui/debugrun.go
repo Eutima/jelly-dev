@@ -25,6 +25,7 @@ type DebugSession interface {
 	Scopes(ctx context.Context, frame int) ([]dap.Scope, error)
 	Variables(ctx context.Context, reference int) ([]dap.Variable, error)
 	Evaluate(ctx context.Context, frame int, expression string) (dap.Variable, error)
+	Completions(ctx context.Context, frame int, text string, column int) ([]dap.Completion, error)
 	SetBreakpoints(ctx context.Context, path string, lines []int) ([]dap.Breakpoint, error)
 	Stop(ctx context.Context) error
 }
@@ -64,12 +65,29 @@ type debugRun struct {
 	varSel      int        // the selected row of the visible tree
 	varTop      int
 	varsLoading bool
-	gen         int    // counts the stops and frame changes: answers for an older one are dropped
-	input       []rune // the expression being typed in the panel
+	gen         int           // counts the stops and frame changes: answers for an older one are dropped
+	pane        debugPane     // which part of the panel the keys go to
+	popup       *consolePopup // the open list of suggestions for the line, nil when closed
+	input       []rune        // the expression being typed in the panel
+	cursor      int           // where the next typed character goes (0 to len(input))
+	histPos     int           // the line of the history that is shown in the input, len(history) when it is the line being typed
+	draft       []rune        // the line that was being typed when the history was entered
 
 	cancel   func()           // ends a start that is still building the program
 	launched map[string][]int // the breakpoints the adapter was started with: later changes are sent when it is up
 }
+
+// debugPane is the part of the debug panel that the keys act on: the list on the left (up/down choose a row) or the console on the right (the
+// line for expressions: up/down bring back earlier lines).
+type debugPane int
+
+const (
+	paneList debugPane = iota
+	paneConsole
+)
+
+// clearInput empties the line for expressions.
+func (r *debugRun) clearInput() { r.input, r.cursor, r.popup = nil, 0, nil }
 
 // say adds a message line to the console.
 func (r *debugRun) say(text string) {
@@ -138,7 +156,7 @@ func (m ProjectModel) startDebug() (tea.Model, tea.Cmd) {
 	if m.dbg != nil && m.dbg.session != nil {
 		m.stopDebugNow(true) // a run that is still there (ended, or one that is being replaced)
 	}
-	run := &debugRun{state: debugStarting, file: file}
+	run := &debugRun{state: debugStarting, file: file, histPos: len(m.evalHistory)}
 	run.say("starting " + filepath.Base(file) + " ...")
 	m.dbg, m.focus = run, focusProjectEdit
 	breakpoints, start := m.marks.all(), m.hooks.StartDebug
@@ -218,11 +236,13 @@ func (m ProjectModel) debugEvent(msg debugEventMsg) (tea.Model, tea.Cmd) {
 	case "stopped":
 		run.state = debugStopped
 		run.gen++
+		run.popup = nil
 		return m, tea.Batch(next, m.debugStack(run))
 	case "continued":
 		run.state = debugRunning
 		run.frames, run.vars, run.varsLoading = nil, nil, false
 		run.gen++
+		run.popup = nil
 		m.marks.clearStop()
 	case "terminated", "exited":
 		if run.state != debugEnded {
@@ -232,6 +252,7 @@ func (m ProjectModel) debugEvent(msg debugEventMsg) (tea.Model, tea.Cmd) {
 		m.marks.clearStop()
 		run.frames, run.vars, run.varsLoading = nil, nil, false
 		run.gen++
+		run.popup = nil
 	}
 	return m, next
 }
@@ -267,6 +288,9 @@ func (m ProjectModel) showFrame(index int) (ProjectModel, tea.Cmd) {
 		return m, nil
 	}
 	changed := run.frame != index || (len(run.vars) == 0 && !run.varsLoading)
+	if run.frame != index {
+		run.popup = nil // the suggestions were for the frame that was chosen before
+	}
 	run.frame = index
 	var cmd tea.Cmd
 	if changed {

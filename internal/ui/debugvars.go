@@ -209,6 +209,8 @@ func (m ProjectModel) evaluate(expression string) (tea.Model, tea.Cmd) {
 		m.say("the program is not stopped: evaluate when it is waiting at a breakpoint", true)
 		return m, nil
 	}
+	m.evalHistory = pushHistory(m.evalHistory, expression)
+	run.histPos = len(m.evalHistory)
 	frame, session, gen := run.frames[run.frame].ID, run.session, run.gen
 	return m, func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), debugRequestTimeout)

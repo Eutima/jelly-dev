@@ -147,7 +147,7 @@ func TestFeed_AMismatchAfterAPartialSequenceCancelsEverythingPending(t *testing.
 }
 
 func TestFeed_TheKeyAfterRAndTheCommandLineAreLiteral(t *testing.T) {
-	r := New(mapping(t, "vim.replace = f3\nvim.delete = x\nvim.deletechar = f6\n"))
+	r := New(mapping(t, "vim.replace = f3\nvim.delete = x\nvim.deletechar = f2\n"))
 	b := newBuffer()
 	typeKeys(b, r, "f3", "d") // replace the character with a d, although d is no command any more
 	if lines, _, _, _ := state(b); lines[0] != "dlpha beta gamma" {
@@ -161,13 +161,13 @@ func TestFeed_TheKeyAfterRAndTheCommandLineAreLiteral(t *testing.T) {
 }
 
 func TestFeed_CountsAndEscapePassThroughAndDigitsStartNoSequence(t *testing.T) {
-	r := New(mapping(t, "vim.down = f7\n"))
+	r := New(mapping(t, "vim.down = f2\n"))
 	b := newBuffer()
-	typeKeys(b, r, "2", "f7")
+	typeKeys(b, r, "2", "f2")
 	if _, row, _, _ := state(b); row != 2 {
 		t.Fatalf("2 and the key of vim.down: row %d", row)
 	}
-	typeKeys(b, r, "2", "esc", "f7")
+	typeKeys(b, r, "2", "esc", "f2")
 	if _, row, _, _ := state(b); row != 3 {
 		t.Fatalf("esc drops the count: row %d", row)
 	}

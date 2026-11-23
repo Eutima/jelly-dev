@@ -130,6 +130,8 @@ func serveFake(tr *jsonframe.Transport, parent bool) {
 			respond(req.message, map[string]any{"variables": []map[string]any{{"name": "x", "value": "42", "type": "int"}}})
 		case "evaluate":
 			respond(req.message, map[string]any{"result": "84", "type": "int"})
+		case "completions":
+			respond(req.message, map[string]any{"targets": []map[string]any{{"label": "request", "start": 0, "length": 2}, {"label": "require", "text": "require(", "length": 2}, {"label": "re"}}})
 		case "next", "stepIn", "stepOut", "continue":
 			respond(req.message, nil)
 			send(map[string]any{"type": "event", "event": "continued", "body": map[string]any{"threadId": 7}})
@@ -679,5 +681,31 @@ func TestSession_ActiveFindsTheNewestStopAmongChildrenAndTheirChildren(t *testin
 	}
 	if got := root.active(); got != newer {
 		t.Fatal("the commands go to the newest stop")
+	}
+}
+
+func TestSession_CompletionsAskForTheCursorColumnAndReadTheTargets(t *testing.T) {
+	c, log := fakeAdapter(t)
+	s := NewSession(c)
+	if _, err := s.Start(ctxT(t), map[string]any{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	nextEvent(t, s, "stopped")
+	items, err := s.Completions(ctxT(t), 1, "re", 2)
+	if err != nil || len(items) != 3 {
+		t.Fatalf("%+v %v", items, err)
+	}
+	if items[0].Label != "request" || items[0].Start != 0 || items[0].Length != 2 || items[0].Insert() != "request" {
+		t.Fatalf("first: %+v", items[0])
+	}
+	if items[1].Insert() != "require(" || items[1].Start != -1 {
+		t.Fatalf("text and a start that is missing: %+v", items[1])
+	}
+	data, _ := os.ReadFile(log)
+	if !strings.Contains(string(data), `"column":3`) || !strings.Contains(string(data), `"frameId":1`) || !strings.Contains(string(data), `"text":"re"`) {
+		t.Fatalf("the request: columns start at 1:\n%s", data)
+	}
+	if _, err := s.Completions(ctxT(t), -1, "re", 0); err != nil {
+		t.Fatal(err)
 	}
 }

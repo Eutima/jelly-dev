@@ -352,3 +352,54 @@ func TestGitUpdate_ArrowsCrossFileBorders(t *testing.T) {
 		t.Fatalf("up on the first file must stay: %d", model.selected)
 	}
 }
+
+func TestGitUpdate_AFileChosenInTheListOpensOnItsFirstChange(t *testing.T) {
+	model, _ := newGitTestModel(100, 12)
+	if model.diff.current != -1 {
+		t.Fatalf("nothing is selected in the first diff yet: %d", model.diff.current)
+	}
+	model = gitPress(model, "j") // b.txt, chosen in the list
+	if model.selected != 1 || model.loadedFile != 1 || model.diff.current != 0 {
+		t.Fatalf("j must open the next file on its first change: file %d loaded %d change %d", model.selected, model.loadedFile, model.diff.current)
+	}
+	model = gitPress(model, "k")
+	if model.loadedFile != 0 || model.diff.current != 0 {
+		t.Fatalf("k must open the previous file on its first change: loaded %d change %d", model.loadedFile, model.diff.current)
+	}
+	model = gitPress(model, "G")
+	if model.selected != 2 {
+		t.Fatalf("G selects the last file: %d", model.selected)
+	}
+}
+
+func TestGitUpdate_ReturningToTheShownFileLeavesNoJumpBehind(t *testing.T) {
+	model, _ := newGitTestModel(100, 12)
+	updated, load := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")}) // starts loading b.txt
+	model = updated.(GitModel)
+	if model.arrive != 1 {
+		t.Fatalf("the file that loads opens on its first change: %d", model.arrive)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")}) // back to the shown a.txt: the load is dropped
+	model = updated.(GitModel)
+	if model.arrive != 0 {
+		t.Fatalf("no load, so no jump may wait for the next one: %d", model.arrive)
+	}
+	model = runLoads(model, load)
+	if model.diff.current != -1 || model.loadedFile != 0 {
+		t.Fatalf("the shown file stays as it was: loaded %d change %d", model.loadedFile, model.diff.current)
+	}
+}
+
+func TestGitUpdate_KeysThatChooseNoFileKeepAPendingJump(t *testing.T) {
+	model, _ := newGitTestModel(100, 12)
+	model = gitPress(model, "enter")
+	updated, load := model.Update(tea.KeyMsg{Type: tea.KeyDown}) // the only change of a.txt
+	model = updated.(GitModel)
+	_ = load
+	model.arrive = -1 // a step over a file border is waiting for its load
+	model.focus = focusList
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter}) // enter picks no file
+	if updated.(GitModel).arrive != -1 {
+		t.Fatalf("a key that chooses no file must leave the pending jump alone: %d", updated.(GitModel).arrive)
+	}
+}

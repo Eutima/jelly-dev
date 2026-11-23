@@ -58,6 +58,7 @@ const (
 	Hover            Command = "hover"
 	ToggleBreakpoint Command = "breakpoint"
 	DebugStart       Command = "debug"
+	DebugContinue    Command = "continue"
 	StepOver         Command = "stepover"
 	StepIn           Command = "stepin"
 	StepOut          Command = "stepout"
@@ -106,53 +107,55 @@ const (
 
 // The editor's normal and visual mode.
 const (
-	VimLeft         Command = "vim.left"
-	VimRight        Command = "vim.right"
-	VimDown         Command = "vim.down"
-	VimUp           Command = "vim.up"
-	VimLineStart    Command = "vim.linestart"
-	VimFirstChar    Command = "vim.firstchar"
-	VimLineEnd      Command = "vim.lineend"
-	VimWordForward  Command = "vim.wordforward"
-	VimWordBack     Command = "vim.wordback"
-	VimWordEnd      Command = "vim.wordend"
-	VimTop          Command = "vim.top"
-	VimBottom       Command = "vim.bottom"
-	VimHalfUp       Command = "vim.halfup"
-	VimPageDown     Command = "vim.pagedown"
-	VimPageUp       Command = "vim.pageup"
-	VimDelete       Command = "vim.delete"
-	VimChange       Command = "vim.change"
-	VimYank         Command = "vim.yank"
-	VimInsert       Command = "vim.insert"
-	VimAppend       Command = "vim.append"
-	VimInsertStart  Command = "vim.insertstart"
-	VimAppendEnd    Command = "vim.appendend"
-	VimOpenBelow    Command = "vim.openbelow"
-	VimOpenAbove    Command = "vim.openabove"
-	VimDeleteChar   Command = "vim.deletechar"
-	VimDeleteBefore Command = "vim.deletebefore"
-	VimDeleteEnd    Command = "vim.deleteend"
-	VimChangeEnd    Command = "vim.changeend"
-	VimYankLine     Command = "vim.yankline"
-	VimPaste        Command = "vim.paste"
-	VimPasteAbove   Command = "vim.pasteabove"
-	VimJoin         Command = "vim.join"
-	VimTilde        Command = "vim.tilde"
-	VimUndo         Command = "vim.undo"
-	VimRedo         Command = "vim.redo"
-	VimVisual       Command = "vim.visual"
-	VimVisualLine   Command = "vim.visualline"
-	VimReplace      Command = "vim.replace"
-	VimSearch       Command = "vim.search"
-	VimSearchBack   Command = "vim.searchback"
-	VimSearchNext   Command = "vim.searchnext"
-	VimSearchPrev   Command = "vim.searchprev"
-	VimCommandLine  Command = "vim.commandline"
-	VimDefinition   Command = "vim.definition"
-	VimReferences   Command = "vim.references"
-	VimNextTab      Command = "vim.nexttab"
-	VimPrevTab      Command = "vim.prevtab"
+	VimLeft           Command = "vim.left"
+	VimRight          Command = "vim.right"
+	VimDown           Command = "vim.down"
+	VimUp             Command = "vim.up"
+	VimLineStart      Command = "vim.linestart"
+	VimFirstChar      Command = "vim.firstchar"
+	VimLineEnd        Command = "vim.lineend"
+	VimWordForward    Command = "vim.wordforward"
+	VimWordBack       Command = "vim.wordback"
+	VimWordEnd        Command = "vim.wordend"
+	VimTop            Command = "vim.top"
+	VimBottom         Command = "vim.bottom"
+	VimHalfUp         Command = "vim.halfup"
+	VimPageDown       Command = "vim.pagedown"
+	VimPageUp         Command = "vim.pageup"
+	VimDelete         Command = "vim.delete"
+	VimChange         Command = "vim.change"
+	VimYank           Command = "vim.yank"
+	VimInsert         Command = "vim.insert"
+	VimAppend         Command = "vim.append"
+	VimInsertStart    Command = "vim.insertstart"
+	VimAppendEnd      Command = "vim.appendend"
+	VimOpenBelow      Command = "vim.openbelow"
+	VimOpenAbove      Command = "vim.openabove"
+	VimDeleteChar     Command = "vim.deletechar"
+	VimDeleteBefore   Command = "vim.deletebefore"
+	VimDeleteEnd      Command = "vim.deleteend"
+	VimChangeEnd      Command = "vim.changeend"
+	VimSubstitute     Command = "vim.substitute"
+	VimSubstituteLine Command = "vim.substituteline"
+	VimYankLine       Command = "vim.yankline"
+	VimPaste          Command = "vim.paste"
+	VimPasteAbove     Command = "vim.pasteabove"
+	VimJoin           Command = "vim.join"
+	VimTilde          Command = "vim.tilde"
+	VimUndo           Command = "vim.undo"
+	VimRedo           Command = "vim.redo"
+	VimVisual         Command = "vim.visual"
+	VimVisualLine     Command = "vim.visualline"
+	VimReplace        Command = "vim.replace"
+	VimSearch         Command = "vim.search"
+	VimSearchBack     Command = "vim.searchback"
+	VimSearchNext     Command = "vim.searchnext"
+	VimSearchPrev     Command = "vim.searchprev"
+	VimCommandLine    Command = "vim.commandline"
+	VimDefinition     Command = "vim.definition"
+	VimReferences     Command = "vim.references"
+	VimNextTab        Command = "vim.nexttab"
+	VimPrevTab        Command = "vim.prevtab"
 )
 
 // The editor's insert mode.
@@ -227,12 +230,13 @@ var definitions = []definition{
 	{Focus, ScopeIDE, "switch focus between the tree and the editor", []string{"ctrl+e"}},
 	{LeaveTerminal, ScopeIDE, "give the focus back from the terminal panel to the editor", []string{"ctrl+]"}},
 	{CloseTerminal, ScopeIDE, "end the shown terminal tab", []string{"ctrl+d"}},
-	{Back, ScopeIDE, "go back to where the last jump started", []string{"ctrl+b"}},
-	{ToggleBreakpoint, ScopeIDE, "set or remove the debugger breakpoint of the cursor line", []string{"f9"}},
-	{DebugStart, ScopeIDE, "start debugging the shown file, or continue a stopped program", []string{"f5"}},
-	{StepOver, ScopeIDE, "debugger: run the current line (over calls)", []string{"f10"}},
-	{StepIn, ScopeIDE, "debugger: step into the call of the current line", []string{"f11"}},
-	{StepOut, ScopeIDE, "debugger: run until the function returns", []string{"f12"}},
+	{Back, ScopeIDE, "go back to where the last jump started", []string{"alt+left"}},
+	{ToggleBreakpoint, ScopeIDE, "set or remove the debugger breakpoint of the cursor line", []string{"ctrl+b"}},
+	{DebugStart, ScopeIDE, "start debugging the shown file (a run that exists is restarted)", []string{"f5"}},
+	{DebugContinue, ScopeIDE, "debugger: let the stopped program run on", []string{"f9"}},
+	{StepOver, ScopeIDE, "debugger: run the current line (over calls)", []string{"f8"}},
+	{StepIn, ScopeIDE, "debugger: step into the call of the current line", []string{"f7"}},
+	{StepOut, ScopeIDE, "debugger: run until the function returns", []string{"f6"}},
 	{DebugStop, ScopeIDE, "stop debugging and close the debug panel", []string{"alt+f5", "f17"}},
 	{Hover, ScopeIDE, "show the documentation of the symbol under the cursor (language server)", []string{"ctrl+alt+space"}},
 	{Save, ScopeIDE, "save the file (in every editor mode)", []string{"ctrl+s"}},
@@ -298,6 +302,8 @@ var definitions = []definition{
 	{VimDeleteBefore, ScopeVim, "delete the character before the cursor", []string{"X"}},
 	{VimDeleteEnd, ScopeVim, "delete to the end of the line", []string{"D"}},
 	{VimChangeEnd, ScopeVim, "change to the end of the line", []string{"C"}},
+	{VimSubstitute, ScopeVim, "substitute: delete the character under the cursor and start inserting (visual: change the selection)", []string{"s"}},
+	{VimSubstituteLine, ScopeVim, "change the whole line (visual: the selected lines)", []string{"S"}},
 	{VimYankLine, ScopeVim, "yank the line", []string{"Y"}},
 	{VimPaste, ScopeVim, "paste after the cursor", []string{"p"}},
 	{VimPasteAbove, ScopeVim, "paste before the cursor", []string{"P"}},

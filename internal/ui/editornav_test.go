@@ -116,11 +116,11 @@ func TestEditor_JumpsToDefinitionInSameFileAndBack(t *testing.T) {
 	if len(nav.asked) != 1 || !strings.Contains(nav.texts[0], "helper()") {
 		t.Fatalf("the editor text must be sent: %v", nav.asked)
 	}
-	model, _ = projectKeys(model, "ctrl+b")
+	model, _ = projectKeys(model, "alt+left")
 	if row, col := model.Editor().Cursor(); row != 3 || col != 1 {
-		t.Fatalf("ctrl+b must return to where gd started, cursor %d,%d", row, col)
+		t.Fatalf("alt+left must return to where gd started, cursor %d,%d", row, col)
 	}
-	if model, _ = projectKeys(model, "ctrl+b"); !strings.Contains(stripANSI(model.View()), "Jump list is empty") {
+	if model, _ = projectKeys(model, "alt+left"); !strings.Contains(stripANSI(model.View()), "Jump list is empty") {
 		t.Fatalf("an empty jump list must be explained:\n%s", model.View())
 	}
 }
@@ -137,9 +137,9 @@ func TestProject_JumpsToDefinitionInOtherFileAndBack(t *testing.T) {
 	if row, col := model.Editor().Cursor(); row != 3 || col != 5 || model.focus != focusProjectEdit {
 		t.Fatalf("cursor %d,%d focus %d", row, col, model.focus)
 	}
-	model, _ = projectKeys(model, "ctrl+b")
+	model, _ = projectKeys(model, "alt+left")
 	if model.Editor().Path() != filepath.Join(root, "main.go") {
-		t.Fatalf("ctrl+b must return to the first file: %q", model.Editor().Path())
+		t.Fatalf("alt+left must return to the first file: %q", model.Editor().Path())
 	}
 	if row, col := model.Editor().Cursor(); row != 3 || col != 1 {
 		t.Fatalf("cursor %d,%d", row, col)
@@ -548,5 +548,21 @@ func TestPlaceList_SearchPromptIsShownInTheListTitle(t *testing.T) {
 	model = listKeys(model, "backspace", "backspace", "backspace")
 	if model.list.searching {
 		t.Fatal("backspace on an empty prompt leaves it")
+	}
+}
+
+func TestEditor_SSubstitutesTheCharacterAndSTheLineInNormalMode(t *testing.T) {
+	model, _ := newProjectFixture(t, 100, sampleFiles)
+	model, _ = projectKeys(model, "G", "enter") // README.md: "# hi"
+	if model.focus != focusProjectEdit {
+		model, _ = projectKeys(model, "ctrl+e")
+	}
+	model, _ = projectKeys(model, "s", "X", "esc")
+	if line := model.Editor().vim.Line(0); line != "X hi" {
+		t.Fatalf("s must replace the character under the cursor: %q", line)
+	}
+	model, _ = projectKeys(model, "S", "n", "e", "w", "esc")
+	if line := model.Editor().vim.Line(0); line != "new" {
+		t.Fatalf("S must replace the whole line: %q", line)
 	}
 }

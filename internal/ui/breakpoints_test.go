@@ -22,8 +22,8 @@ func openMain(t *testing.T) (ProjectModel, *projectFixture, string) {
 	return model, fx, path
 }
 
-func f9(model ProjectModel) ProjectModel {
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyF9})
+func toggleBreakpointKey(model ProjectModel) ProjectModel {
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
 	return updated.(ProjectModel)
 }
 
@@ -56,14 +56,14 @@ func TestDebugMarks_ToggleKeepsLinesSortedAndForgetsEmptyFiles(t *testing.T) {
 
 func TestBreakpoints_F9SetsAndRemovesTheBreakpointOfTheCursorLineAndTheGutterShowsIt(t *testing.T) {
 	model, _, path := openMain(t)
-	model = f9(model) // the cursor is on line 1
+	model = toggleBreakpointKey(model) // the cursor is on line 1
 	if !model.marks.has(path, 1) || !strings.Contains(model.status, "breakpoint set at main.go:1") {
 		t.Fatalf("set: %v %q", model.marks.breakpoints, model.status)
 	}
 	if view := stripANSI(model.Editor().View()); !strings.Contains(view, breakpointMark+" ") {
 		t.Fatalf("the marker column shows the breakpoint:\n%s", view)
 	}
-	model = f9(model)
+	model = toggleBreakpointKey(model)
 	if model.marks.has(path, 1) || !strings.Contains(model.status, "breakpoint removed") {
 		t.Fatalf("removed: %v %q", model.marks.breakpoints, model.status)
 	}
@@ -74,7 +74,7 @@ func TestBreakpoints_F9SetsAndRemovesTheBreakpointOfTheCursorLineAndTheGutterSho
 
 func TestBreakpoints_ANewFileCannotHaveOneAndTheBreakCommandDoesTheSame(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
-	model = f9(model) // the empty editor has no path
+	model = toggleBreakpointKey(model) // the empty editor has no path
 	if len(model.marks.breakpoints) != 0 || !model.warn {
 		t.Fatalf("a file without a name gets no breakpoint: %v %q", model.marks.breakpoints, model.status)
 	}
@@ -115,7 +115,7 @@ func TestBreakpoints_ClickingTheMarkerColumnTogglesTheLineAndTheTextStillMovesTh
 
 func TestBreakpoints_AreKeptInTheSessionAndComeBack(t *testing.T) {
 	model, fx, path := openMain(t)
-	model = f9(model)
+	model = toggleBreakpointKey(model)
 	other := filepath.Join(fx.root, "README.md")
 	model.marks.set(other, []int{1}) // a file that is not open
 	session := model.session()
@@ -141,7 +141,7 @@ func TestBreakpoints_AreKeptInTheSessionAndComeBack(t *testing.T) {
 
 func TestBreakpoints_TheMarkerColumnStaysWhenTheLineNumbersAreOff(t *testing.T) {
 	model, _, path := openMain(t)
-	model = f9(model)
+	model = toggleBreakpointKey(model)
 	editor := model.Editor()
 	editor.showNums = false
 	if editor.numberWidth() != breakpointColumn {

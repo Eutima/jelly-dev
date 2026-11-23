@@ -491,7 +491,7 @@ func TestNanoScope_DefaultsHaveNoConflicts_AndCanBeRebound(t *testing.T) {
 	if conflicts := Default().Conflicts(); len(conflicts) != 0 {
 		t.Fatalf("the defaults have conflicts: %v", conflicts)
 	}
-	a, problems := parse(t, "nano.exit = ctrl+q\nnano.search = f6\n")
+	a, problems := parse(t, "nano.exit = ctrl+q\nnano.search = f2\n")
 	if len(problems) != 0 {
 		t.Fatalf("problems: %v", problems)
 	}

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -60,6 +61,22 @@ func (f *fakeDebug) Variables(_ context.Context, reference int) ([]dap.Variable,
 		return []dap.Variable{{Name: "version", Value: `"1.0"`, Type: "string"}}, nil
 	case 20:
 		return []dap.Variable{{Name: "Name", Value: `"Ann"`, Type: "string"}}, nil
+	}
+	return nil, nil
+}
+func (f *fakeDebug) Completions(_ context.Context, frame int, text string, column int) ([]dap.Completion, error) {
+	_ = f.record("completions " + strconv.Itoa(frame) + " " + strconv.Itoa(column) + " " + text)
+	switch {
+	case strings.HasSuffix(text, "re"):
+		return []dap.Completion{{Label: "request", Start: len([]rune(text)) - 2, Length: 2}, {Label: "requests", Start: len([]rune(text)) - 2, Length: 2}}, nil
+	case strings.HasSuffix(text, "request"):
+		return []dap.Completion{{Label: "request", Start: len([]rune(text)) - 7, Length: 7}, {Label: "requests", Start: len([]rune(text)) - 7, Length: 7}}, nil
+	case strings.HasSuffix(text, "us"):
+		return []dap.Completion{{Label: "user", Start: len([]rune(text)) - 2, Length: 2}}, nil
+	case strings.HasSuffix(text, "qq"):
+		return nil, errors.New("Unsupported command")
+	case strings.HasSuffix(text, "ab"):
+		return []dap.Completion{{Label: "abc", Start: -1}, {Label: "abd", Start: -1}}, nil
 	}
 	return nil, nil
 }
@@ -194,7 +211,7 @@ func TestDebug_StartIsRefusedWithoutHookFileOrSavedText(t *testing.T) {
 
 func TestDebug_RunStartsWithTheBreakpointsShowsTheStopAndTheStack(t *testing.T) {
 	fx := debugProject(t)
-	fx.model = f9(fx.model)
+	fx.model = toggleBreakpointKey(fx.model)
 	fx.start(t)
 	if len(fx.started) != 1 || fx.started[0] != fx.path || len(fx.bps[fx.path]) != 1 || fx.bps[fx.path][0] != 1 {
 		t.Fatalf("the hook got %v %v", fx.started, fx.bps)
@@ -239,7 +256,7 @@ func TestDebug_StepKeysNeedAStopAndRunTheSessionCommands(t *testing.T) {
 		t.Fatalf("running: %q", status(m.(ProjectModel)))
 	}
 	fx.stop(t)
-	for key, want := range map[tea.KeyType]string{tea.KeyF10: "next", tea.KeyF11: "stepIn", tea.KeyF12: "stepOut", tea.KeyF5: "continue"} {
+	for key, want := range map[tea.KeyType]string{tea.KeyF8: "next", tea.KeyF7: "stepIn", tea.KeyF6: "stepOut", tea.KeyF9: "continue"} {
 		_, cmd := fx.model.Update(tea.KeyMsg{Type: key})
 		if cmd == nil {
 			t.Fatalf("%v must run a step", key)
@@ -263,7 +280,7 @@ func TestDebug_TheProgramEndingAndStoppingTheRun(t *testing.T) {
 	if fx.model.dbg.state != debugEnded || fx.model.marks.stopPath != "" || !strings.Contains(strings.Join(fx.model.dbg.console, "\n"), "the program has ended") {
 		t.Fatalf("ended: %+v", fx.model.dbg)
 	}
-	updated, _ := fx.model.Update(tea.KeyMsg{Type: tea.KeyF9}) // a breakpoint after the end reaches no adapter
+	updated, _ := fx.model.Update(tea.KeyMsg{Type: tea.KeyCtrlB}) // a breakpoint after the end reaches no adapter
 	fx.model = updated.(ProjectModel)
 	for _, call := range fx.session.called() {
 		if strings.HasPrefix(call, "breakpoints") {
@@ -313,7 +330,7 @@ func TestDebug_StartFailureStaysInTheConsoleAndAStaleRunIsIgnored(t *testing.T) 
 func TestDebug_BreakpointChangesReachARunningAdapterAndTheEditorFollowsFrames(t *testing.T) {
 	fx := debugProject(t)
 	fx.start(t)
-	_, cmd := fx.model.Update(tea.KeyMsg{Type: tea.KeyF9})
+	_, cmd := fx.model.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
 	if cmd == nil {
 		t.Fatal("a breakpoint while the program runs goes to the adapter")
 	}
@@ -324,11 +341,11 @@ func TestDebug_BreakpointChangesReachARunningAdapterAndTheEditorFollowsFrames(t 
 	fx.stop(t)
 	fx.model.focus = focusDebug
 	fx.model.dbg.view = viewStack
-	fx.model = update(fx.model, tea.KeyMsg{Type: tea.KeyDown}) // runtime.main has no file: the mark goes away
+	fx.model = update(fx.model, tea.KeyMsg{Type: tea.KeyDown, Alt: true}) // runtime.main has no file: the mark goes away
 	if fx.model.dbg.frame != 1 || fx.model.marks.stopPath != "" {
 		t.Fatalf("frame %d, mark %q", fx.model.dbg.frame, fx.model.marks.stopPath)
 	}
-	fx.model = update(fx.model, tea.KeyMsg{Type: tea.KeyUp})
+	fx.model = update(fx.model, tea.KeyMsg{Type: tea.KeyUp, Alt: true})
 	if fx.model.dbg.frame != 0 || !fx.model.marks.stoppedAt(fx.path, 5) {
 		t.Fatal("up goes back to the first frame and marks its line")
 	}
@@ -397,7 +414,7 @@ func TestDebug_BreakpointsChangedWhileTheAdapterStartsAreSentWhenItIsUp(t *testi
 	updated, cmd := fx.model.Update(tea.KeyMsg{Type: tea.KeyF5})
 	fx.model = updated.(ProjectModel)
 	started := answerOf(t, cmd, func(msg tea.Msg) bool { _, ok := msg.(debugStartedMsg); return ok })
-	fx.model = f9(fx.model) // the adapter is not up yet: the session does not know
+	fx.model = toggleBreakpointKey(fx.model) // the adapter is not up yet: the session does not know
 	if len(fx.session.called()) != 0 {
 		t.Fatalf("nothing can be sent yet: %v", fx.session.called())
 	}
@@ -428,5 +445,86 @@ func TestDebug_AMessageStartsItsOwnLineAndStoppingCancelsAStartInProgress(t *tes
 	fx.model = update(fx.model, debugEventMsg{run: gone, ok: false})
 	if gone.state != debugEnded || len(gone.frames) != 0 {
 		t.Fatal("an adapter that is gone leaves no stack behind")
+	}
+}
+
+// headerColumn is the screen column of a text in the header line of the debug panel.
+func headerColumn(t *testing.T, m ProjectModel, text string) int {
+	t.Helper()
+	line := strings.Split(stripANSI(m.View()), "\n")[m.editorHeight()+topBarHeight]
+	index := strings.Index(line, text)
+	if index < 0 {
+		t.Fatalf("%q is not in the header:\n%s", text, line)
+	}
+	return utf8.RuneCountInString(line[:index])
+}
+
+func TestDebug_TheStepButtonsOfThePanelAreClickable(t *testing.T) {
+	fx := debugProject(t)
+	fx.model = update(fx.model, tea.WindowSizeMsg{Width: 220, Height: 14}) // wide enough for the labels of the buttons
+	fx.start(t)                                                            // running: the steps are dim and do nothing
+	top := fx.model.editorHeight() + topBarHeight
+	click := func(m ProjectModel, column int) (ProjectModel, tea.Cmd) {
+		updated, cmd := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: column, Y: top})
+		return updated.(ProjectModel), cmd
+	}
+	if _, cmd := click(fx.model, headerColumn(t, fx.model, "[f8] over")); cmd != nil {
+		t.Fatal("a step button does nothing while the program runs")
+	}
+	fx.stop(t)
+	for text, want := range map[string]string{"[f9] continue": "continue", "[f8] over": "next", "[f7] in": "stepIn", "[f6] out": "stepOut"} {
+		model, cmd := click(fx.model, headerColumn(t, fx.model, text))
+		if cmd == nil || model.focus != focusDebug {
+			t.Fatalf("%s: a click runs the step and gives the panel the focus", text)
+		}
+		answerOf(t, cmd, func(msg tea.Msg) bool { _, ok := msg.(debugDoneMsg); return ok })
+		if calls := fx.session.called(); calls[len(calls)-1] != want {
+			t.Fatalf("%s: want %s, got %v", text, want, calls)
+		}
+	}
+	before := len(fx.started)
+	model, cmd := click(fx.model, headerColumn(t, fx.model, "[f5] restart"))
+	if cmd == nil || len(model.dbg.console) == 0 {
+		t.Fatal("the restart button starts the run again")
+	}
+	answerOf(t, cmd, func(msg tea.Msg) bool { _, ok := msg.(debugStartedMsg); return ok })
+	if len(fx.started) != before+1 {
+		t.Fatalf("the adapter must be started again: %v", fx.started)
+	}
+	model, _ = click(fx.model, headerColumn(t, fx.model, "[alt+f5] stop"))
+	if model.dbg != nil {
+		t.Fatal("the stop button ends the run")
+	}
+}
+
+func TestDebug_F5RestartsARunThatExistsAndF9ContinuesIt(t *testing.T) {
+	fx := debugProject(t)
+	fx.start(t)
+	fx.stop(t)
+	_, cmd := fx.model.Update(tea.KeyMsg{Type: tea.KeyF5}) // not "continue" any more
+	if cmd == nil {
+		t.Fatal("F5 restarts the run")
+	}
+	answerOf(t, cmd, func(msg tea.Msg) bool { _, ok := msg.(debugStartedMsg); return ok })
+	if len(fx.started) != 2 {
+		t.Fatalf("F5 must start the adapter again: %v", fx.started)
+	}
+	select {
+	case <-fx.session.stopped: // the first run is stopped in the background
+	case <-time.After(5 * time.Second):
+		t.Fatal("the old run must be stopped")
+	}
+	for _, call := range fx.session.called() {
+		if call == "continue" {
+			t.Fatalf("F5 must not continue the program: %v", fx.session.called())
+		}
+	}
+	fx2 := debugProject(t)
+	fx2.start(t)
+	fx2.stop(t)
+	_, cmd = fx2.model.Update(tea.KeyMsg{Type: tea.KeyF9})
+	answerOf(t, cmd, func(msg tea.Msg) bool { _, ok := msg.(debugDoneMsg); return ok })
+	if calls := fx2.session.called(); calls[len(calls)-1] != "continue" {
+		t.Fatalf("F9 continues: %v", calls)
 	}
 }

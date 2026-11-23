@@ -387,6 +387,7 @@ func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.forwardToDiff(msg)
 	}
 	var cmd tea.Cmd
+	selecting := false // a key that chooses a file
 	switch key {
 	case "esc":
 		m.abortLoad()
@@ -394,17 +395,32 @@ func (m GitModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", "right", "l":
 		m.focus = focusDiff
 	case "j", "down":
+		selecting = true
 		cmd = m.selectFile(m.selected + 1)
 	case "k", "up":
+		selecting = true
 		cmd = m.selectFile(m.selected - 1)
 	case "pgdown":
+		selecting = true
 		cmd = m.selectFile(m.selected + m.listBodyHeight())
 	case "pgup":
+		selecting = true
 		cmd = m.selectFile(m.selected - m.listBodyHeight())
 	case "g", "home":
+		selecting = true
 		cmd = m.selectFile(0)
 	case "G", "end":
+		selecting = true
 		cmd = m.selectFile(len(m.files) - 1)
+	}
+	// the file that is chosen in the list opens on its first change, as it does when the arrows step over a file border; a selection that
+	// needs no load (the file is shown already) leaves nothing to arrive
+	if selecting {
+		if m.loading && m.loadingFile == m.selected {
+			m.arrive = 1
+		} else {
+			m.arrive = 0
+		}
 	}
 	return m, cmd
 }

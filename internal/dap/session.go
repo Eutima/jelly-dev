@@ -464,6 +464,52 @@ func (s *Session) Variables(ctx context.Context, reference int) ([]Variable, err
 	return result.Variables, err
 }
 
+// Completion is one suggestion for the text of the debug console. Start and Length (counted in characters of the text that was sent) say
+// which part of it the suggestion replaces; Start is -1 when the adapter did not say (the word before the cursor is replaced then).
+type Completion struct {
+	Label  string
+	Text   string // what is inserted; the label when empty
+	Start  int
+	Length int
+}
+
+// Insert is the text a completion puts into the line.
+func (c Completion) Insert() string {
+	if c.Text != "" {
+		return c.Text
+	}
+	return c.Label
+}
+
+// Completions asks the adapter for suggestions for text, with the cursor at column (0-based, in characters), in the context of a frame (a
+// negative id: no frame). An adapter that does not complete (no supportsCompletionsRequest) refuses: the error says so.
+func (s *Session) Completions(ctx context.Context, frame int, text string, column int) ([]Completion, error) {
+	args := map[string]any{"text": text, "column": column + 1, "line": 1} // DAP columns start at 1, as initialize said
+	if frame >= 0 {
+		args["frameId"] = frame
+	}
+	var result struct {
+		Targets []struct {
+			Label  string `json:"label"`
+			Text   string `json:"text"`
+			Start  *int   `json:"start"`
+			Length int    `json:"length"`
+		} `json:"targets"`
+	}
+	if err := s.inspectTarget().client.Call(ctx, "completions", args, &result); err != nil {
+		return nil, err
+	}
+	items := make([]Completion, 0, len(result.Targets))
+	for _, target := range result.Targets {
+		item := Completion{Label: target.Label, Text: target.Text, Start: -1, Length: target.Length}
+		if target.Start != nil {
+			item.Start = *target.Start
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
 // Evaluate runs an expression in the context of a frame (a negative id: no frame; adapters number frames from 0 or from higher numbers) the way a debug console does, and returns its value.
 func (s *Session) Evaluate(ctx context.Context, frame int, expression string) (Variable, error) {
 	args := map[string]any{"expression": expression, "context": "repl"}

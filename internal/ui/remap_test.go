@@ -102,7 +102,7 @@ func TestProject_UnboundCommandsHaveNoKeyAndNoHint(t *testing.T) {
 }
 
 func TestEditor_RemappedProjectKeysWorkInNormalMode(t *testing.T) {
-	remap(t, "grep = ctrl+y\nback = ctrl+b\n")
+	remap(t, "grep = ctrl+y\nback = ctrl+k\n")
 	model, _ := newProjectFixture(t, 100, sampleFiles)
 	model, _ = projectKeys(model, "G", "enter")
 	if model.focus != focusProjectEdit {

@@ -112,6 +112,7 @@ type ProjectModel struct {
 	langs            *languagePick       // the list of languages (:addlang), nil when closed
 	marks            *debugMarks         // the breakpoints of the project, shared with the editors
 	dbg              *debugRun           // the debugging run whose panel is shown under the editor, nil when none
+	evalHistory      []string            // the expressions evaluated in the debug console, oldest first (kept from run to run)
 	terms            []*terminal.Session // the shells (tabs) of the panel under the editor
 	termActive       int                 // the tab that is shown
 	termShown        bool                // whether the panel is visible (hidden shells keep running)
@@ -363,6 +364,8 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.debugChildrenReady(msg)
 	case debugEvalMsg:
 		return m.debugEvaluated(msg)
+	case debugCompleteMsg:
+		return m.debugCompleted(msg)
 	case CloseRequestMsg:
 		return m.askToClose(true)
 	case FormatPickMsg:
@@ -584,8 +587,8 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.terminalKey(msg)
 	}
 	if m.focus == focusDebug && m.debugPanelHeight() > 0 {
-		if command, _ := keys.Lookup(keymap.ScopeIDE, msg.String()); command == "" {
-			return m.debugKey(msg)
+		if command, _ := keys.Lookup(keymap.ScopeIDE, msg.String()); command == "" || command == keymap.LeaveTerminal {
+			return m.debugKey(msg) // the window's own keys go first, except the one that leaves the panel, which the panel handles
 		}
 	}
 	key := msg.String()
@@ -597,10 +600,9 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keymap.ToggleBreakpoint:
 		return m.toggleBreakpointAtCursor()
 	case keymap.DebugStart:
-		if m.dbg != nil && m.dbg.state == debugStopped {
-			return m.debugStep("continue")
-		}
-		return m.startDebug()
+		return m.startDebug() // also restarts a run that exists
+	case keymap.DebugContinue:
+		return m.debugStep("continue")
 	case keymap.StepOver:
 		return m.debugStep("step over")
 	case keymap.StepIn:
@@ -791,10 +793,9 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 	case "break", "breakpoint":
 		return m.toggleBreakpointAtCursor()
 	case "debug", "run":
-		if m.dbg != nil && m.dbg.state == debugStopped {
-			return m.debugStep("continue")
-		}
 		return m.startDebug()
+	case "continue", "cont":
+		return m.debugStep("continue")
 	case "eval", "evaluate":
 		return m.evalCommand(argument)
 	case "stepover":
