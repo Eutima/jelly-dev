@@ -100,9 +100,17 @@ func TestDebug_RealDelveFromTheEditorToTheStopAndTheEnd(t *testing.T) {
 	if model.dbg.state != debugStopped || !model.marks.stoppedAt(file, 5) {
 		t.Fatalf("stopped at the breakpoint on line 5: %+v", model.dbg)
 	}
-	if view := stripANSI(model.View()); !strings.Contains(view, "main.main") || !strings.Contains(view, stopMark) {
+	if view := stripANSI(model.View()); !strings.Contains(view, "DEBUG") || !strings.Contains(view, stopMark) || len(model.dbg.frames) == 0 || model.dbg.frames[0].Name != "main.main" {
 		t.Fatalf("the panel and the gutter show the stop:\n%s", view)
 	}
+	p.until(func(m ProjectModel) bool { return !m.dbg.varsLoading && len(m.dbg.vars) > 0 })
+	if rows := p.model.dbg.flatVars(); len(rows) < 2 || !strings.Contains(rows[0].text(), "Locals") || !strings.Contains(strings.Join(texts(rows), "\n"), "x = 21") {
+		t.Fatalf("the locals of main show x = 21: %v", texts(rows))
+	}
+	updated, evalCmd := p.model.runProjectCommand("eval x + 1")
+	p.model = updated.(ProjectModel)
+	p.run(evalCmd)
+	p.until(func(m ProjectModel) bool { return strings.Contains(strings.Join(m.dbg.console, "\n"), "> x + 1\n  22") })
 	p.send(tea.KeyMsg{Type: tea.KeyF10}) // over line 5
 	p.until(func(m ProjectModel) bool { return m.marks.stoppedAt(file, 6) })
 	p.send(tea.KeyMsg{Type: tea.KeyF5}) // continue: the program ends
@@ -114,4 +122,12 @@ func TestDebug_RealDelveFromTheEditorToTheStopAndTheEnd(t *testing.T) {
 	if model.marks.stopPath != "" {
 		t.Fatal("no stop mark after the end")
 	}
+}
+
+func texts(rows []varRow) []string {
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.text())
+	}
+	return out
 }

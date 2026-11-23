@@ -67,6 +67,7 @@ func (m ProjectModel) paletteActions() []paletteAction {
 		{"Refactor: undo the last refactoring", ":refactor undo", command("refactor undo")},
 		{"Set or remove a breakpoint on the cursor line", keys.Label(keymap.ToggleBreakpoint), command("break")},
 		{"Debug: start the shown file, or continue", keys.Label(keymap.DebugStart), command("debug")},
+		{"Debug: evaluate the selection or the name under the cursor", ":eval [expression]", command("eval")},
 		{"Debug: step over", keys.Label(keymap.StepOver), command("stepover")},
 		{"Debug: step into", keys.Label(keymap.StepIn), command("stepin")},
 		{"Debug: step out", keys.Label(keymap.StepOut), command("stepout")},

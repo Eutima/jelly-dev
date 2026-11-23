@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -46,6 +47,29 @@ func (f *fakeDebug) Next(context.Context) error                 { return f.recor
 func (f *fakeDebug) StepIn(context.Context) error               { return f.record("stepIn") }
 func (f *fakeDebug) StepOut(context.Context) error              { return f.record("stepOut") }
 func (f *fakeDebug) Stack(context.Context) ([]dap.Frame, error) { return f.frames, nil }
+func (f *fakeDebug) Scopes(_ context.Context, frame int) ([]dap.Scope, error) {
+	_ = f.record("scopes " + strconv.Itoa(frame))
+	return []dap.Scope{{Name: "Locals", Reference: 10}, {Name: "Globals", Reference: 11}}, nil
+}
+func (f *fakeDebug) Variables(_ context.Context, reference int) ([]dap.Variable, error) {
+	_ = f.record("variables " + strconv.Itoa(reference))
+	switch reference {
+	case 10:
+		return []dap.Variable{{Name: "x", Value: "21", Type: "int"}, {Name: "user", Value: "{...}", Type: "main.User", Reference: 20}}, nil
+	case 11:
+		return []dap.Variable{{Name: "version", Value: `"1.0"`, Type: "string"}}, nil
+	case 20:
+		return []dap.Variable{{Name: "Name", Value: `"Ann"`, Type: "string"}}, nil
+	}
+	return nil, nil
+}
+func (f *fakeDebug) Evaluate(_ context.Context, frame int, expression string) (dap.Variable, error) {
+	_ = f.record("evaluate " + strconv.Itoa(frame) + " " + expression)
+	if expression == "boom" {
+		return dap.Variable{}, errors.New("could not find symbol boom")
+	}
+	return dap.Variable{Value: "42", Type: "int"}, nil
+}
 func (f *fakeDebug) SetBreakpoints(_ context.Context, path string, lines []int) ([]dap.Breakpoint, error) {
 	return nil, f.record("breakpoints " + filepath.Base(path) + " " + strings.Trim(strings.Join(strings.Fields(strings.Trim(jsonInts(lines), "[]")), ","), ","))
 }
@@ -193,6 +217,7 @@ func TestDebug_RunStartsWithTheBreakpointsShowsTheStopAndTheStack(t *testing.T) 
 	if fx.model.focus != focusProjectEdit {
 		t.Fatal("showing the stop must not take the focus")
 	}
+	fx.model.dbg.view = viewStack
 	view := stripANSI(fx.model.View())
 	for _, want := range []string{"DEBUG", "main.go  stopped", "main.main  main.go:5", "runtime.main", "hello world", stopMark} {
 		if !strings.Contains(view, want) {
@@ -298,6 +323,7 @@ func TestDebug_BreakpointChangesReachARunningAdapterAndTheEditorFollowsFrames(t 
 	}
 	fx.stop(t)
 	fx.model.focus = focusDebug
+	fx.model.dbg.view = viewStack
 	fx.model = update(fx.model, tea.KeyMsg{Type: tea.KeyDown}) // runtime.main has no file: the mark goes away
 	if fx.model.dbg.frame != 1 || fx.model.marks.stopPath != "" {
 		t.Fatalf("frame %d, mark %q", fx.model.dbg.frame, fx.model.marks.stopPath)
@@ -334,6 +360,7 @@ func TestDebug_ClickingThePanelSelectsFramesAndTheCrossStops(t *testing.T) {
 	fx := debugProject(t)
 	fx.start(t)
 	fx.stop(t)
+	fx.model.dbg.view = viewStack
 	top := fx.model.editorHeight() + topBarHeight
 	click := func(m ProjectModel, x, y int) ProjectModel {
 		return update(m, tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: x + m.editorOffset(), Y: y})

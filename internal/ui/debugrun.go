@@ -22,6 +22,9 @@ type DebugSession interface {
 	StepIn(ctx context.Context) error
 	StepOut(ctx context.Context) error
 	Stack(ctx context.Context) ([]dap.Frame, error)
+	Scopes(ctx context.Context, frame int) ([]dap.Scope, error)
+	Variables(ctx context.Context, reference int) ([]dap.Variable, error)
+	Evaluate(ctx context.Context, frame int, expression string) (dap.Variable, error)
 	SetBreakpoints(ctx context.Context, path string, lines []int) ([]dap.Breakpoint, error)
 	Stop(ctx context.Context) error
 }
@@ -55,6 +58,14 @@ type debugRun struct {
 	frames  []dap.Frame
 	frame   int // the selected frame
 	top     int // first frame row shown
+
+	view        debugView  // what the list on the left shows
+	vars        []*varNode // the scopes of the selected frame, with the variables that were opened
+	varSel      int        // the selected row of the visible tree
+	varTop      int
+	varsLoading bool
+	gen         int    // counts the stops and frame changes: answers for an older one are dropped
+	input       []rune // the expression being typed in the panel
 
 	cancel   func()           // ends a start that is still building the program
 	launched map[string][]int // the breakpoints the adapter was started with: later changes are sent when it is up
@@ -190,7 +201,7 @@ func (m ProjectModel) debugEvent(msg debugEventMsg) (tea.Model, tea.Cmd) {
 			run.state = debugEnded
 			run.say("the debugger has stopped")
 		}
-		run.frames = nil
+		run.frames, run.vars, run.varsLoading = nil, nil, false
 		m.marks.clearStop()
 		return m, nil
 	}
@@ -206,10 +217,12 @@ func (m ProjectModel) debugEvent(msg debugEventMsg) (tea.Model, tea.Cmd) {
 		}
 	case "stopped":
 		run.state = debugStopped
+		run.gen++
 		return m, tea.Batch(next, m.debugStack(run))
 	case "continued":
 		run.state = debugRunning
-		run.frames = nil
+		run.frames, run.vars, run.varsLoading = nil, nil, false
+		run.gen++
 		m.marks.clearStop()
 	case "terminated", "exited":
 		if run.state != debugEnded {
@@ -217,7 +230,8 @@ func (m ProjectModel) debugEvent(msg debugEventMsg) (tea.Model, tea.Cmd) {
 			run.say("the program has ended")
 		}
 		m.marks.clearStop()
-		run.frames = nil
+		run.frames, run.vars, run.varsLoading = nil, nil, false
+		run.gen++
 	}
 	return m, next
 }
@@ -242,30 +256,36 @@ func (m ProjectModel) debugStackReady(msg debugStackMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	run.frames, run.frame, run.top = msg.frames, 0, 0
-	return m.showFrame(0), nil
+	next, cmd := m.showFrame(0)
+	return next, cmd
 }
 
-// showFrame marks the line of a frame in its file and shows it, without taking the focus from where it is.
-func (m ProjectModel) showFrame(index int) ProjectModel {
+// showFrame marks the line of a frame in its file and shows it, without taking the focus from where it is, and reads its variables.
+func (m ProjectModel) showFrame(index int) (ProjectModel, tea.Cmd) {
 	run := m.dbg
 	if run == nil || index < 0 || index >= len(run.frames) {
-		return m
+		return m, nil
 	}
+	changed := run.frame != index || (len(run.vars) == 0 && !run.varsLoading)
 	run.frame = index
+	var cmd tea.Cmd
+	if changed {
+		cmd = m.fetchVariables()
+	}
 	frame := run.frames[index]
 	if frame.Path == "" || frame.Line < 1 {
 		m.marks.clearStop()
-		return m
+		return m, cmd
 	}
 	m.marks.setStop(frame.Path, frame.Line)
 	focus := m.focus
 	if err := m.openFile(frame.Path, false); err != nil {
 		m.say(err.Error(), true)
-		return m
+		return m, cmd
 	}
 	m.editor = m.editor.At(frame.Line-1, 0)
 	m.focus = focus
-	return m.resizeEditor()
+	return m.resizeEditor(), cmd
 }
 
 // debugStep runs one control of the stopped program (continue, step over, in, out).

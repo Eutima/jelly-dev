@@ -312,12 +312,16 @@ language server (it finds `typescript` and `@angular/language-service` in the pr
 numbers) sets or removes a breakpoint on the cursor line, shown as a red dot; breakpoints are kept per project. `f5` (or `:debug`) runs the
 shown file under delve (the file must be saved: a Go file runs the program of its folder, a `_test.go` file runs that package's tests) and
 opens the **debug panel** under the editor, in the place of the terminal panel (stop debugging first to get the terminal back). At a
-breakpoint the editor jumps to the line and marks it (`▶`, highlighted); the panel shows the call stack on the left (up/down or a click
-choose a frame and show its line) and the output of the program and messages on the right; long lines wrap. `f5` continues, `f10` steps over,
-`f11` steps in, `f12` steps out, `alt+f5` (or `shift+f5`) stops the program and closes the panel; `esc` or `ctrl+]` gives the focus back to the
-editor. A breakpoint set while the program runs is sent to delve at once. All keys can be changed in `.jdrc` (`debug`, `stepover`, `stepin`,
-`stepout`, `debugstop`, `breakpoint`). Not there yet: variables and evaluating expressions, conditional breakpoints, Python and JavaScript/TypeScript
-(next steps); breakpoints do not move when you insert or delete lines above them.
+breakpoint the editor jumps to the line and marks it (`▶`, highlighted). The left of the panel is a list you switch with `tab` (or a click on
+its title): the **variables** of the selected frame (the first scope is open, `right`/`left`/`enter` or a click open and close a variable, its
+fields are read when it is first opened) or the **call stack** (up/down or a click choose a frame and show its line). The right of the panel is
+the console: the output of the program and messages; long lines wrap. Type an expression into its last line (`> `) and press `enter` to
+evaluate it in the selected frame (`esc` clears the line, then leaves the panel); `:eval <expression>` does the same from the editor, and
+`:eval` alone evaluates the text selected in visual mode or else the name under the cursor (`user.name` counts as one name); the answer also
+shows in the status line. `f5` continues, `f10` steps over, `f11` steps in, `f12` steps out, `alt+f5` (or `shift+f5`) stops the program and
+closes the panel; `ctrl+]` gives the focus back to the editor. A breakpoint set while the program runs is sent to delve at once. All keys can
+be changed in `.jdrc` (`debug`, `stepover`, `stepin`, `stepout`, `debugstop`, `breakpoint`). Not there yet: conditional breakpoints, watches,
+Python and JavaScript/TypeScript, an expression result that can be opened like a variable. Breakpoints do not move when you insert or delete lines above them.
 
 **Clipboard**: copied and deleted text (`y`, `d`, `x`, ...) is also put on the system clipboard, and `p` pastes what is on it, so text
 moves between the editor and other programs (WSL and Windows use PowerShell, macOS pbcopy/pbpaste, Linux wl-clipboard, xclip or

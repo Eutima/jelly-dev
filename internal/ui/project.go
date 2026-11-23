@@ -357,6 +357,12 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.debugStackReady(msg)
 	case debugDoneMsg:
 		return m.debugDone(msg)
+	case debugScopesMsg:
+		return m.debugScopesReady(msg)
+	case debugChildrenMsg:
+		return m.debugChildrenReady(msg)
+	case debugEvalMsg:
+		return m.debugEvaluated(msg)
 	case CloseRequestMsg:
 		return m.askToClose(true)
 	case FormatPickMsg:
@@ -789,6 +795,8 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 			return m.debugStep("continue")
 		}
 		return m.startDebug()
+	case "eval", "evaluate":
+		return m.evalCommand(argument)
 	case "stepover":
 		return m.debugStep("step over")
 	case "stepin":
