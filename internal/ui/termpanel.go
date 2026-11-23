@@ -43,9 +43,14 @@ func (m ProjectModel) activeTerm() *terminal.Session {
 
 // termPanelHeight is the height of the terminal panel including its header line; 0 when it is hidden or does not fit.
 func (m ProjectModel) termPanelHeight() int {
-	if len(m.terms) == 0 || !m.termShown {
+	if len(m.terms) == 0 || !m.termShown || m.dbg != nil { // the debug panel takes the place while a run is shown
 		return 0
 	}
+	return m.panelSlot()
+}
+
+// panelSlot is the height of the panel under the editor, whichever one it holds.
+func (m ProjectModel) panelSlot() int {
 	height := min(max(m.bodyHeight()/3, minTermPanel), m.bodyHeight()-minEditorRows)
 	if height < 2 {
 		return 0
@@ -54,11 +59,17 @@ func (m ProjectModel) termPanelHeight() int {
 }
 
 // editorHeight is the height of the editor: the panes without the terminal panel.
-func (m ProjectModel) editorHeight() int { return max(m.bodyHeight()-m.termPanelHeight(), 1) }
+func (m ProjectModel) editorHeight() int {
+	return max(m.bodyHeight()-m.termPanelHeight()-m.debugPanelHeight(), 1)
+}
 
 // openTerminal is the terminal button and ctrl+t: it shows the panel (starting the first shell in the project when none
 // runs) and gives it the focus; when the shell already has the focus it hides the panel again (the shells keep running).
 func (m ProjectModel) openTerminal() (tea.Model, tea.Cmd) {
+	if m.dbg != nil { // one panel under the editor: the debug panel holds the place until the run is stopped
+		m.say("the debug panel is shown: stop debugging first ("+keys.Label(keymap.DebugStop)+")", true)
+		return m, nil
+	}
 	if len(m.terms) > 0 && m.termShown && m.focus == focusTerminal {
 		m.termShown, m.focus = false, focusProjectEdit
 		return m.resizeEditor(), nil
@@ -236,6 +247,9 @@ func (m ProjectModel) termHeader() *bar {
 
 // editorColumn is the editor with the terminal panel under it.
 func (m ProjectModel) editorColumn() string {
+	if m.debugPanelHeight() > 0 {
+		return m.debugColumn()
+	}
 	panel := m.termPanelHeight()
 	session := m.activeTerm()
 	if panel == 0 || session == nil {

@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 
 	"github.com/eutima/jelly-dev/internal/config"
+	"github.com/eutima/jelly-dev/internal/dap"
 	"github.com/eutima/jelly-dev/internal/launch"
 	"github.com/eutima/jelly-dev/internal/lsp"
 	"github.com/eutima/jelly-dev/internal/project"
@@ -134,6 +136,13 @@ func runIDE(args []string, stdout, stderr io.Writer, env environment) int {
 				env.enableAttributes()
 			}
 			return theme, ok
+		},
+		StartDebug: func(ctx context.Context, file string, breakpoints map[string][]int) (ui.DebugSession, error) {
+			session, _, err := dap.Debug(ctx, dap.DefaultAdapters(), exec.LookPath, file, open.root, breakpoints)
+			if err != nil {
+				return nil, err
+			}
+			return session, nil
 		},
 		Navigator:   navigator,
 		Tools:       newInstaller(dir, env),

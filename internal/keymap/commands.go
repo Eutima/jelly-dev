@@ -57,6 +57,11 @@ const (
 	Back             Command = "back"
 	Hover            Command = "hover"
 	ToggleBreakpoint Command = "breakpoint"
+	DebugStart       Command = "debug"
+	StepOver         Command = "stepover"
+	StepIn           Command = "stepin"
+	StepOut          Command = "stepout"
+	DebugStop        Command = "debugstop"
 	Save             Command = "save"
 )
 
@@ -224,6 +229,11 @@ var definitions = []definition{
 	{CloseTerminal, ScopeIDE, "end the shown terminal tab", []string{"ctrl+d"}},
 	{Back, ScopeIDE, "go back to where the last jump started", []string{"ctrl+b"}},
 	{ToggleBreakpoint, ScopeIDE, "set or remove the debugger breakpoint of the cursor line", []string{"f9"}},
+	{DebugStart, ScopeIDE, "start debugging the shown file, or continue a stopped program", []string{"f5"}},
+	{StepOver, ScopeIDE, "debugger: run the current line (over calls)", []string{"f10"}},
+	{StepIn, ScopeIDE, "debugger: step into the call of the current line", []string{"f11"}},
+	{StepOut, ScopeIDE, "debugger: run until the function returns", []string{"f12"}},
+	{DebugStop, ScopeIDE, "stop debugging and close the debug panel", []string{"alt+f5", "f17"}},
 	{Hover, ScopeIDE, "show the documentation of the symbol under the cursor (language server)", []string{"ctrl+alt+space"}},
 	{Save, ScopeIDE, "save the file (in every editor mode)", []string{"ctrl+s"}},
 

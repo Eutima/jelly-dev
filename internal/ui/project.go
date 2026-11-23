@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -32,6 +33,7 @@ const (
 	focusTree        = 0
 	focusProjectEdit = 1
 	focusTerminal    = 2
+	focusDebug       = 3 // the debug panel under the editor (debugpanel.go)
 )
 
 // ProjectHooks connect the project window to the outside world; every hook may be nil.
@@ -71,6 +73,9 @@ type ProjectHooks struct {
 	Self func(dir string, args ...string) *exec.Cmd
 	// MergeTool returns the command that resolves the merge conflicts of the project in dir; nil runs `git mergetool` with jd.
 	MergeTool func(dir string) *exec.Cmd
+	// StartDebug starts the debug adapter for a file and runs the program with the breakpoints (path to 1-based lines); nil disables
+	// debugging.
+	StartDebug func(ctx context.Context, file string, breakpoints map[string][]int) (DebugSession, error)
 }
 
 // ProjectModel is the project window: the file tree on the left, the editor on the right.
@@ -106,6 +111,7 @@ type ProjectModel struct {
 	pick             *formatPick         // the list of formatters to choose from, nil when closed
 	langs            *languagePick       // the list of languages (:addlang), nil when closed
 	marks            *debugMarks         // the breakpoints of the project, shared with the editors
+	dbg              *debugRun           // the debugging run whose panel is shown under the editor, nil when none
 	terms            []*terminal.Session // the shells (tabs) of the panel under the editor
 	termActive       int                 // the tab that is shown
 	termShown        bool                // whether the panel is visible (hidden shells keep running)
@@ -257,8 +263,12 @@ func (m ProjectModel) resizeEditor() ProjectModel {
 	}
 	updated, _ := m.editor.Update(tea.WindowSizeMsg{Width: max(m.editorWidth(), 1), Height: m.editorHeight()})
 	m.editor = updated.(EditorModel)
+	shellRows := m.termPanelHeight()
+	if m.dbg != nil {
+		shellRows = m.panelSlot() // the shells keep the size of their panel while the debug panel is shown
+	}
 	for _, session := range m.terms {
-		session.Resize(max(m.editorWidth(), 1), max(m.termPanelHeight()-1, 1))
+		session.Resize(max(m.editorWidth(), 1), max(shellRows-1, 1))
 	}
 	return m
 }
@@ -339,6 +349,14 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSearch(msg)
 	case termUpdateMsg:
 		return m.termUpdated(msg)
+	case debugStartedMsg:
+		return m.debugStarted(msg)
+	case debugEventMsg:
+		return m.debugEvent(msg)
+	case debugStackMsg:
+		return m.debugStackReady(msg)
+	case debugDoneMsg:
+		return m.debugDone(msg)
 	case CloseRequestMsg:
 		return m.askToClose(true)
 	case FormatPickMsg:
@@ -457,6 +475,7 @@ func (m ProjectModel) switchProject(root string, force bool) (tea.Model, tea.Cmd
 	}
 	m.storeSession()
 	m.closeTerminal()
+	m.stopDebugNow(false)
 	var session project.Session
 	if m.hooks.Open != nil {
 		session = m.hooks.Open(root)
@@ -558,6 +577,11 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.focus == focusTerminal && m.termPanelHeight() > 0 {
 		return m.terminalKey(msg)
 	}
+	if m.focus == focusDebug && m.debugPanelHeight() > 0 {
+		if command, _ := keys.Lookup(keymap.ScopeIDE, msg.String()); command == "" {
+			return m.debugKey(msg)
+		}
+	}
 	key := msg.String()
 	switch command, _ := keys.Lookup(keymap.ScopeIDE, key); command {
 	case keymap.Palette: // all actions, from the tree and from the editor alike
@@ -566,6 +590,19 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.showDiff()
 	case keymap.ToggleBreakpoint:
 		return m.toggleBreakpointAtCursor()
+	case keymap.DebugStart:
+		if m.dbg != nil && m.dbg.state == debugStopped {
+			return m.debugStep("continue")
+		}
+		return m.startDebug()
+	case keymap.StepOver:
+		return m.debugStep("step over")
+	case keymap.StepIn:
+		return m.debugStep("step in")
+	case keymap.StepOut:
+		return m.debugStep("step out")
+	case keymap.DebugStop:
+		return m.stopDebug()
 	case keymap.Terminal: // shows or hides the terminal panel, whatever has the focus (the panel itself handles it as well)
 		return m.openTerminal()
 	}
@@ -726,6 +763,7 @@ func (m ProjectModel) storeSession() {
 func (m ProjectModel) quit() (tea.Model, tea.Cmd) {
 	m.storeSession()
 	m.closeTerminal()
+	m.stopDebugNow(false)
 	return m, tea.Quit
 }
 
@@ -746,6 +784,19 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 		return m.openTerminal()
 	case "break", "breakpoint":
 		return m.toggleBreakpointAtCursor()
+	case "debug", "run":
+		if m.dbg != nil && m.dbg.state == debugStopped {
+			return m.debugStep("continue")
+		}
+		return m.startDebug()
+	case "stepover":
+		return m.debugStep("step over")
+	case "stepin":
+		return m.debugStep("step in")
+	case "stepout":
+		return m.debugStep("step out")
+	case "debugstop":
+		return m.stopDebug()
 	case "refactor", "ref":
 		return m.refactorCommand(argument)
 	case "copypath", "cpath", "yankpath":
@@ -910,10 +961,13 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	msg.Y -= topBarHeight
 	tree := m.treeWidth()
 	inTree := tree > 0 && msg.X < tree
+	if !inTree && m.debugPanelHeight() > 0 && msg.Y >= m.editorHeight() {
+		return m.clickDebug(msg, msg.X-m.editorOffset(), msg.Y-m.editorHeight())
+	}
 	if !inTree && m.termPanelHeight() > 0 && msg.Y >= m.editorHeight() {
 		return m.clickTerminal(msg, msg.X-m.editorOffset(), msg.Y-m.editorHeight())
 	}
-	if !inTree && m.focus == focusTerminal && leftPress(msg) {
+	if !inTree && (m.focus == focusTerminal || m.focus == focusDebug) && leftPress(msg) {
 		m.focus = focusProjectEdit
 	}
 	if !inTree && m.editorWidth() > 0 {

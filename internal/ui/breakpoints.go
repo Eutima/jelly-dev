@@ -6,6 +6,15 @@ import "slices"
 // them and every editor holds the same pointer, because an editor is copied on every key press.
 type debugMarks struct {
 	breakpoints map[string][]int // sorted lines by absolute file path
+	stopPath    string           // where the program is stopped; empty: nowhere
+	stopLine    int              // 1-based
+}
+
+// setStop marks the line the program is stopped at; clearStop removes the mark; stoppedAt tells whether a line has it.
+func (d *debugMarks) setStop(path string, line int) { d.stopPath, d.stopLine = path, line }
+func (d *debugMarks) clearStop()                    { d.stopPath, d.stopLine = "", 0 }
+func (d *debugMarks) stoppedAt(path string, line int) bool {
+	return d != nil && d.stopPath != "" && d.stopPath == path && d.stopLine == line
 }
 
 func newDebugMarks() *debugMarks { return &debugMarks{breakpoints: map[string][]int{}} }
@@ -62,6 +71,9 @@ const breakpointColumn = 2
 
 // breakpointMark is what the marker column shows for a line with a breakpoint.
 const breakpointMark = "●"
+
+// stopMark is what the marker column shows for the line the program is stopped at.
+const stopMark = "▶"
 
 // ToggleBreakpointMsg asks the project window to set or remove the breakpoint of a line (a click in the marker column).
 type ToggleBreakpointMsg struct {

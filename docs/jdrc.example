@@ -16,6 +16,11 @@ leaveterminal = ctrl+]                 # default: give the focus back from the t
 closeterminal = ctrl+d                 # default: end the shown terminal tab
 back          = ctrl+b                 # default: go back to where the last jump started
 breakpoint    = f9                     # default: set or remove the debugger breakpoint of the cursor line
+debug         = f5                     # default: start debugging the shown file, or continue a stopped program
+stepover      = f10                    # default: debugger: run the current line (over calls)
+stepin        = f11                    # default: debugger: step into the call of the current line
+stepout       = f12                    # default: debugger: run until the function returns
+debugstop     = alt+f5, f17            # default: stop debugging and close the debug panel
 hover         = alt+ctrl+space         # default: show the documentation of the symbol under the cursor (language server)
 save          = ctrl+s                 # default: save the file (in every editor mode)
 

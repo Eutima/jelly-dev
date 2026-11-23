@@ -147,9 +147,9 @@ func TestFeed_AMismatchAfterAPartialSequenceCancelsEverythingPending(t *testing.
 }
 
 func TestFeed_TheKeyAfterRAndTheCommandLineAreLiteral(t *testing.T) {
-	r := New(mapping(t, "vim.replace = f5\nvim.delete = x\nvim.deletechar = f6\n"))
+	r := New(mapping(t, "vim.replace = f3\nvim.delete = x\nvim.deletechar = f6\n"))
 	b := newBuffer()
-	typeKeys(b, r, "f5", "d") // replace the character with a d, although d is no command any more
+	typeKeys(b, r, "f3", "d") // replace the character with a d, although d is no command any more
 	if lines, _, _, _ := state(b); lines[0] != "dlpha beta gamma" {
 		t.Fatalf("r then d: %q", lines[0])
 	}

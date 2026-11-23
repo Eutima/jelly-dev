@@ -25,6 +25,8 @@ func paneName(focus int) string {
 		return "tree"
 	case focusTerminal:
 		return "terminal"
+	case focusDebug:
+		return "debug"
 	}
 	return "editor"
 }

@@ -677,7 +677,10 @@ func (m EditorModel) View() string {
 		}
 		if m.marks != nil {
 			mark := "  "
-			if m.marks.has(m.doc.Path, i+1) {
+			switch {
+			case m.marks.stoppedAt(m.doc.Path, i+1):
+				mark = m.theme.Warning.Render(stopMark + " ")
+			case m.marks.has(m.doc.Path, i+1):
 				mark = m.theme.Warning.Render(breakpointMark + " ")
 			}
 			out.WriteString(mark)
@@ -702,6 +705,9 @@ func (m EditorModel) View() string {
 		}
 		runes := []rune(m.vim.Line(i))
 		lineStyles := styles
+		if m.marks.stoppedAt(m.doc.Path, i+1) {
+			lineStyles.base = m.theme.Selected // the line the program is stopped at
+		}
 		lineStyles.matches = m.vim.Matches(i)
 		if index := y - popupFrom; popup != nil && index >= 0 && index < len(popup) {
 			// the popup covers part of this line: the text left of it, the popup, the text right of it

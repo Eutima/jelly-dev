@@ -291,7 +291,7 @@ the ones for the file type come first, missing ones are dim): type to narrow it,
 for that file type once its result was applied (`formatters.json` in the config folder; delete the entry there to forget it), `esc` cancels. `ctrl+space` (or `ctrl+n`) in insert mode opens the completion popup with the server's
 suggestions and the words of the file as a fallback: typing narrows it, `ctrl+n`/`ctrl+p` or the arrows choose, `tab` or `enter`
 accept, `esc` closes it. Defaults: gopls (Go), typescript-language-server (JavaScript, TypeScript, JSX), pyright (Python),
-vscode-html/css/json-language-server, jdtls (Java), bash-language-server (shell scripts: `.sh`, `.bash`; installed with npm, part of `all`); the installer sets them up. Two more are **opt-in**, installed only when you name them (`jd install-lsp csharp powershell`, or `:addlang`): csharp-ls for C# (`.cs`; needs the .NET SDK, installed with `dotnet tool` into `~/.local/bin`) and PowerShell Editor Services for PowerShell (`.ps1`, `.psm1`, `.psd1`; needs PowerShell 7, `pwsh`; downloaded as a pinned release). jd installs neither .NET nor PowerShell and says so when `dotnet` or `pwsh` is missing. A third opt-in, `debug`, installs the debuggers (so far delve, `dlv`, for Go; `jd install-lsp debug`; needs a Go version the delve release supports); the debugger interface itself is still being built. Delve listens on `127.0.0.1` without a password, so on a shared machine other users can reach it while you debug. Add or change servers in
+vscode-html/css/json-language-server, jdtls (Java), bash-language-server (shell scripts: `.sh`, `.bash`; installed with npm, part of `all`); the installer sets them up. Two more are **opt-in**, installed only when you name them (`jd install-lsp csharp powershell`, or `:addlang`): csharp-ls for C# (`.cs`; needs the .NET SDK, installed with `dotnet tool` into `~/.local/bin`) and PowerShell Editor Services for PowerShell (`.ps1`, `.psm1`, `.psd1`; needs PowerShell 7, `pwsh`; downloaded as a pinned release). jd installs neither .NET nor PowerShell and says so when `dotnet` or `pwsh` is missing. A third opt-in, `debug`, installs the debuggers (so far delve, `dlv`, for Go; `jd install-lsp debug`; needs a Go version the delve release supports; see **Debugger** below). Delve listens on `127.0.0.1` without a password, so on a shared machine other users can reach it while you debug. Add or change servers in
 `<config dir>/jd/lsp.json`: `{"servers": [{"name": "rust", "command": ["rust-analyzer"], "extensions": [".rs"], "languageId": "rust",
 "rootMarkers": ["Cargo.toml"], "formatter": ["rustfmt", "--emit", "stdout"]}]}` (an entry with the name of a default replaces it).
 
@@ -307,6 +307,17 @@ that failed is tried again after a day; `:tools` tries all missing
 ones now and `:tools status` lists what is missing. `JD_NO_AUTO_INSTALL=1` turns the start-up installation off. Tools end up in
 `~/.local/bin` (and Go's bin folder), which jd adds to its own PATH. Angular templates (`*.component.html`) use the Angular
 language server (it finds `typescript` and `@angular/language-service` in the project's `node_modules` or the global ones).
+
+**Debugger** (Go for now, with delve; `jd install-lsp debug` installs it): `f9` (or `:break`, or a click on the two-cell column in front of the line
+numbers) sets or removes a breakpoint on the cursor line, shown as a red dot; breakpoints are kept per project. `f5` (or `:debug`) runs the
+shown file under delve (the file must be saved: a Go file runs the program of its folder, a `_test.go` file runs that package's tests) and
+opens the **debug panel** under the editor, in the place of the terminal panel (stop debugging first to get the terminal back). At a
+breakpoint the editor jumps to the line and marks it (`▶`, highlighted); the panel shows the call stack on the left (up/down or a click
+choose a frame and show its line) and the output of the program and messages on the right; long lines wrap. `f5` continues, `f10` steps over,
+`f11` steps in, `f12` steps out, `alt+f5` (or `shift+f5`) stops the program and closes the panel; `esc` or `ctrl+]` gives the focus back to the
+editor. A breakpoint set while the program runs is sent to delve at once. All keys can be changed in `.jdrc` (`debug`, `stepover`, `stepin`,
+`stepout`, `debugstop`, `breakpoint`). Not there yet: variables and evaluating expressions, conditional breakpoints, Python and JavaScript/TypeScript
+(next steps); breakpoints do not move when you insert or delete lines above them.
 
 **Clipboard**: copied and deleted text (`y`, `d`, `x`, ...) is also put on the system clipboard, and `p` pastes what is on it, so text
 moves between the editor and other programs (WSL and Windows use PowerShell, macOS pbcopy/pbpaste, Linux wl-clipboard, xclip or

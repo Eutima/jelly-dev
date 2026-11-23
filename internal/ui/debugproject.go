@@ -25,5 +25,5 @@ func (m ProjectModel) toggleBreakpoint(path string, line int) (tea.Model, tea.Cm
 	} else {
 		m.notice("breakpoint removed at "+where, false)
 	}
-	return m, nil
+	return m, m.updateBreakpointsOfRun(path)
 }

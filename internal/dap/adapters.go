@@ -29,7 +29,8 @@ func DefaultAdapters() []Adapter {
 				if strings.HasSuffix(file, "_test.go") {
 					mode = "test"
 				}
-				return map[string]any{"request": "launch", "mode": mode, "program": filepath.Dir(file), "cwd": root}
+				// "remote": the output of the program comes as DAP output events (it would go to the terminal of the adapter, which jd does not show)
+				return map[string]any{"request": "launch", "mode": mode, "program": filepath.Dir(file), "cwd": root, "outputMode": "remote"}
 			},
 		},
 	}
