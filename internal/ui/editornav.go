@@ -89,7 +89,20 @@ const maxListHeight = 10
 // relative to.
 func (m EditorModel) WithNavigator(nav CodeNavigator, root string) EditorModel {
 	m.nav, m.root = nav, root
+	if warmer, ok := nav.(documentWarmer); ok && m.doc.Path != "" {
+		path, text := m.doc.Path, strings.Join(m.vim.Lines(), "\n")
+		go func() { // the server loads the project in the background, so the first completion already knows the names to import
+			ctx, cancel := context.WithTimeout(context.Background(), navTimeout)
+			defer cancel()
+			_ = warmer.Warm(ctx, path, text)
+		}()
+	}
 	return m
+}
+
+// documentWarmer is implemented by a navigator that can open a file in its language server before anything is asked about it.
+type documentWarmer interface {
+	Warm(ctx context.Context, path, text string) error
 }
 
 // listHeight is the number of lines the place list takes (0 when it is closed).

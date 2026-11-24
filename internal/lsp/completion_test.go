@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-
 func TestCompletionItems_KeepAdditionalEditsAndTheRawItemForResolving(t *testing.T) {
 	raw := json.RawMessage(`{"items":[{"label":"signal","data":{"x":1},"additionalTextEdits":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"newText":"import { signal } from 'a';\n"}]}]}`)
 	items, err := completionItems(raw)

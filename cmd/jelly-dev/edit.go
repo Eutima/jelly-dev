@@ -281,6 +281,10 @@ func (w *windowNavigator) ResolveCompletion(ctx context.Context, path string, it
 	return w.current().ResolveCompletion(ctx, path, item)
 }
 
+func (w *windowNavigator) Warm(ctx context.Context, path, text string) error {
+	return w.current().Warm(ctx, path, text)
+}
+
 func (w *windowNavigator) Hover(ctx context.Context, path, text string, row, col int) (string, error) {
 	return w.current().Hover(ctx, path, text, row, col)
 }

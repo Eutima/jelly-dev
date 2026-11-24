@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -271,5 +273,31 @@ func TestCompletion_AutoImportAddsTheImportLineAndKeepsTheCursorBehindTheName(t 
 	}
 	if row, col := model.vim.Cursor(); row != 2 || col != len([]rune(lines[2])) {
 		t.Fatalf("the cursor stays behind the name: %d:%d", row, col)
+	}
+}
+
+type warmNav struct {
+	*fakeNav
+	warmed chan string
+}
+
+func (w warmNav) Warm(_ context.Context, path, _ string) error {
+	w.warmed <- path
+	return nil
+}
+
+// The server loads the project after a file is opened: opening the editor opens the file in the server, before the first completion.
+func TestWithNavigator_OpensTheFileInTheServerRightAway(t *testing.T) {
+	model, path := newEditorForTest(t, "x\n")
+	nav := warmNav{fakeNav: &fakeNav{}, warmed: make(chan string, 1)}
+	model.doc.Path = path
+	model.WithNavigator(nav, "")
+	select {
+	case got := <-nav.warmed:
+		if got != path {
+			t.Fatalf("the file of the editor is warmed: %q", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the file was not opened in the server")
 	}
 }

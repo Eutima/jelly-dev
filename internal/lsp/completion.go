@@ -154,6 +154,17 @@ func (m *Manager) Complete(ctx context.Context, path, text string, row, col int)
 	return c.Complete(ctx, path, Position{Line: row, Character: UTF16Column([]rune(line), col)})
 }
 
+// Warm starts the server of a file and opens the file in it. A TypeScript server loads the project (and the names that can be imported)
+// after a file is opened, which takes seconds in a big project: warming at the time the editor opens the file means the first completion
+// does not come before the server knows the names of other modules.
+func (m *Manager) Warm(ctx context.Context, path, text string) error {
+	c, languageID, err := m.client(ctx, path)
+	if err != nil {
+		return err
+	}
+	return c.Sync(path, languageID, text)
+}
+
 // ResolveCompletion asks the server for the rest of an item: a server such as typescript-language-server sends the edits of an auto
 // import (the import line) only for the item that was chosen. An item the server cannot resolve comes back as it was.
 func (m *Manager) ResolveCompletion(ctx context.Context, path string, item CompletionItem) (CompletionItem, error) {
