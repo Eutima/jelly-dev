@@ -111,7 +111,7 @@ func (s *Session) Handle(b *vimbuf.Buffer, key string) Outcome {
 	case "delete":
 		b.DeleteForward()
 	case "tab":
-		b.TypeText("\t")
+		b.Tab()
 	case "esc":
 		b.ClearMark()
 	case " ":

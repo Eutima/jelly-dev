@@ -58,7 +58,9 @@ func (b *Buffer) TypeText(text string) {
 	for _, r := range strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n") {
 		switch {
 		case r == '\n':
+			b.rawNewline = true
 			b.Newline()
+			b.rawNewline = false
 		case r == '\t' || r >= ' ':
 			b.begin("type")
 			b.revision++
@@ -67,7 +69,15 @@ func (b *Buffer) TypeText(text string) {
 	}
 }
 
-// Newline breaks the line at the cursor.
+// Tab types what the tab key types: a tab, or the spaces up to the next level of indent (see SetIndent).
+func (b *Buffer) Tab() {
+	b.ClearMark()
+	b.begin("type")
+	b.revision++
+	b.typeRunes(b.tabText())
+}
+
+// Newline breaks the line at the cursor, the new line starts with the indent of this one.
 func (b *Buffer) Newline() {
 	b.ClearMark()
 	b.begin("type")

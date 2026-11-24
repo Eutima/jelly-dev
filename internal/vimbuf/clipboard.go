@@ -137,9 +137,11 @@ func (b *Buffer) PasteText(text string) {
 				key = "enter"
 			}
 			if r == '\t' {
-				key = "tab"
+				key = "\t"
 			}
+			b.rawNewline = true
 			b.Handle(key)
+			b.rawNewline = false
 		}
 	case Command:
 		b.cmd += strings.Map(func(r rune) rune {

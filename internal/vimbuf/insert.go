@@ -19,12 +19,20 @@ func (b *Buffer) handleInsert(key string) {
 		b.col = max(b.col-1, 0)
 		b.clampCursor()
 	case "enter", "\n", "\r":
+		head := append([]rune(nil), line[:b.col]...)
 		tail := append([]rune(nil), line[b.col:]...)
-		b.lines[b.row] = append([]rune(nil), line[:b.col]...)
+		indent := []rune(nil)
+		if !b.rawNewline {
+			indent = leadingWhite(head)
+			if len(tail) == 0 && len(indent) == len(head) { // a line of nothing but its indent is emptied, like vim does
+				head = nil
+			}
+		}
+		b.lines[b.row] = head
 		owner := b.origin[b.row]
-		b.lines = append(b.lines[:b.row+1], append([][]rune{tail}, b.lines[b.row+1:]...)...)
+		b.lines = append(b.lines[:b.row+1], append([][]rune{append(append([]rune(nil), indent...), tail...)}, b.lines[b.row+1:]...)...)
 		b.origin = append(b.origin[:b.row+1], append([]int{owner}, b.origin[b.row+1:]...)...)
-		b.row, b.col = b.row+1, 0
+		b.row, b.col = b.row+1, len(indent)
 		b.noLines = false
 	case "backspace", "ctrl+h":
 		switch {
@@ -63,6 +71,8 @@ func (b *Buffer) handleInsert(key string) {
 	case "end":
 		b.col = len(line)
 	case "tab":
+		b.typeRunes(b.tabText())
+	case "\t": // a tab that is text (pasted) stays a tab
 		b.typeRunes([]rune{'\t'})
 	case "ctrl+u": // delete everything before the cursor
 		b.lines[b.row] = append([]rune(nil), line[b.col:]...)
@@ -74,6 +84,33 @@ func (b *Buffer) handleInsert(key string) {
 			b.typeRunes(r)
 		}
 	}
+}
+
+// SetIndent sets what the tab key types in insert mode: "\t" for a tab, or spaces (the width of one level of indent). A tab pasted as
+// text always stays a tab.
+func (b *Buffer) SetIndent(unit string) {
+	if unit == "" {
+		unit = "\t"
+	}
+	b.indentUnit = []rune(unit)
+}
+
+// tabText is what the tab key types at the cursor: a tab, or the spaces up to the next multiple of the width of an indent level.
+func (b *Buffer) tabText() []rune {
+	if len(b.indentUnit) == 0 || b.indentUnit[0] == '\t' {
+		return []rune{'\t'}
+	}
+	width := len(b.indentUnit)
+	return []rune(strings.Repeat(" ", width-b.col%width))
+}
+
+// leadingWhite is the spaces and tabs a line starts with.
+func leadingWhite(line []rune) []rune {
+	end := 0
+	for end < len(line) && (line[end] == ' ' || line[end] == '\t') {
+		end++
+	}
+	return append([]rune(nil), line[:end]...)
 }
 
 func (b *Buffer) typeRunes(runes []rune) {

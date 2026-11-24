@@ -87,9 +87,10 @@ func (b *Buffer) charwiseOperator(op rune, r1, c1, r2, c2 int) {
 // openLine inserts an empty line at index and starts typing in it.
 func (b *Buffer) openLine(index int) {
 	owner := b.origin[min(b.row, len(b.origin)-1)]
-	b.lines = append(b.lines[:index], append([][]rune{{}}, b.lines[index:]...)...)
+	indent := leadingWhite(b.lines[min(b.row, len(b.lines)-1)]) // the new line starts with the indent of the line it was opened from
+	b.lines = append(b.lines[:index], append([][]rune{indent}, b.lines[index:]...)...)
 	b.origin = append(b.origin[:index], append([]int{owner}, b.origin[index:]...)...)
-	b.row, b.col, b.mode = index, 0, Insert
+	b.row, b.col, b.mode = index, len(indent), Insert
 	b.noLines = false
 }
 

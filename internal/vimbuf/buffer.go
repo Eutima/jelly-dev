@@ -99,6 +99,8 @@ type Buffer struct {
 	page     int
 
 	commentPrefix string       // the line comment marker of the file ("" when the file type has none), see SetCommentPrefix
+	indentUnit    []rune       // what the tab key types: spaces up to the next multiple of their number, or a tab (the default), see SetIndent
+	rawNewline    bool         // a line break that is text (pasted), not the enter key: it keeps no indent
 	block         *blockInsert // the block insert (I, A, c in visual block mode) that is being typed
 
 	ml modeless // the state of the modeless (nano-style) use of the buffer, see modeless.go

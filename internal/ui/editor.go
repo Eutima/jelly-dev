@@ -78,6 +78,7 @@ func NewEditorModel(doc editor.Document) EditorModel {
 	buffer := vimbuf.New(doc.Lines, nil)
 	buffer.PassUnknownEx(true)
 	buffer.SetCommentPrefix(commentPrefixFor(doc.Path))
+	buffer.SetIndent(indentFor(doc.Path, doc.Lines))
 	m := EditorModel{theme: DarkTheme(), doc: doc, vim: buffer, showNums: true, syntax: newSyntaxCache(), resolver: vimkeys.New(keys.get())}
 	if doc.New && doc.Path != "" {
 		m.notice(fmt.Sprintf("\"%s\" [New]", doc.Path), false)
@@ -389,6 +390,7 @@ func (m *EditorModel) save(path string) bool {
 	if m.doc.Path == "" || path == m.doc.Path {
 		m.doc = doc
 		m.vim.SetCommentPrefix(commentPrefixFor(doc.Path))
+		m.vim.SetIndent(indentFor(doc.Path, lines))
 		m.vim.MarkWritten()
 	}
 	m.notice(fmt.Sprintf("\"%s\" %dL written", path, len(lines)), false)
@@ -451,6 +453,7 @@ func (m EditorModel) opened(doc editor.Document) EditorModel {
 	m.resolver.Reset()
 	m.vim.PassUnknownEx(true)
 	m.vim.SetCommentPrefix(commentPrefixFor(doc.Path))
+	m.vim.SetIndent(indentFor(doc.Path, doc.Lines))
 	if m.nano != nil { // a new buffer for the same style
 		m.nano = useNano(m.vim)
 	}
