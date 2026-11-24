@@ -126,15 +126,15 @@ func TestRefactor_RenamesFileKeepingExtension_AndUpdatesTab(t *testing.T) {
 	}
 }
 
-func TestRefactor_UsageAndMissingNavigator(t *testing.T) {
+func TestRefactor_NoPromptAndNoLanguageServer_WhenNavigatorIsMissing(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
 	if model = runRefactor(t, model, "refactor"); model.name != nil || !model.warn {
 		t.Fatalf("without a language server no prompt may open: %q", model.status)
 	}
-	if model = runRefactor(t, model, "refactor two words"); !model.warn {
+	if model = runRefactor(t, model, "refactor two words"); !model.warn || !strings.Contains(model.status, "Usage") {
 		t.Fatalf("a name with spaces must be refused: %q", model.status)
 	}
-	if model = runRefactor(t, model, "refactor name"); !strings.Contains(model.status, "No language server") && !strings.Contains(model.status, "No file name") {
+	if model = runRefactor(t, model, "refactor name"); !strings.Contains(model.status, "No language server") {
 		t.Fatalf("status = %q", model.status)
 	}
 }
@@ -175,5 +175,72 @@ func TestWordAt_ReturnsTheIdentifier_WhenTheCursorIsOnOne(t *testing.T) {
 	}
 	if got := wordAt(line, 4); got != "" {
 		t.Fatalf("a space is no symbol: %q", got)
+	}
+	if got := wordAt(line, len(line)); got != "" {
+		t.Fatalf("past the line end is no symbol: %q", got)
+	}
+	if got := wordAt([]rune("größe = 1"), 2); got != "größe" {
+		t.Fatalf("non-ASCII: got %q", got)
+	}
+}
+
+func TestRefactor_FileWithoutName_OpensTheRenamePrompt(t *testing.T) {
+	model, fx, _ := refactorFixture(t)
+	model = runRefactor(t, model, "refactor file")
+	if model.name == nil || model.name.rename != filepath.Join(fx.root, "src", "main.go") || string(model.name.input) != "main.go" {
+		t.Fatalf("prompt = %+v, status %q", model.name, model.status)
+	}
+}
+
+func TestRefactor_NoPrompt_WhenNoSymbolIsUnderTheCursor(t *testing.T) {
+	model, _, _ := refactorFixture(t)
+	model.editor.vim.SetCursor(2, 4) // the space in `func main()`
+	model = runRefactor(t, model, "refactor")
+	if model.name != nil || !model.warn || !strings.Contains(model.status, "No symbol") {
+		t.Fatalf("prompt = %+v, status %q", model.name, model.status)
+	}
+}
+
+func TestRefactor_NoPrompt_WhenATabHasUnsavedChanges(t *testing.T) {
+	model, _, _ := refactorFixture(t)
+	model.focus = focusProjectEdit
+	model, _ = projectKeys(model, "i", "x", "esc")
+	model.editor.vim.SetCursor(2, 6)
+	model = runRefactor(t, model, "refactor")
+	if model.name != nil || !strings.Contains(stripANSI(model.View()), "save first") {
+		t.Fatalf("prompt = %+v, status = %q", model.name, model.status)
+	}
+}
+
+func TestRefactor_SymbolPrompt_StaysOpen_WhenTheNameHasSpaces(t *testing.T) {
+	model, _, _ := refactorFixture(t)
+	model.editor.vim.SetCursor(2, 6)
+	model = runRefactor(t, model, "refactor")
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" two")})
+	updated, cmd := updated.(ProjectModel).Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(ProjectModel)
+	if model.name == nil || cmd != nil {
+		t.Fatalf("the prompt must stay open to fix the name: %+v", model.name)
+	}
+}
+
+func TestRefactor_SymbolPrompt_Closes_WhenTheNameIsUnchanged(t *testing.T) {
+	model, _, _ := refactorFixture(t)
+	model.editor.vim.SetCursor(2, 6)
+	model = runRefactor(t, model, "refactor")
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(ProjectModel)
+	if model.name != nil || model.dlg != nil || model.warn {
+		t.Fatalf("an unchanged name starts nothing: %+v", model.name)
+	}
+}
+
+func TestRefactor_FileWithoutName_SaysSaveFirst_WhenATabHasUnsavedChanges(t *testing.T) {
+	model, _, _ := refactorFixture(t)
+	model.focus = focusProjectEdit
+	model, _ = projectKeys(model, "i", "x", "esc")
+	model = runRefactor(t, model, "refactor file")
+	if model.name != nil || !strings.Contains(stripANSI(model.View()), "save first") {
+		t.Fatalf("prompt = %+v, status = %q", model.name, model.status)
 	}
 }

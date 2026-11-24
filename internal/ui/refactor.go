@@ -21,7 +21,7 @@ type Refactorer interface {
 	RenameFile(ctx context.Context, oldPath, newPath string) (lsp.WorkspaceEdit, error)
 }
 
-const refactorUsage = "Usage: :refactor [new name] (symbol under the cursor) | :refactor file [new name] | :refactor undo"
+const refactorUsage = "Usage: :refactor [new name] (symbol under the cursor, one word) | :refactor file [new name] | :refactor undo"
 
 // refactorResultMsg is the answer of the language server to a rename.
 type refactorResultMsg struct {
@@ -61,6 +61,9 @@ func (m ProjectModel) refactorCommand(argument string) (tea.Model, tea.Cmd) {
 func (m ProjectModel) openSymbolPrompt() (tea.Model, tea.Cmd) {
 	if m.refactorer() == nil || m.editor.Path() == "" {
 		return m.startRename("") // says why a rename is not possible
+	}
+	if m.refactorBlocked() { // before the name is typed, not after
+		return m, nil
 	}
 	row, col := m.editor.vim.Cursor()
 	lines := m.editor.vim.Lines()
@@ -142,7 +145,14 @@ func (m ProjectModel) startRename(newName string) (tea.Model, tea.Cmd) {
 
 // startFileRefactor renames the file of the shown tab; the language server may add the edits of the imports.
 func (m ProjectModel) startFileRefactor(name string) (tea.Model, tea.Cmd) {
-	return m.startFileRefactorOf(m.editor.Path(), name)
+	path := m.editor.Path()
+	if name == "" && path != "" {
+		if m.refactorBlocked() {
+			return m, nil
+		}
+		return m.renameFile(path, "") // opens the name prompt; Enter comes back to startFileRefactorOf
+	}
+	return m.startFileRefactorOf(path, name)
 }
 
 // startFileRefactorOf renames the file at path like startFileRefactor.
@@ -152,7 +162,8 @@ func (m ProjectModel) startFileRefactorOf(path, name string) (tea.Model, tea.Cmd
 		m.say("E32: No file name: nothing to rename", true)
 		return m, nil
 	case name == "":
-		return m.renameFile(path, "") // opens the name prompt
+		m.say("Cannot rename: type a name", true)
+		return m, nil
 	case m.refactorBlocked():
 		return m, nil
 	}
