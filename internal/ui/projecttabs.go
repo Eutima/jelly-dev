@@ -350,11 +350,11 @@ func (m ProjectModel) session() project.Session {
 
 // reloadChanged reads the open files again that changed on disk (a merge tool, the diff view or a shell may have written
 // them). A tab with unsaved edits keeps its text. The cursor stays on its line. It returns the names of the reloaded files.
-func (m *ProjectModel) reloadChanged() []string {
+func (m *ProjectModel) reloadChanged(force bool) []string {
 	all := m.openEditors()
 	var reloaded []string
 	for i, e := range all {
-		if e.Path() == "" || e.doc.New || e.Modified() {
+		if e.Path() == "" || e.doc.New || (e.Modified() && !force) {
 			continue
 		}
 		doc, err := editor.Load(e.Path())
@@ -362,6 +362,15 @@ func (m *ProjectModel) reloadChanged() []string {
 			continue
 		}
 		row, col := e.Cursor()
+		if e.Modified() { // unsaved edits: the disk text goes in as one change, so undo brings the edits back
+			e.doc = doc
+			e.vim.ReplaceLines(doc.Lines)
+			e.vim.MarkWritten()
+			e = e.At(min(row, max(len(doc.Lines)-1, 0)), col)
+			all[i] = e
+			reloaded = append(reloaded, filepath.Base(e.Path()))
+			continue
+		}
 		e = e.opened(doc).At(min(row, max(len(doc.Lines)-1, 0)), col)
 		all[i] = e
 		reloaded = append(reloaded, filepath.Base(e.Path()))

@@ -40,6 +40,9 @@ func settleProject(model ProjectModel, cmd tea.Cmd) ProjectModel {
 		if _, quit := msg.(tea.QuitMsg); quit {
 			return model
 		}
+		if _, tick := msg.(watchTickMsg); tick { // the timer of the file watcher never ends
+			return model
+		}
 		var updated tea.Model
 		updated, cmd = model.Update(msg)
 		model = updated.(ProjectModel)

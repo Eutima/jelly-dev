@@ -279,6 +279,8 @@ belong to the open project. The top bar says *Note of <project>* while a note is
 
 **Run a file**: `f5` (or `:run`) runs the shown file without the debugger, in a terminal tab (`run <file>`): the command is typed into your shell, so the output stays when the program ends and `ctrl+c` stops it; `f5` again closes that tab and runs the file anew. Python follows the debugger's rules (a script runs as it is; in a Django project a test file runs its tests and any other file starts `manage.py runserver`) but keeps the server's reloader, which the debugger has to switch off; Go runs `go run .` (`go test .` for a test file), JavaScript and TypeScript run with Node.js. `ctrl+f5` is the escape sequence `ESC [ 15 ; 5 ~` that most terminals send; a terminal that sends another one needs a different key for `debug` in `.jdrc`.
 
+**Files changed by other programs**: an open file that another program writes (Claude Code, a formatter, git) is reloaded within a second. Unsaved edits of that tab are replaced too; `u` brings them back.
+
 **Scratch files**: `:scratch [name]` (or *Open scratch file* in the palette) lists your scratch files, newest first. Type to search; the first entry creates a
 file with the typed name (`try.py`, `todo.md`); a name without an ending (or nothing typed: a name from the time) asks for the file type next (`.py`, `.js`, `.md`, ... `.txt`). Scratch files belong to no project: they
 live in `<config folder>/scratches/` and are the same in every window. A Python scratch file is checked and debugged with the virtual environment (and run in

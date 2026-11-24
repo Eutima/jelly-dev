@@ -110,6 +110,7 @@ type ProjectModel struct {
 	revs             *revPicker          // the list of revisions or worktrees to compare with, nil when closed
 	scratch          *scratchPicker      // the list of scratch files, nil when closed
 	conflicts        []string            // the files with unresolved merge conflicts
+	stamps           *stampBook          // the stamps of the open files as last seen (the window watches them for changes of other programs)
 	conflictsChecked time.Time           // when they were looked for last
 	pick             *formatPick         // the list of formatters to choose from, nil when closed
 	langs            *languagePick       // the list of languages (:addlang), nil when closed
@@ -133,7 +134,7 @@ func NewProjectModel(root, file string, session project.Session, hooks ProjectHo
 	if err != nil {
 		return ProjectModel{}, err
 	}
-	m := ProjectModel{theme: DarkTheme(), root: tree.Root.Path, tree: tree, hooks: hooks, focus: focusTree, marks: newDebugMarks()}
+	m := ProjectModel{theme: DarkTheme(), root: tree.Root.Path, tree: tree, hooks: hooks, focus: focusTree, marks: newDebugMarks(), stamps: &stampBook{}}
 	for path, lines := range session.Breakpoints { // the breakpoints of files that are not open are kept as well
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(m.root, path)
@@ -233,10 +234,14 @@ func (m *ProjectModel) openFile(path string, _ bool) error {
 
 // Init implements tea.Model: it starts checking for missing language servers and formatters.
 func (m ProjectModel) Init() tea.Cmd {
-	if m.hooks.Tools != nil && m.hooks.AutoInstall {
-		return m.checkTools(false)
+	var watch tea.Cmd
+	if m.stamps != nil { // a window made by NewProjectModel watches its open files
+		watch = watchTick()
 	}
-	return nil
+	if m.hooks.Tools != nil && m.hooks.AutoInstall {
+		return tea.Batch(m.checkTools(false), watch)
+	}
+	return watch
 }
 
 // treeWidth is the width of the tree pane (0 when the terminal is too narrow and the editor has the focus).
@@ -396,7 +401,7 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.say(fmt.Sprintf("%s: %v", msg.what, msg.err), true)
 		}
-		if reloaded := m.reloadChanged(); len(reloaded) > 0 && msg.err == nil {
+		if reloaded := m.reloadChanged(false); len(reloaded) > 0 && msg.err == nil {
 			m.say("Reloaded "+strings.Join(reloaded, ", ")+" (changed on disk)", false)
 		}
 		return m, m.checkConflicts()
@@ -404,6 +409,8 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.toggleBreakpoint(msg.Path, msg.Line)
 	case ExCommandMsg:
 		return m.runProjectCommand(msg.Command)
+	case watchTickMsg:
+		return m.watchedFiles()
 	case ctrlF5Msg:
 		return m.ctrlF5()
 	case JumpMsg:

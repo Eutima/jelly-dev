@@ -234,7 +234,7 @@ func (m ProjectModel) refreshAfterRefactor(moved []refactor.Move, undone bool) P
 			}
 		}
 	}
-	m.reloadChanged()
+	m.reloadChanged(false)
 	m.tree.Refresh()
 	return m
 }

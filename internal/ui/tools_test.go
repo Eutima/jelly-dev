@@ -120,7 +120,8 @@ func TestTools_ShowsProgressWhileInstalling(t *testing.T) {
 
 func TestTools_NothingHappensWithoutAutoInstallOrWhenNothingMissing(t *testing.T) {
 	installer := &fakeTools{results: map[string]error{}}
-	if cmd := toolsProject(t, installer, false).Init(); cmd != nil {
+	settleProject(toolsProject(t, installer, false), toolsProject(t, installer, false).Init())
+	if len(installer.forced) != 0 {
 		t.Fatal("without AutoInstall the window must not check")
 	}
 	model := toolsProject(t, installer, true)
