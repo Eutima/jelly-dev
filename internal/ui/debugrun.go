@@ -61,9 +61,11 @@ func isDelveBanner(category, output string) bool {
 type debugRun struct {
 	session DebugSession // nil while the adapter starts
 	state   debugState
-	file    string   // the file the run was started for
-	console []string // the lines of program output and messages
-	partial bool     // the last console line is not finished (output without a line break)
+	file    string         // the file the run was started for
+	console []string       // the lines of program output and messages
+	shown   []string       // the lines of the console column as last drawn (the text the mouse selects)
+	sel     *termSelection // the text selected with the mouse in the console column (cells of the drawn lines)
+	partial bool           // the last console line is not finished (output without a line break)
 	frames  []dap.Frame
 	frame   int // the selected frame
 	top     int // first frame row shown
@@ -105,6 +107,7 @@ func (r *debugRun) say(text string) {
 
 // write appends program output to the console: a text without a line break continues the last line.
 func (r *debugRun) write(text string) {
+	r.sel = nil // the lines move: the selected cells are other text now
 	for _, line := range strings.SplitAfter(text, "\n") {
 		if line == "" {
 			continue

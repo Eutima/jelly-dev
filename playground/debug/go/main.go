@@ -1,4 +1,4 @@
-// A small program to try the debugger: put a breakpoint in price() and press f5.
+// A small program to try the debugger: put a breakpoint in price() and press ctrl+f5.
 package main
 
 import "fmt"

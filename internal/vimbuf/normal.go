@@ -42,7 +42,7 @@ func (b *Buffer) counted() int {
 }
 
 func (b *Buffer) handleNormal(key string) Result {
-	visual := b.mode == Visual || b.mode == VisualLine
+	visual := b.inVisual()
 	if b.prefix == 'r' {
 		b.prefix = 0
 		if r := []rune(key); len(r) == 1 && !visual {
@@ -53,8 +53,17 @@ func (b *Buffer) handleNormal(key string) Result {
 	}
 	if b.prefix == 'g' {
 		b.prefix = 0
-		if key == "g" {
+		switch {
+		case key == "g":
 			b.applyMotion(b.gotoLine(b.count != "" || b.opCount > 0, b.counted()-1, 0), key)
+		case key == "c" && visual:
+			r1, r2 := min(b.anchorRow, b.row), max(b.anchorRow, b.row)
+			b.mode = Normal
+			b.toggleComment(r1, r2)
+		case key == "c" && b.op == 0: // gc: the comment operator, gcc is the current line
+			b.op = commentOp
+			b.opCount, b.count = b.counted(), ""
+			return None
 		}
 		b.resetPending()
 		return None
@@ -105,6 +114,11 @@ func (b *Buffer) handleNormal(key string) Result {
 	}
 	switch key {
 	case "d", "c", "y":
+		if b.op == commentOp && key == "c" { // gcc
+			b.toggleComment(b.row, min(b.row+n-1, len(b.lines)-1))
+			b.resetPending()
+			return None
+		}
 		if b.op == 0 {
 			b.op = rune(key[0])
 			b.opCount, b.count = b.counted(), ""
@@ -135,12 +149,16 @@ func (b *Buffer) applyMotion(m motion, key string) {
 	if b.op == 0 {
 		b.row, b.col = m.row, m.col
 		b.clampCursor()
-		if b.mode == Visual || b.mode == VisualLine {
+		if b.inVisual() {
 			b.row = min(b.row, len(b.lines)-1)
 		}
 		return
 	}
 	op := b.op
+	if op == commentOp {
+		b.toggleComment(min(b.row, m.row), max(b.row, m.row))
+		return
+	}
 	if m.linewise {
 		b.linewiseOperator(op, min(b.row, m.row), max(b.row, m.row))
 		return
@@ -403,6 +421,8 @@ func (b *Buffer) normalCommand(key string, n int) {
 		b.mode, b.anchorRow, b.anchorCol = Visual, b.row, b.col
 	case "V":
 		b.mode, b.anchorRow, b.anchorCol = VisualLine, b.row, b.col
+	case "ctrl+v":
+		b.mode, b.anchorRow, b.anchorCol = VisualBlock, b.row, b.col
 	}
 }
 
@@ -424,9 +444,29 @@ func (b *Buffer) handleVisualKey(key string, n int) Result {
 		}
 		b.resetPending()
 		return None
+	case "ctrl+v":
+		if b.mode == VisualBlock {
+			b.mode = Normal
+		} else {
+			b.mode = VisualBlock
+		}
+		b.resetPending()
+		return None
 	case "o":
 		b.row, b.anchorRow = b.anchorRow, b.row
 		b.col, b.anchorCol = b.anchorCol, b.col
+		b.resetPending()
+		return None
+	case "O": // in a block: the other corner of the same line
+		if b.mode == VisualBlock {
+			b.col, b.anchorCol = b.anchorCol, b.col
+		}
+		b.resetPending()
+		return None
+	case "I", "A":
+		if b.mode == VisualBlock {
+			b.startBlockInsert(key == "A")
+		}
 		b.resetPending()
 		return None
 	case "d", "x", "y", "c":
@@ -457,6 +497,7 @@ func (b *Buffer) visualOperator(key string) {
 		r1, c1, r2, c2 = r2, c2, r1, c1
 	}
 	linewise := b.mode == VisualLine
+	block := b.mode == VisualBlock
 	b.mode = Normal
 	op := rune('d')
 	switch key {
@@ -467,6 +508,10 @@ func (b *Buffer) visualOperator(key string) {
 	}
 	if linewise {
 		b.linewiseOperator(op, r1, r2)
+		return
+	}
+	if block {
+		b.blockOperator(op, r1, r2, min(c1, c2), max(c1, c2)+1)
 		return
 	}
 	b.charwiseOperator(op, r1, c1, r2, min(c2+1, len(b.lines[r2])))

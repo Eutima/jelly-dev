@@ -95,7 +95,11 @@ func (m ProjectModel) startRename(newName string) (tea.Model, tea.Cmd) {
 
 // startFileRefactor renames the file of the shown tab; the language server may add the edits of the imports.
 func (m ProjectModel) startFileRefactor(name string) (tea.Model, tea.Cmd) {
-	path := m.editor.Path()
+	return m.startFileRefactorOf(m.editor.Path(), name)
+}
+
+// startFileRefactorOf renames the file at path like startFileRefactor.
+func (m ProjectModel) startFileRefactorOf(path, name string) (tea.Model, tea.Cmd) {
 	switch {
 	case path == "":
 		m.say("E32: No file name: nothing to rename", true)

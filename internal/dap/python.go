@@ -106,7 +106,11 @@ func testLabel(relative string) string {
 // own is debugged through manage.py: a test file runs its tests (manage.py test <module>), any other file runs the development server
 // (runserver without the reloader, which would start the program a second time where the debugger is not attached), so a breakpoint in a
 // view is hit by the next request. Anything else runs as a script.
-func pythonLaunch(file, root string) map[string]any {
+func pythonLaunch(file, root string) map[string]any { return pythonConfig(file, root, false) }
+
+// pythonConfig is pythonLaunch for the debugger (run false) or for a plain run (run true): a run keeps the reloader of the development
+// server, since no debugger has to stay attached to the process.
+func pythonConfig(file, root string, run bool) map[string]any {
 	config := map[string]any{
 		"type": "python", "request": "launch", "console": "internalConsole", "justMyCode": true, "cwd": root,
 		"env": map[string]string{"PYTHONUNBUFFERED": "1"}, // the output comes at once, not when the program ends
@@ -115,6 +119,9 @@ func pythonLaunch(file, root string) map[string]any {
 		config["python"] = python
 	}
 	config["program"] = file
+	if !within(file, root) { // a scratch file: Python puts the folder of the file on the path, so give it the project's, as `python -m` would
+		config["env"] = map[string]string{"PYTHONUNBUFFERED": "1", "PYTHONPATH": pythonPath(root, os.Getenv("PYTHONPATH"))}
+	}
 	manage := djangoRoot(file, root)
 	if manage == "" || (isScript(file) && filepath.Base(file) != "manage.py") {
 		return config
@@ -122,7 +129,7 @@ func pythonLaunch(file, root string) map[string]any {
 	config["cwd"], config["program"] = manage, filepath.Join(manage, "manage.py")
 	switch {
 	case filepath.Base(file) == "manage.py":
-		config["args"], config["django"] = []string{"runserver", "--noreload"}, true
+		config["args"], config["django"] = serverArgs(run), true
 	case isTestFile(file, manage):
 		relative, err := filepath.Rel(manage, file)
 		if err != nil {
@@ -130,7 +137,23 @@ func pythonLaunch(file, root string) map[string]any {
 		}
 		config["args"] = []string{"test", testLabel(relative)}
 	default:
-		config["args"], config["django"] = []string{"runserver", "--noreload"}, true
+		config["args"], config["django"] = serverArgs(run), true
 	}
 	return config
+}
+
+// pythonPath is the PYTHONPATH with the project folder in front of what the environment has already.
+func pythonPath(root, existing string) string {
+	if existing == "" {
+		return root
+	}
+	return root + string(os.PathListSeparator) + existing
+}
+
+// serverArgs are the arguments of the development server: with the reloader, which starts the program a second time, only for a plain run.
+func serverArgs(run bool) []string {
+	if run {
+		return []string{"runserver"}
+	}
+	return []string{"runserver", "--noreload"}
 }

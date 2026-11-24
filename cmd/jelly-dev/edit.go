@@ -178,6 +178,7 @@ func runIDE(args []string, stdout, stderr io.Writer, env environment) int {
 				fmt.Fprintf(stderr, "jd: cannot store the project of the notes: %v\n", err)
 			}
 		},
+		ScratchDir:     func() string { return project.ScratchDir(dir) },
 		ReadClipboard:  env.readClipboard,
 		WriteClipboard: env.writeClipboard,
 		NewWindow:      newWindow,

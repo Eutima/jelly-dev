@@ -14,7 +14,7 @@ func typeKeys(b *Buffer, keys string) (last Result) {
 			end := strings.IndexByte(keys, '>')
 			name := keys[1:end]
 			key = map[string]string{"esc": "esc", "cr": "enter", "bs": "backspace", "del": "delete", "tab": "tab",
-				"c-r": "ctrl+r", "left": "left", "right": "right", "up": "up", "down": "down"}[name]
+				"c-r": "ctrl+r", "c-v": "ctrl+v", "left": "left", "right": "right", "up": "up", "down": "down"}[name]
 			keys = keys[end+1:]
 		} else {
 			r := []rune(keys)

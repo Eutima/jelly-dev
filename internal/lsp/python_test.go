@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -353,4 +354,38 @@ func TestManager_SlowPythonLookupDoesNotBlockOtherServers(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Close()
+}
+
+// A scratch file lives outside every project: pyright still runs for the project jd was opened in, with the environment found there.
+func TestPythonFor_AFileOutsideTheProjectUsesTheEnvironmentOfTheProject(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the layout of the environment differs on Windows")
+	}
+	t.Setenv("VIRTUAL_ENV", "")
+	t.Setenv("CONDA_PREFIX", "")
+	t.Setenv("UV_PROJECT_ENVIRONMENT", "")
+	t.Setenv(EnvPython, "")
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	python := filepath.Join(root, ".venv", "bin", "python")
+	if err := os.MkdirAll(filepath.Dir(python), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(python, nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	scratch := filepath.Join(t.TempDir(), "scratches", "try.py")
+	var pyright ServerSpec
+	for _, spec := range DefaultServers() {
+		if spec.Name == "pyright" {
+			pyright = spec
+		}
+	}
+	workspace := rootFor(pyright, root, scratch)
+	if workspace != root {
+		t.Fatalf("workspace of a scratch file = %q, want the project %q", workspace, root)
+	}
+	m := NewManager(root, DefaultServers())
+	if got := m.pythonFor(pyright, workspace); got != python {
+		t.Fatalf("interpreter = %q, want %q", got, python)
+	}
 }

@@ -351,19 +351,19 @@ func TestParse_RefusesTheEditorKeysThatCannotBeRebound(t *testing.T) {
 }
 
 func TestConflicts_AKeySequenceThatOverlapsADefaultTakesItAway(t *testing.T) {
-	a, _ := parse(t, "vim.deletechar = g\n") // g starts g g, g d, g r, g t and g T
+	a, _ := parse(t, "vim.deletechar = g\n") // g starts g g, g c, g d, g r, g t and g T
 	m, problems := Default().Apply(a, "~/.jdrc")
 	if len(problems) != 0 {
 		t.Fatal(problems)
 	}
 	conflicts := m.Conflicts()
-	if len(conflicts) != 5 || !strings.Contains(conflicts[0].String(), "vim.deletechar: g overlaps g g, a default key of vim.top") {
+	if len(conflicts) != 6 || !strings.Contains(conflicts[0].String(), "vim.deletechar: g overlaps g g, a default key of vim.top") {
 		t.Fatalf("conflicts: %v", conflicts)
 	}
-	fixed, _ := parse(t, "vim.deletechar = g\nvim.top = - t\nvim.definition = - d\nvim.references = - r\nvim.nexttab = - n\nvim.prevtab = - p\n")
+	fixed, _ := parse(t, "vim.deletechar = g\nvim.top = - t\nvim.comment = - c\nvim.definition = - d\nvim.references = - r\nvim.nexttab = - n\nvim.prevtab = - p\n")
 	m, problems = Default().Apply(fixed, "~/.jdrc")
 	if len(problems) != 0 || len(m.Conflicts()) != 0 {
-		t.Fatalf("rebinding the five settles it: %v %v", problems, m.Conflicts())
+		t.Fatalf("rebinding the six settles it: %v %v", problems, m.Conflicts())
 	}
 }
 

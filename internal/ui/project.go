@@ -67,6 +67,8 @@ type ProjectHooks struct {
 	// NoteRoot returns the project whose notes `:note` opens ("" when none was chosen: the open project); SetNoteRoot stores the choice.
 	NoteRoot    func() string
 	SetNoteRoot func(root string)
+	// ScratchDir returns the folder of the scratch files (files that belong to no project); nil disables :scratch.
+	ScratchDir func() string
 	// SetEditor remembers the editor style the user chose with :editor; nil: the choice only lasts for this window.
 	SetEditor func(style config.EditorStyle)
 	// Self returns the command that runs this program with arguments in dir (the diff views); nil runs the executable itself.
@@ -106,6 +108,7 @@ type ProjectModel struct {
 	palette          *commandPalette     // the list of all actions, nil when closed
 	tabs             *tabSwitcher        // the list of all tabs, nil when closed
 	revs             *revPicker          // the list of revisions or worktrees to compare with, nil when closed
+	scratch          *scratchPicker      // the list of scratch files, nil when closed
 	conflicts        []string            // the files with unresolved merge conflicts
 	conflictsChecked time.Time           // when they were looked for last
 	pick             *formatPick         // the list of formatters to choose from, nil when closed
@@ -116,6 +119,7 @@ type ProjectModel struct {
 	terms            []*terminal.Session // the shells (tabs) of the panel under the editor
 	termActive       int                 // the tab that is shown
 	termShown        bool                // whether the panel is visible (hidden shells keep running)
+	runTerm          *terminal.Session   // the tab of the last run (F5), nil when none
 	termSel          *termSelection      // the text selected with the mouse in the panel, nil when none
 
 	status string
@@ -327,6 +331,9 @@ func (m *ProjectModel) keepSelectionVisible() {
 
 // Update implements tea.Model.
 func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := asCtrlF5(msg); ok { // Bubble Tea has no name for it
+		msg = key
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -397,6 +404,8 @@ func (m ProjectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.toggleBreakpoint(msg.Path, msg.Line)
 	case ExCommandMsg:
 		return m.runProjectCommand(msg.Command)
+	case ctrlF5Msg:
+		return m.ctrlF5()
 	case JumpMsg:
 		return m.jumpToPlace(msg.Place, msg.Back)
 	case tea.KeyMsg:
@@ -571,6 +580,9 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.revs != nil {
 		return m.updateRevPicker(msg)
 	}
+	if m.scratch != nil {
+		return m.updateScratchPicker(msg)
+	}
 	if m.pick != nil {
 		return m.updateFormatPicker(msg)
 	}
@@ -599,6 +611,8 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.showDiff()
 	case keymap.ToggleBreakpoint:
 		return m.toggleBreakpointAtCursor()
+	case keymap.Run:
+		return m.runFile() // also restarts a run that exists
 	case keymap.DebugStart:
 		return m.startDebug() // also restarts a run that exists
 	case keymap.DebugContinue:
@@ -670,6 +684,10 @@ func (m ProjectModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startCreate(node), nil
 	case "d":
 		return m.askToDelete(node), nil
+	case "r":
+		if node != nil && !node.Dir {
+			return m.renameFile(node.Path, "")
+		}
 	case "e":
 		if node != nil && !node.Dir {
 			return m.activate(node, false)
@@ -795,8 +813,10 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 		return m.openTerminal()
 	case "break", "breakpoint":
 		return m.toggleBreakpointAtCursor()
-	case "debug", "run":
+	case "debug":
 		return m.startDebug()
+	case "run":
+		return m.runFile()
 	case "continue", "cont":
 		return m.debugStep("continue")
 	case "eval", "evaluate":
@@ -817,6 +837,10 @@ func (m ProjectModel) runProjectCommand(command string) (tea.Model, tea.Cmd) {
 		return m.editorCommand(argument)
 	case "note", "notes":
 		return m.noteCommand(argument)
+	case "rename", "mv":
+		return m.renameCommand(argument)
+	case "scratch", "scratches":
+		return m.scratchCommand(argument)
 	case "palette", "commands", "actions":
 		return m.openPalette()
 	case "tabs", "buffers", "ls":
@@ -948,6 +972,9 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.revs != nil {
 		return m.updateRevPicker(msg)
 	}
+	if m.scratch != nil {
+		return m.updateScratchPicker(msg)
+	}
 	if m.pick != nil {
 		return m.updateFormatPicker(msg)
 	}
@@ -963,6 +990,9 @@ func (m ProjectModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.termSel != nil && m.termSel.dragging && !leftPress(msg) { // a drag goes on (and ends) wherever the pointer is
 		updated, _ := m.mouseInTerminal(msg, msg.X-m.editorOffset(), msg.Y-topBarHeight-m.editorHeight())
 		return updated, nil
+	}
+	if m.dbg != nil && m.dbg.sel != nil && m.dbg.sel.dragging && !leftPress(msg) { // a drag in the console goes on wherever the pointer is
+		return m.dragConsole(msg, msg.X-m.editorOffset(), msg.Y-topBarHeight-m.editorHeight()), nil
 	}
 	if msg.Y < topBarHeight {
 		if leftPress(msg) {
@@ -1050,6 +1080,9 @@ func (m ProjectModel) View() string {
 	}
 	if m.revs != nil {
 		return m.revs.picker.overlay(screen, m.width, m.height)
+	}
+	if m.scratch != nil {
+		return m.scratch.picker.overlay(screen, m.width, m.height)
 	}
 	if m.pick != nil {
 		return m.pick.picker.overlay(screen, m.width, m.height)

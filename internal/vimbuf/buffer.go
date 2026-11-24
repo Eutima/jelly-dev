@@ -6,7 +6,10 @@
 // origin of a neighbour, so the caller can map the edited text back to its parts.
 package vimbuf
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // Mode is the editing mode.
 type Mode int
@@ -20,6 +23,8 @@ const (
 	Visual
 	// VisualLine mode: linewise selection.
 	VisualLine
+	// VisualBlock mode: rectangular selection.
+	VisualBlock
 	// Command mode: a ":" command is being typed.
 	Command
 )
@@ -33,6 +38,8 @@ func (m Mode) String() string {
 		return "-- VISUAL --"
 	case VisualLine:
 		return "-- VISUAL LINE --"
+	case VisualBlock:
+		return "-- VISUAL BLOCK --"
 	case Command:
 		return "COMMAND"
 	}
@@ -90,6 +97,9 @@ type Buffer struct {
 	noLines  bool // all lines were deleted: the buffer shows one empty line but holds no text
 	message  string
 	page     int
+
+	commentPrefix string       // the line comment marker of the file ("" when the file type has none), see SetCommentPrefix
+	block         *blockInsert // the block insert (I, A, c in visual block mode) that is being typed
 
 	ml modeless // the state of the modeless (nano-style) use of the buffer, see modeless.go
 
@@ -196,7 +206,7 @@ func (b *Buffer) Pending() string {
 	if b.prefix != 0 {
 		pending += string(b.prefix)
 	}
-	return pending
+	return strings.Replace(pending, string(commentOp), "gc", 1)
 }
 
 // Selected returns the selected rune columns [from, to) of line row in visual mode.
@@ -204,8 +214,16 @@ func (b *Buffer) Selected(row int) (from, to int, ok bool) {
 	if b.ml.marked {
 		return b.markedColumns(row)
 	}
-	if b.mode != Visual && b.mode != VisualLine {
+	if !b.inVisual() {
 		return 0, 0, false
+	}
+	if b.mode == VisualBlock {
+		r1, r2 := min(b.anchorRow, b.row), max(b.anchorRow, b.row)
+		lo, hi := min(b.anchorCol, b.col), max(b.anchorCol, b.col)
+		if row < r1 || row > r2 || lo > len(b.lines[row]) {
+			return 0, 0, false
+		}
+		return lo, min(hi+1, len(b.lines[row])+1), true
 	}
 	r1, c1, r2, c2 := b.anchorRow, b.anchorCol, b.row, b.col
 	if r1 > r2 || (r1 == r2 && c1 > c2) {
@@ -286,6 +304,11 @@ func (b *Buffer) clampCursor() {
 		limit = len(b.lines[b.row])
 	}
 	b.col = min(max(b.col, 0), limit)
+}
+
+// inVisual tells whether a selection is being made (characterwise, linewise or as a block).
+func (b *Buffer) inVisual() bool {
+	return b.mode == Visual || b.mode == VisualLine || b.mode == VisualBlock
 }
 
 func (b *Buffer) resetPending() {

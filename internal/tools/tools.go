@@ -280,11 +280,27 @@ func (e Env) installPython(ctx context.Context, t Tool) error {
 	if err != nil {
 		return err
 	}
-	if err := e.Run(ctx, nil, python, "-m", "pip", "install", "--user", t.Packages[0]); err != nil {
-		// a system Python that is managed by the distribution refuses pip; --user keeps the change in the home folder
-		if retryErr := e.Run(ctx, nil, python, "-m", "pip", "install", "--user", "--break-system-packages", t.Packages[0]); retryErr != nil {
-			return err
+	return e.pip(ctx, python, "install", t.Packages[0])
+}
+
+// pip runs `python -m pip <args>` for the user. A system Python that is managed by the distribution refuses pip (--break-system-packages
+// allows it, --user keeps the change in the home folder); inside a virtual environment (jd was started from an activated one) --user is
+// refused, so the package goes into that environment.
+func (e Env) pip(ctx context.Context, python string, args ...string) error {
+	base := append([]string{"-m", "pip"}, args...)
+	err := e.Run(ctx, nil, python, append(base[:3:3], append([]string{"--user"}, base[3:]...)...)...)
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(err.Error(), "virtualenv") {
+		if venvErr := e.Run(ctx, nil, python, base...); venvErr != nil {
+			return venvErr
 		}
+		return nil
+	}
+	retry := append(base[:3:3], append([]string{"--user", "--break-system-packages"}, base[3:]...)...)
+	if retryErr := e.Run(ctx, nil, python, retry...); retryErr != nil {
+		return err
 	}
 	return nil
 }
@@ -366,14 +382,7 @@ func (e Env) updatePython(ctx context.Context, t Tool) error {
 	if err != nil {
 		return err
 	}
-	args := []string{"-m", "pip", "install", "--user", "--upgrade", t.Packages[0]}
-	if err := e.Run(ctx, nil, python, args...); err != nil {
-		// a system Python that is managed by the distribution refuses pip; --user keeps the change in the home folder
-		if retryErr := e.Run(ctx, nil, python, append(args, "--break-system-packages")...); retryErr != nil {
-			return err
-		}
-	}
-	return nil
+	return e.pip(ctx, python, "install", "--upgrade", t.Packages[0])
 }
 
 // updateRustup updates the toolchain, with its components (rust-analyzer, rustfmt).

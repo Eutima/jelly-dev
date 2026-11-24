@@ -118,7 +118,7 @@ Taken from the [playground](playground/README.md) examples (`python3 playground/
 *`:addlang` lists all languages: pick one and its language server and formatter are installed.*
 
 ![The debugger stopped at a breakpoint](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/debug.png)
-*The debugger (`ctrl+b` sets a breakpoint, `f5` runs the file; Python here, Go and JavaScript/TypeScript work the same way): the stopped line is marked and highlighted, the panel under the editor shows the variables and the output of the program; `f9` continues, `f8`/`f7`/`f6` step over, in and out, the buttons in the header can be clicked.*
+*The debugger (`ctrl+b` sets a breakpoint, `ctrl+f5` debugs the file; Python here, Go and JavaScript/TypeScript work the same way): the stopped line is marked and highlighted, the panel under the editor shows the variables and the output of the program; `f9` continues, `f8`/`f7`/`f6` step over, in and out, the buttons in the header can be clicked.*
 
 ![The debug console](https://raw.githubusercontent.com/Eutima/jelly-dev/master/docs/screenshots/debug-console.png)
 *The debug console: type an expression and press `enter` to evaluate it in the stopped frame, `up`/`down` bring back earlier lines, `tab` or `ctrl+space` completes (a popup like the editor's).*
@@ -277,6 +277,17 @@ as `<project>/.jd/notes/<name>.md`. The notes belong to the project you chose wi
 in the config folder), whichever project the window shows, so one place keeps your notes while you work in another project. Without a choice they
 belong to the open project. The top bar says *Note of <project>* while a note is shown. Add `.jd/` to the `.gitignore` of a project whose notes are private.
 
+**Run a file**: `f5` (or `:run`) runs the shown file without the debugger, in a terminal tab (`run <file>`): the command is typed into your shell, so the output stays when the program ends and `ctrl+c` stops it; `f5` again closes that tab and runs the file anew. Python follows the debugger's rules (a script runs as it is; in a Django project a test file runs its tests and any other file starts `manage.py runserver`) but keeps the server's reloader, which the debugger has to switch off; Go runs `go run .` (`go test .` for a test file), JavaScript and TypeScript run with Node.js. `ctrl+f5` is the escape sequence `ESC [ 15 ; 5 ~` that most terminals send; a terminal that sends another one needs a different key for `debug` in `.jdrc`.
+
+**Scratch files**: `:scratch [name]` (or *Open scratch file* in the palette) lists your scratch files, newest first. Type to search; the first entry creates a
+file with the typed name (`try.py`, `todo.md`); a name without an ending (or nothing typed: a name from the time) asks for the file type next (`.py`, `.js`, `.md`, ... `.txt`). Scratch files belong to no project: they
+live in `<config folder>/scratches/` and are the same in every window. A Python scratch file is checked and debugged with the virtual environment (and run in
+the folder) of the project the window shows, if it has one; that project's folder is on the import path, so `import config.settings` works without `sys.path.insert`. `delete` on a file of the list asks first and then removes it (its tab is closed).
+
+**Rename a file**: `:rename [name]` (or *Rename this file* in the palette; `r` on a file in the tree) renames the shown file; without a name a prompt opens with the
+current one. A name without an extension keeps the old one. A file of the project is renamed through `:refactor file` (the language server fixes the imports,
+you confirm, `:refactor undo` reverts it); a file outside the project, like a scratch file, is simply renamed in its folder.
+
 **Copy the file path**: `:copypath` puts the path of the shown file, relative to the project, on the clipboard; `:copypath abs` the absolute path
 (both are in the palette).
 
@@ -318,7 +329,7 @@ ones now and `:tools status` lists what is missing. `JD_NO_AUTO_INSTALL=1` turns
 language server (it finds `typescript` and `@angular/language-service` in the project's `node_modules` or the global ones).
 
 **Debugger** (Go with delve, Python with debugpy, JavaScript and TypeScript with js-debug; they are installed with their language, `jd install-lsp go`, `python` or `javascript` adds one later): `ctrl+b` (or `:break`, or a click on the two-cell column in front of the line
-numbers) sets or removes a breakpoint on the cursor line, shown as a red dot; breakpoints are kept per project. `f5` (or `:debug`; again while a run exists: restart) runs the
+numbers) sets or removes a breakpoint on the cursor line, shown as a red dot; breakpoints are kept per project. `ctrl+f5` (or `:debug`; again while a run exists: restart) runs the
 shown file under the debugger (the file must be saved: a Go file runs the program of its folder, a `_test.go` file runs that package's tests; a Python file runs as a script with the interpreter of the project, found like the one of the language server: `VIRTUAL_ENV`, `.venv`, `venv`, `JD_PYTHON` ...) and
 opens the **debug panel** under the editor, in the place of the terminal panel (stop debugging first to get the terminal back). At a
 breakpoint the editor jumps to the line and marks it (`▶`, highlighted). The panel has two parts and the keys act on one of them (a click chooses, `tab` goes from one to the other,
@@ -333,7 +344,7 @@ accept, typing narrows the list, `esc` closes it; delve cannot complete, so the 
 once `user` is open; `ctrl+space` also asks on an empty line, `tab` on an empty line goes back to the list); `alt+up`/`alt+down` choose a row of the list from the
 console; `esc` clears the line, then leaves the panel; `:eval <expression>` does the same from the editor, and
 `:eval` alone evaluates the text selected in visual mode or else the name under the cursor (`user.name` counts as one name); the answer also
-shows in the status line. The header of the panel has clickable buttons for continue, over, in, out, restart and stop (dim while the program runs). `f9` continues, `f8` steps over, `f7` steps in, `f6` steps out, `f5` starts the run again (a run that exists is stopped first), `alt+f5` (or `shift+f5`) stops the program and
+shows in the status line. The header of the panel has clickable buttons for continue, over, in, out, restart and stop (dim while the program runs). `f9` continues, `f8` steps over, `f7` steps in, `f6` steps out, `ctrl+f5` starts the run again (a run that exists is stopped first), `alt+f5` (or `shift+f5`) stops the program and
 closes the panel; `ctrl+]` gives the focus back to the editor. A breakpoint set while the program runs is sent to delve at once. All keys can
 be changed in `.jdrc` (`debug`, `continue`, `stepover`, `stepin`, `stepout`, `debugstop`, `breakpoint`). **Django**: where a `manage.py` is at or above the file, a Python file that is not a script of its own (no `if __name__ == "__main__"`) is debugged through it: a test file (`test_*.py`, `*_test.py`, `tests.py`, a `tests` folder) runs `manage.py test <module>`, any other file runs `manage.py runserver --noreload`, so a breakpoint in a view stops at the next request (the output of the server is in the console). **JavaScript and TypeScript**: a `.js`, `.mjs` or `.cjs` file runs with Node.js; a `.ts`, `.mts` or `.cts` file runs with `tsx` or `ts-node` when the project has them in `node_modules/.bin`, else with the type stripping of Node.js itself (22.6 or newer). Programs that start more programs (Node.js child processes and workers, Python sub processes) are debugged as well: the adapter asks jd for a session per program, and the keys and the panel follow the one that is stopped. Not there yet: conditional breakpoints, watches,
 browser debugging, pytest, an expression result that can be opened like a variable. Breakpoints do not move when you insert or delete lines above them.
@@ -486,7 +497,7 @@ vim.top    = - t, ctrl+home      # a key sequence: keys separated by spaces (vim
   cannot tell `ctrl+i` from `tab`, `ctrl+m` from `enter`, `ctrl+[` from `esc` and (often) `ctrl+h` from `backspace`: those are refused.
 - **The vim editor** (`vim.*`, `insert.*`): motions (`vim.left`, `vim.wordforward`, `vim.top` = `g g` ...), the operators (`vim.delete`, `vim.change`, `vim.yank`; `dd`, `cc`, `yy` are the
   operator pressed twice, in whatever keys it has), commands (`vim.insert`, `vim.append`, `vim.paste`, `vim.undo`, `vim.visual`, `vim.search`, `vim.commandline` ...) and the
-  keys that need the language server or the window: `vim.definition` (`g d`), `vim.references` (`g r`), `vim.nexttab` (`g t`), `vim.prevtab` (`g T`). A binding can be a **sequence**:
+  `vim.visualblock` (`ctrl+v`: a rectangular selection; `d`, `y`, `c` work on it and `I`/`A` type in every line of the block), `vim.comment` (`g c c` comments the line out or in, `g c` + a motion or a visual selection does a range; the marker comes from the file type, `//`, `#`, `--`, ...) and the keys that need the language server or the window: `vim.definition` (`g d`), `vim.references` (`g r`), `vim.nexttab` (`g t`), `vim.prevtab` (`g T`). A binding can be a **sequence**:
   keys separated by spaces (`vim.top = - t`; `space` is the default key of `vim.right`, so a sequence starting with it needs `vim.right` on other keys first); several alternatives are separated by commas. Sequences must not overlap: no sequence may be the start of another one
   (that would need a timeout), so `vim.deletechar = g` is refused until the `g` commands have other keys. The key after `r`, the count digits, `0`, `esc`, `ctrl+c`, `ctrl+d`, typing in insert mode
   and in the `:` and `/` line are fixed, and a sequence cannot start with a digit, `esc`, `ctrl+c`, `ctrl+d` or a key a project window command has (the window handles those first).

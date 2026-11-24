@@ -133,7 +133,7 @@ func update(m ProjectModel, msg tea.Msg) ProjectModel {
 // start presses the debug key and delivers the answer of the hook.
 func (fx *debugFixture) start(t *testing.T) {
 	t.Helper()
-	updated, cmd := fx.model.Update(tea.KeyMsg{Type: tea.KeyF5})
+	updated, cmd := fx.model.Update(ctrlF5Msg{})
 	fx.model = updated.(ProjectModel)
 	if cmd == nil {
 		t.Fatalf("F5 must start the adapter: %q", fx.model.editor.status)
@@ -411,7 +411,7 @@ func TestDebug_SessionOfAProjectWithARunStopsItWhenTheWindowQuits(t *testing.T) 
 
 func TestDebug_BreakpointsChangedWhileTheAdapterStartsAreSentWhenItIsUp(t *testing.T) {
 	fx := debugProject(t)
-	updated, cmd := fx.model.Update(tea.KeyMsg{Type: tea.KeyF5})
+	updated, cmd := fx.model.Update(ctrlF5Msg{})
 	fx.model = updated.(ProjectModel)
 	started := answerOf(t, cmd, func(msg tea.Msg) bool { _, ok := msg.(debugStartedMsg); return ok })
 	fx.model = toggleBreakpointKey(fx.model) // the adapter is not up yet: the session does not know
@@ -483,7 +483,7 @@ func TestDebug_TheStepButtonsOfThePanelAreClickable(t *testing.T) {
 		}
 	}
 	before := len(fx.started)
-	model, cmd := click(fx.model, headerColumn(t, fx.model, "[f5] restart"))
+	model, cmd := click(fx.model, headerColumn(t, fx.model, "[ctrl+f5] restart"))
 	if cmd == nil || len(model.dbg.console) == 0 {
 		t.Fatal("the restart button starts the run again")
 	}
@@ -501,7 +501,7 @@ func TestDebug_F5RestartsARunThatExistsAndF9ContinuesIt(t *testing.T) {
 	fx := debugProject(t)
 	fx.start(t)
 	fx.stop(t)
-	_, cmd := fx.model.Update(tea.KeyMsg{Type: tea.KeyF5}) // not "continue" any more
+	_, cmd := fx.model.Update(ctrlF5Msg{}) // not "continue" any more
 	if cmd == nil {
 		t.Fatal("F5 restarts the run")
 	}
@@ -559,5 +559,37 @@ func TestDebug_TheBannerOfDelveIsNoOutputOfTheProgram(t *testing.T) {
 	fx.event("output", map[string]any{"category": "stdout", "output": "hello\n"})
 	if console := strings.Join(fx.model.dbg.console, "\n"); strings.Contains(console, "dlv help") || !strings.Contains(console, "hello") {
 		t.Fatalf("console: %q", console)
+	}
+}
+
+func TestDebugConsole_CopiesSelectedText_WhenDraggedWithTheMouse(t *testing.T) {
+	fx := debugProject(t)
+	fx.start(t)
+	var copied string
+	fx.model.hooks.WriteClipboard = func(text string) error { copied = text; return nil }
+	fx.model.dbg.write("hello world\nsecond line\n")
+	fx.model.focus = focusDebug
+	fx.model.View() // draws the console: the lines the mouse selects
+	rows := fx.model.dbg.shown
+	first := -1
+	for i, line := range rows {
+		if line == "hello world" {
+			first = i
+		}
+	}
+	if first < 0 {
+		t.Fatalf("console rows %q", rows)
+	}
+	left := leftColumnWidth(max(fx.model.editorWidth(), 1)) + 1
+	x0 := fx.model.editorOffset() + left
+	top := fx.model.editorHeight() + topBarHeight + 1 + first
+	mouse := func(action tea.MouseAction, button tea.MouseButton, x, y int) {
+		fx.model = update(fx.model, tea.MouseMsg{Action: action, Button: button, X: x, Y: y})
+	}
+	mouse(tea.MouseActionPress, tea.MouseButtonLeft, x0+6, top)
+	mouse(tea.MouseActionMotion, tea.MouseButtonLeft, x0+3, top+1)
+	mouse(tea.MouseActionRelease, tea.MouseButtonLeft, x0+3, top+1)
+	if want := "world\nseco"; copied != want {
+		t.Fatalf("copied %q, want %q", copied, want)
 	}
 }

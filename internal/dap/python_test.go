@@ -257,3 +257,50 @@ func TestDjangoRoot_AFolderBesideTheProjectIsNotTheProject(t *testing.T) {
 		t.Fatalf("inside its own project: %q", got)
 	}
 }
+
+// A scratch file lives outside the project: it runs in the folder of the project with the environment of the project.
+func TestPythonLaunch_AFileOutsideTheProjectRunsWithTheEnvironmentAndFolderOfTheProject(t *testing.T) {
+	t.Setenv(lsp.EnvPython, "sh") // stands for the environment of the project
+	root := writeFiles(t, map[string]string{"manage.py": "", "app.py": ""})
+	scratch := filepath.Join(t.TempDir(), "scratches", "try.py")
+	got := pythonLaunch(scratch, root)
+	if got["program"] != scratch || got["cwd"] != root || got["python"] != "sh" || got["django"] != nil {
+		t.Fatalf("scratch file: %v", got)
+	}
+}
+
+func TestPythonLaunch_AScratchFileFindsTheModulesOfTheProject(t *testing.T) {
+	t.Setenv(lsp.EnvPython, "sh")
+	t.Setenv("PYTHONPATH", "/extra")
+	root := writeFiles(t, map[string]string{"config/settings.py": "X = 1\n"})
+	scratch := filepath.Join(writeFiles(t, map[string]string{"try.py": "import config.settings\n"}), "try.py")
+
+	env, _ := pythonLaunch(scratch, root)["env"].(map[string]string)
+	if want := root + string(os.PathListSeparator) + "/extra"; env["PYTHONPATH"] != want || env["PYTHONUNBUFFERED"] != "1" {
+		t.Fatalf("a file outside the project gets the project on the path: %v, want PYTHONPATH %q", env, want)
+	}
+	inside, _ := pythonLaunch(filepath.Join(root, "config", "settings.py"), root)["env"].(map[string]string)
+	if _, there := inside["PYTHONPATH"]; there {
+		t.Fatalf("a file of the project is left alone: %v", inside)
+	}
+}
+
+func TestRunCommand_KeepsTheReloaderOfTheServer_WhenRunningADjangoView(t *testing.T) {
+	t.Setenv(lsp.EnvPython, "sh")
+	root := writeFiles(t, map[string]string{"manage.py": "x = 1\n", "shop/views.py": "x = 1\n", "tool.py": "if __name__ == '__main__':\n    pass\n"})
+	got, err := RunCommand(filepath.Join(root, "shop", "views.py"), root)
+	if err != nil || !reflect.DeepEqual(got.Argv, []string{"sh", filepath.Join(root, "manage.py"), "runserver"}) || got.Dir != root {
+		t.Fatalf("run a view: %v %v", got, err)
+	}
+	debug := pythonLaunch(filepath.Join(root, "shop", "views.py"), root)
+	if !reflect.DeepEqual(debug["args"], []string{"runserver", "--noreload"}) {
+		t.Fatalf("the debugger still runs without the reloader: %v", debug["args"])
+	}
+	script, _ := RunCommand(filepath.Join(root, "tool.py"), root)
+	if !reflect.DeepEqual(script.Argv, []string{"sh", filepath.Join(root, "tool.py")}) {
+		t.Fatalf("run a script: %v", script)
+	}
+	if _, err := RunCommand(filepath.Join(root, "notes.txt"), root); err != ErrNoRunner {
+		t.Fatalf("err %v", err)
+	}
+}

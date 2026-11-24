@@ -263,7 +263,7 @@ func (m ProjectModel) evalCommand(argument string) (tea.Model, tea.Cmd) {
 func (m EditorModel) ExpressionAtCursor() string {
 	row, col := m.vim.Cursor()
 	runes := []rune(m.vim.Line(row))
-	if mode := m.vim.Mode(); mode == vimbuf.Visual || mode == vimbuf.VisualLine {
+	if mode := m.vim.Mode(); mode == vimbuf.Visual || mode == vimbuf.VisualLine || mode == vimbuf.VisualBlock {
 		if from, to, ok := m.vim.Selected(row); ok && from < to && to <= len(runes) {
 			return strings.TrimSpace(string(runes[from:to]))
 		}

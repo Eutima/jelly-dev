@@ -88,7 +88,7 @@ func TestDebug_RealDelveFromTheEditorToTheStopAndTheEnd(t *testing.T) {
 	model = toggleBreakpointKey(model)
 
 	p := newPumper(t, model)
-	p.send(tea.KeyMsg{Type: tea.KeyF5})
+	p.send(ctrlF5Msg{})
 	p.until(func(m ProjectModel) bool {
 		return m.dbg != nil && (m.dbg.state == debugEnded || (m.dbg.state == debugStopped && len(m.dbg.frames) > 0))
 	})
@@ -157,7 +157,7 @@ func TestDebug_RealNodeFromTheEditor(t *testing.T) {
 	model = toggleBreakpointKey(model)
 
 	p := newPumper(t, model)
-	p.send(tea.KeyMsg{Type: tea.KeyF5})
+	p.send(ctrlF5Msg{})
 	p.until(func(m ProjectModel) bool {
 		return m.dbg != nil && (m.dbg.state == debugEnded || (m.dbg.state == debugStopped && len(m.dbg.frames) > 0 && !m.dbg.varsLoading && len(m.dbg.vars) > 0))
 	})

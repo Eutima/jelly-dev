@@ -122,6 +122,9 @@ func (s *Session) answer() {
 	}
 }
 
+// Rename sets the name the tab of the session shows.
+func (s *Session) Rename(name string) { s.name = name }
+
 // Name is the program the session runs, for example "zsh".
 func (s *Session) Name() string { return s.name }
 

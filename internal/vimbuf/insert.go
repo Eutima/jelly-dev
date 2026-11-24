@@ -14,6 +14,7 @@ func (b *Buffer) handleInsert(key string) {
 	}
 	switch key {
 	case "esc", "ctrl+c":
+		b.finishBlockInsert()
 		b.mode = Normal
 		b.col = max(b.col-1, 0)
 		b.clampCursor()
@@ -131,6 +132,9 @@ func (b *Buffer) execute(cmd string) Result {
 		return Quit
 	case "q!":
 		return ForceQuit
+	case "comment":
+		b.ToggleComment()
+		return None
 	case "noh", "nohlsearch":
 		b.ClearHighlight()
 		return None

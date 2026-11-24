@@ -149,7 +149,7 @@ func (b *Buffer) PasteText(text string) {
 			return r
 		}, text)
 	default:
-		if b.mode == Visual || b.mode == VisualLine {
+		if b.inVisual() {
 			b.mode = Normal
 			b.clampCursor()
 		}

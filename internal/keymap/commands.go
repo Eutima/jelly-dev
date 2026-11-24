@@ -57,6 +57,7 @@ const (
 	Back             Command = "back"
 	Hover            Command = "hover"
 	ToggleBreakpoint Command = "breakpoint"
+	Run              Command = "run"
 	DebugStart       Command = "debug"
 	DebugContinue    Command = "continue"
 	StepOver         Command = "stepover"
@@ -146,6 +147,8 @@ const (
 	VimRedo           Command = "vim.redo"
 	VimVisual         Command = "vim.visual"
 	VimVisualLine     Command = "vim.visualline"
+	VimVisualBlock    Command = "vim.visualblock"
+	VimComment        Command = "vim.comment"
 	VimReplace        Command = "vim.replace"
 	VimSearch         Command = "vim.search"
 	VimSearchBack     Command = "vim.searchback"
@@ -232,7 +235,8 @@ var definitions = []definition{
 	{CloseTerminal, ScopeIDE, "end the shown terminal tab", []string{"ctrl+d"}},
 	{Back, ScopeIDE, "go back to where the last jump started", []string{"alt+left"}},
 	{ToggleBreakpoint, ScopeIDE, "set or remove the debugger breakpoint of the cursor line", []string{"ctrl+b"}},
-	{DebugStart, ScopeIDE, "start debugging the shown file (a run that exists is restarted)", []string{"f5"}},
+	{Run, ScopeIDE, "run the shown file in a terminal tab (a run of it that exists is restarted)", []string{"f5"}},
+	{DebugStart, ScopeIDE, "start debugging the shown file (a run that exists is restarted)", []string{"ctrl+f5"}},
 	{DebugContinue, ScopeIDE, "debugger: let the stopped program run on", []string{"f9"}},
 	{StepOver, ScopeIDE, "debugger: run the current line (over calls)", []string{"f8"}},
 	{StepIn, ScopeIDE, "debugger: step into the call of the current line", []string{"f7"}},
@@ -313,6 +317,8 @@ var definitions = []definition{
 	{VimRedo, ScopeVim, "redo", []string{"ctrl+r"}},
 	{VimVisual, ScopeVim, "visual mode", []string{"v"}},
 	{VimVisualLine, ScopeVim, "visual line mode", []string{"V"}},
+	{VimVisualBlock, ScopeVim, "visual block mode (visual block: I and A type in every line of the block)", []string{"ctrl+v"}},
+	{VimComment, ScopeVim, "comment out or in: g c c the line, g c and a motion, visual: the selection", []string{"g c"}},
 	{VimReplace, ScopeVim, "replace the character (the next key is the new one)", []string{"r"}},
 	{VimSearch, ScopeVim, "search forwards", []string{"/"}},
 	{VimSearchBack, ScopeVim, "search backwards", []string{"?"}},

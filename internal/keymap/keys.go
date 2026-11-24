@@ -14,6 +14,7 @@ var named = map[string]bool{
 	"up": true, "down": true, "left": true, "right": true, "pgup": true, "pgdown": true, "home": true, "end": true,
 	"ctrl+up": true, "ctrl+down": true, "ctrl+left": true, "ctrl+right": true,
 	"shift+up": true, "shift+down": true, "shift+left": true, "shift+right": true,
+	"ctrl+f5":   true, // Bubble Tea does not know it: the project window reads its escape sequence itself (see ui.ctrlF5Key)
 	"ctrl+home": true, "ctrl+end": true, "ctrl+pgup": true, "ctrl+pgdown": true,
 }
 

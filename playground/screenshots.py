@@ -53,7 +53,7 @@ ANSI = {
 
 # key names that are sent as they are; everything else is typed
 KEYS = {"enter": "\r", "esc": "\x1b", "tab": "\t", "down": "\x1b[B", "up": "\x1b[A", "right": "\x1b[C", "left": "\x1b[D",
-        "f5": "\x1b[15~", "f6": "\x1b[17~", "f7": "\x1b[18~", "f8": "\x1b[19~", "f9": "\x1b[20~", "ctrl+b": "\x02", "ctrl+space": "\x00",
+        "f5": "\x1b[15~", "ctrl+f5": "\x1b[15;5~", "f6": "\x1b[17~", "f7": "\x1b[18~", "f8": "\x1b[19~", "f9": "\x1b[20~", "ctrl+b": "\x02", "ctrl+space": "\x00",
         "ctrl+n": "\x0e", "ctrl+]": "\x1d", "alt+down": "\x1b[1;3B", "alt+up": "\x1b[1;3A",
         "ctrl+t": "\x14", "ctrl+f": "\x06", "ctrl+g": "\x07", "ctrl+p": "\x10", "ctrl+o": "\x0f", "ctrl+e": "\x05", "ctrl+a": "\x01", "ctrl+w": "\x17", "space": " "}
 
@@ -87,15 +87,15 @@ SHOTS = [
      ["down", "down", "down", "down", "enter", "ctrl+a", "~Open the notes", "enter", "~# Ideas", "enter", "enter", "~- palette in the diff", "enter", "~- refactor with undo"], (118, 30), {}),
     Shot("nano", "jd repo-changes   (the nano-style editor: ctrl+w searches)", "repo-changes", ["."],
      ["down", "down", "down", "down", "enter", "down", "down", "down", "~// a nano-style editor", "ctrl+w", "~greet"], (118, 30), {}),
-    # the debugger: a breakpoint (ctrl+b) in the sample program, f5 runs it to the breakpoint ("@4" waits four seconds for the adapter), ctrl+e
+    # the debugger: a breakpoint (ctrl+b) in the sample program, ctrl+f5 debugs it to the breakpoint ("@4" waits four seconds for the adapter), ctrl+e
     # moves the focus to the debug panel
-    Shot("debug", "jd debug   (f5: debug calc.py, stopped at the breakpoint)", "debug", ["."],
-         ["ctrl+f", "~calc", "enter"] + ["down"] * 12 + ["ctrl+b", "f5", "@4", "ctrl+e", "down", "@1"], (170, 34), {}, needs=("debugpy-adapter",)),
+    Shot("debug", "jd debug   (ctrl+f5: debug calc.py, stopped at the breakpoint)", "debug", ["."],
+         ["ctrl+f", "~calc", "enter"] + ["down"] * 12 + ["ctrl+b", "ctrl+f5", "@4", "ctrl+e", "down", "@1"], (170, 34), {}, needs=("debugpy-adapter",)),
     Shot("debug-console", "jd debug   (the debug console: expressions, history and completion)", "debug", ["."],
-         ["ctrl+f", "~calc", "enter"] + ["down"] * 12 + ["ctrl+b", "f5", "@4", "ctrl+e", "~numbers", "enter", "@1", "~sum(numbers) / 2", "enter", "@1", "~numb", "ctrl+space", "@2"],
+         ["ctrl+f", "~calc", "enter"] + ["down"] * 12 + ["ctrl+b", "ctrl+f5", "@4", "ctrl+e", "~numbers", "enter", "@1", "~sum(numbers) / 2", "enter", "@1", "~numb", "ctrl+space", "@2"],
          (170, 34), {}, needs=("debugpy-adapter",)),
     Shot("debug-go", "jd debug/go   (delve: the call stack of the stop)", "debug/go", ["."],
-         ["ctrl+f", "~main.go", "enter"] + ["down"] * 13 + ["ctrl+b", "f5", "@8", "ctrl+e", "right", "@1"], (170, 34), {"GOTOOLCHAIN": "local", "GOFLAGS": "-mod=mod"}, needs=("dlv",)),
+         ["ctrl+f", "~main.go", "enter"] + ["down"] * 13 + ["ctrl+b", "ctrl+f5", "@8", "ctrl+e", "right", "@1"], (170, 34), {"GOTOOLCHAIN": "local", "GOFLAGS": "-mod=mod"}, needs=("dlv",)),
     Shot("jdrc", "~/.jdrc   (jd checks the file and tells what is wrong)", "repo-changes", ["."], [], (118, 8), {},
          jdrc="palette = ctrl+q, f1\nfind = ctrl+g\ntabz = ctrl+j\nvim.bottom = G G\n"),
     Shot("addlang", "jd repo-changes   (:addlang: add a language)", "repo-changes", ["."], ["ctrl+a", "~addlang", "enter"], (118, 30), {}),

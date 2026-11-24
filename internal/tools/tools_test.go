@@ -408,3 +408,24 @@ func TestInstall_NPMReportsMissingRuntime_WhenThereIsNoHookOrNpmStaysMissing(t *
 		t.Fatalf("npm still missing after the hook: %v", err)
 	}
 }
+
+func TestInstall_PythonToolGoesIntoTheVirtualenv_WhenPipRefusesUser(t *testing.T) {
+	m, env := newMachine(t, "python3")
+	m.fail["python3"] = errors.New("ERROR: Can not perform a '--user' install. User site-packages are not visible in this virtualenv.")
+	failing := env.Run
+	env.Run = func(ctx context.Context, extra []string, name string, args ...string) error {
+		err := failing(ctx, extra, name, args...)
+		if err != nil && !strings.Contains(strings.Join(args, " "), "--user") {
+			m.have["black"] = true
+			return nil // the install without --user works
+		}
+		return err
+	}
+	if err := env.Install(context.Background(), tool("black")); err != nil {
+		t.Fatalf("black in a virtualenv: %v", err)
+	}
+	last := m.ran[len(m.ran)-1]
+	if last != "python3 -m pip install black" {
+		t.Fatalf("last command %q, want a plain pip install (ran %v)", last, m.ran)
+	}
+}

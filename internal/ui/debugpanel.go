@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/eutima/jelly-dev/internal/keymap"
 	"github.com/mattn/go-runewidth"
 )
@@ -167,6 +168,7 @@ func (m ProjectModel) debugRows(width, body int) (lines []string, rowOf []int) {
 		copy(chosen[room-len(popupLines):], popupChosen)
 	}
 	console = append(console, inputLines...)
+	run.shown = console
 	for y := 0; y < body; y++ {
 		leftText, right := "", ""
 		if y < len(left) {
@@ -184,6 +186,9 @@ func (m ProjectModel) debugRows(width, body int) (lines []string, rowOf []int) {
 			rightStyle = m.theme.Selected
 		}
 		rightCell := rightStyle.Render(padWide(right, consoleWidth))
+		if run.sel != nil && run.sel.moved {
+			rightCell = m.selectedCell(right, y, consoleWidth, rightStyle)
+		}
 		if y == cursorRow && m.focus == focusDebug && run.pane == paneConsole { // the character under the cursor is drawn in reverse, the text stays where it is
 			runes := []rune(right)
 			col := min(cursorCol, len(runes))
@@ -371,8 +376,11 @@ func (m ProjectModel) clickDebug(msg tea.MouseMsg, x, y int) (tea.Model, tea.Cmd
 		}
 		return m, nil
 	}
-	if x > leftColumnWidth(max(m.editorWidth(), 1)) { // a click in the console gives it the keys
+	m.dbg.sel = nil
+	if left := leftColumnWidth(max(m.editorWidth(), 1)); x > left { // a click in the console gives it the keys; dragging selects text
 		m.dbg.pane = paneConsole
+		cx, cy := m.consoleCell(x, y)
+		m.dbg.sel = &termSelection{anchorX: cx, anchorY: cy, curX: cx, curY: cy, dragging: true}
 		return m, nil
 	}
 	m.dbg.pane = paneList
@@ -386,4 +394,76 @@ func (m ProjectModel) clickDebug(msg tea.MouseMsg, x, y int) (tea.Model, tea.Cmd
 		return m.toggleVariable()
 	}
 	return m.showFrame(rowOf[y-1])
+}
+
+// consoleCell turns a position in the panel into a cell of the console column (a row of the drawn lines, a character of it).
+func (m ProjectModel) consoleCell(x, y int) (cx, cy int) {
+	width := max(m.editorWidth(), 1)
+	cx = max(x-leftColumnWidth(width)-1, 0)
+	cy = max(y-1, 0)
+	if rows := len(m.dbg.shown); rows > 0 {
+		cy = min(cy, rows-1)
+	}
+	return cx, cy
+}
+
+// selectedCell draws line y of the console column with the selected part in the selection style.
+func (m ProjectModel) selectedCell(line string, y, width int, base lipgloss.Style) string {
+	var out strings.Builder
+	var run strings.Builder
+	used, current := 0, false
+	flush := func() {
+		if run.Len() > 0 {
+			style := base
+			if current {
+				style = m.theme.Selected
+			}
+			out.WriteString(style.Render(run.String()))
+			run.Reset()
+		}
+	}
+	for x, r := range []rune(line) {
+		if covered := m.dbg.sel.covers(x, y); covered != current {
+			flush()
+			current = covered
+		}
+		run.WriteRune(r)
+		used += runewidth.RuneWidth(r)
+	}
+	flush()
+	if used < width {
+		out.WriteString(base.Render(strings.Repeat(" ", width-used)))
+	}
+	return out.String()
+}
+
+// dragConsole continues a selection in the console column: moving extends it, letting go copies the text to the clipboard.
+func (m ProjectModel) dragConsole(msg tea.MouseMsg, x, y int) ProjectModel {
+	sel := *m.dbg.sel
+	sel.curX, sel.curY = m.consoleCell(x, y)
+	sel.moved = sel.moved || sel.curX != sel.anchorX || sel.curY != sel.anchorY
+	switch msg.Action {
+	case tea.MouseActionMotion:
+	case tea.MouseActionRelease:
+		sel.dragging = false
+		if sel.moved {
+			cells := make([][]string, len(m.dbg.shown))
+			for i, line := range m.dbg.shown {
+				for _, r := range line {
+					cells[i] = append(cells[i], string(r))
+				}
+			}
+			if text := sel.text(cells); text != "" && m.hooks.WriteClipboard != nil {
+				if err := m.hooks.WriteClipboard(text); err != nil {
+					m.say("Cannot copy: "+err.Error(), true)
+				} else {
+					m.say("Copied "+countLines(text), false)
+				}
+			}
+		}
+	default:
+		return m
+	}
+	m.dbg.sel = &sel
+	return m
 }
