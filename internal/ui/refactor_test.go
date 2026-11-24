@@ -265,4 +265,9 @@ func TestRename_ProjectFileFromTheTree_SaysSaveFirst_WhenATabHasUnsavedChanges(t
 	if cmd != nil || model.dlg != nil || !model.warn || !strings.Contains(model.status, "E37") {
 		t.Fatalf("status = %q, dlg = %+v", model.status, model.dlg)
 	}
+	for file, want := range map[string]bool{"main.go": true, "entry.go": false} {
+		if _, err := os.Stat(filepath.Join(fx.root, "src", file)); (err == nil) != want {
+			t.Fatalf("%s must exist = %v, err = %v", file, want, err)
+		}
+	}
 }
