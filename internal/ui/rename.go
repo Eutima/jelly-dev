@@ -27,13 +27,13 @@ func (m ProjectModel) renameFile(path, name string) (tea.Model, tea.Cmd) {
 		m.name = &namePrompt{dir: filepath.Dir(path), home: filepath.Dir(path), input: []rune(filepath.Base(path)), rename: path}
 		return m, nil
 	}
+	if m.insideProject(filepath.Dir(path)) == nil { // a file of the project: the language server fixes the imports, :refactor undo reverts it
+		m.editor.notice("", false)
+		return m.startFileRefactorOf(path, name) // checks all tabs for unsaved changes
+	}
 	if i := m.tabIndex(path); i >= 0 && m.openEditors()[i].Modified() {
 		m.say("E37: unsaved changes: save first (:w)", true)
 		return m, nil
-	}
-	if m.insideProject(filepath.Dir(path)) == nil { // a file of the project: the language server fixes the imports, :refactor undo reverts it
-		m.editor.notice("", false)
-		return m.startFileRefactorOf(path, name)
 	}
 	target, err := siblingPath(path, name)
 	if err == nil {

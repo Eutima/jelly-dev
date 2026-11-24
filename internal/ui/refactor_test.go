@@ -207,8 +207,8 @@ func TestRefactor_NoPrompt_WhenATabHasUnsavedChanges(t *testing.T) {
 	model, _ = projectKeys(model, "i", "x", "esc")
 	model.editor.vim.SetCursor(2, 6)
 	model = runRefactor(t, model, "refactor")
-	if model.name != nil || !strings.Contains(stripANSI(model.View()), "save first") {
-		t.Fatalf("prompt = %+v, status = %q", model.name, model.status)
+	if model.name != nil || !model.editor.warn || !strings.Contains(model.editor.status, "E37") {
+		t.Fatalf("prompt = %+v, status = %q", model.name, model.editor.status)
 	}
 }
 
@@ -240,7 +240,17 @@ func TestRefactor_FileWithoutName_SaysSaveFirst_WhenATabHasUnsavedChanges(t *tes
 	model.focus = focusProjectEdit
 	model, _ = projectKeys(model, "i", "x", "esc")
 	model = runRefactor(t, model, "refactor file")
-	if model.name != nil || !strings.Contains(stripANSI(model.View()), "save first") {
-		t.Fatalf("prompt = %+v, status = %q", model.name, model.status)
+	if model.name != nil || !model.editor.warn || !strings.Contains(model.editor.status, "E37") {
+		t.Fatalf("prompt = %+v, status = %q", model.name, model.editor.status)
+	}
+}
+
+func TestRefactor_FileRenameOfEmptyName_IsRefused(t *testing.T) {
+	model, fx, _ := refactorFixture(t)
+	model.focus = focusProjectEdit
+	updated, cmd := model.startFileRefactorOf(filepath.Join(fx.root, "src", "main.go"), "")
+	model = updated.(ProjectModel)
+	if cmd != nil || !model.editor.warn || !strings.Contains(model.editor.status, "type a name") {
+		t.Fatalf("status = %q", model.editor.status)
 	}
 }
