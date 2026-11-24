@@ -139,7 +139,63 @@ func (c *Client) Complete(ctx context.Context, path string, pos Position) ([]Com
 
 // Complete returns the suggestions at a position (zero-based line, rune column) of text.
 func (m *Manager) Complete(ctx context.Context, path, text string, row, col int) ([]CompletionItem, error) {
-	c, languageID, err := m.client(ctx, path)
+	items, err := m.completeWith(ctx, path, text, row, col, m.specFor)
+	spec, _, _ := m.specFor(path)
+	if spec.Name != "angular" {
+		return items, err
+	}
+	// The Angular server knows components, directives and the members of the component, not the HTML of the browser (input, textarea,
+	// type="text"): the HTML server adds them, like an editor that runs both does.
+	more, moreErr := m.completeWith(ctx, path, text, row, col, m.htmlSpecFor)
+	if err != nil && moreErr != nil {
+		return nil, err
+	}
+	return mergeCompletions(items, more), nil
+}
+
+// htmlSpecFor is the plain HTML server for a file, whatever server the file goes to otherwise.
+func (m *Manager) htmlSpecFor(path string) (ServerSpec, string, bool) {
+	for _, spec := range m.servers {
+		if spec.Name == "html" {
+			return spec, "html", true
+		}
+	}
+	return ServerSpec{}, "", false
+}
+
+// mergeCompletions puts the suggestions of a second server behind those of the first one; a label the first one has is not repeated.
+func mergeCompletions(first, second []CompletionItem) []CompletionItem {
+	seen := make(map[string]bool, len(first))
+	out := make([]CompletionItem, 0, len(first)+len(second))
+	for _, item := range first {
+		seen[item.Label] = true
+		item.SortText = "0" + sortKey(item)
+		out = append(out, item)
+	}
+	for _, item := range second {
+		if seen[item.Label] {
+			continue
+		}
+		item.SortText, item.raw = "1"+sortKey(item), nil // the item of another server is not resolved by the first one
+		out = append(out, item)
+	}
+	return out
+}
+
+func sortKey(item CompletionItem) string {
+	if item.SortText != "" {
+		return item.SortText
+	}
+	return item.Label
+}
+
+// completeWith asks the server that pick names for a file.
+func (m *Manager) completeWith(ctx context.Context, path, text string, row, col int, pick func(string) (ServerSpec, string, bool)) ([]CompletionItem, error) {
+	spec, languageID, ok := pick(path)
+	if !ok {
+		return nil, ErrNoServer
+	}
+	c, _, err := m.clientFor(ctx, spec, languageID, path)
 	if err != nil {
 		return nil, err
 	}

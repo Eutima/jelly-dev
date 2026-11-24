@@ -47,6 +47,11 @@ func (m *Manager) client(ctx context.Context, path string) (*Client, string, err
 	if !ok {
 		return nil, "", ErrNoServer
 	}
+	return m.clientFor(ctx, spec, languageID, path)
+}
+
+// clientFor returns the running server of a spec for a file, starting it first when needed.
+func (m *Manager) clientFor(ctx context.Context, spec ServerSpec, languageID, path string) (*Client, string, error) {
 	if _, err := m.lookPath(spec.Command[0]); err != nil {
 		return nil, "", &NotInstalledError{Server: spec.Name, Command: spec.Command[0]}
 	}
