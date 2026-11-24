@@ -28,7 +28,7 @@ func (m ProjectModel) renameFile(path, name string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.insideProject(filepath.Dir(path)) == nil { // a file of the project: the language server fixes the imports, :refactor undo reverts it
-		m.editor.notice("", false)
+		m.editor.notice("", false)               // drops the file info of the editor, which would show beside the project status
 		return m.startFileRefactorOf(path, name) // checks all tabs for unsaved changes
 	}
 	if i := m.tabIndex(path); i >= 0 && m.openEditors()[i].Modified() {

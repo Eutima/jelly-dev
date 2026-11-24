@@ -254,3 +254,15 @@ func TestRefactor_FileRenameOfEmptyName_IsRefused(t *testing.T) {
 		t.Fatalf("status = %q", model.editor.status)
 	}
 }
+
+func TestRename_ProjectFileFromTheTree_SaysSaveFirst_WhenATabHasUnsavedChanges(t *testing.T) {
+	model, fx, _ := refactorFixture(t)
+	model.focus = focusProjectEdit
+	model, _ = projectKeys(model, "i", "x", "esc")
+	model.focus = focusTree
+	updated, cmd := model.renameFile(filepath.Join(fx.root, "src", "main.go"), "entry.go")
+	model = updated.(ProjectModel)
+	if cmd != nil || model.dlg != nil || !model.warn || !strings.Contains(model.status, "E37") {
+		t.Fatalf("status = %q, dlg = %+v", model.status, model.dlg)
+	}
+}
