@@ -304,3 +304,22 @@ func TestRunCommand_KeepsTheReloaderOfTheServer_WhenRunningADjangoView(t *testin
 		t.Fatalf("err %v", err)
 	}
 }
+
+func TestRunCommand_RunsGoAndNodeFiles(t *testing.T) {
+	root := t.TempDir()
+	cases := map[string][]string{
+		"cmd/app/main.go":      {"go", "run", "."},
+		"cmd/app/main_test.go": {"go", "test", "."},
+		"web/index.js":         {"node", filepath.Join(root, "web", "index.js")},
+		"web/app.ts":           {"node", filepath.Join(root, "web", "app.ts")},
+	}
+	for file, want := range cases {
+		got, err := RunCommand(filepath.Join(root, filepath.FromSlash(file)), root)
+		if err != nil || !reflect.DeepEqual(got.Argv, want) {
+			t.Errorf("%s: %v %v, want %v", file, got.Argv, err, want)
+		}
+	}
+	if got, _ := RunCommand(filepath.Join(root, "cmd", "app", "main.go"), root); got.Dir != filepath.Join(root, "cmd", "app") {
+		t.Errorf("a Go file runs in its folder: %q", got.Dir)
+	}
+}

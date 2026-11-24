@@ -29,9 +29,9 @@ func (b *Buffer) blockOperator(op rune, r1, r2, from, to int) {
 	}
 	b.row, b.col = r1, from
 	if op == 'c' {
-		b.block = &blockInsert{first: r1, last: r2, col: from, length: len(b.lines[r1])}
 		b.mode = Insert
 		b.noLines = false
+		b.beginBlockInsert(r1, r2, from, false)
 		return
 	}
 	b.clampCursor()
@@ -44,21 +44,45 @@ func (b *Buffer) startBlockInsert(atEnd bool) {
 	if atEnd {
 		col = max(b.anchorCol, b.col) + 1
 	}
-	col = min(col, len(b.lines[r1]))
 	b.save()
-	b.block = &blockInsert{first: r1, last: r2, col: col, length: len(b.lines[r1]), pad: atEnd}
-	b.mode, b.row, b.col = Insert, r1, col
+	b.mode = Insert
+	b.beginBlockInsert(r1, r2, col, atEnd)
+}
+
+// beginBlockInsert starts typing at column col of the block's rows. The text goes to the first row that reaches the column (vim leaves the
+// shorter rows out; with pad, as for A, the rows are filled up with spaces and the first row is used).
+func (b *Buffer) beginBlockInsert(r1, r2, col int, pad bool) {
+	first := r1
+	if pad {
+		if short := col - len(b.lines[first]); short > 0 {
+			b.lines[first] = append(append([]rune(nil), b.lines[first]...), spaces(short)...)
+		}
+	} else {
+		for first <= r2 && len(b.lines[first]) < col {
+			first++
+		}
+		if first > r2 { // no row reaches the column: nothing to repeat, the cursor goes to the end of the first row
+			b.row, b.col, b.block = r1, len(b.lines[r1]), nil
+			return
+		}
+	}
+	b.row, b.col = first, col
+	b.block = &blockInsert{first: first, last: r2, col: col, length: len(b.lines[first]), pad: pad}
 }
 
 // finishBlockInsert repeats what was typed in the first row of a block in the other rows; it runs when insert mode ends.
 func (b *Buffer) finishBlockInsert() {
 	block := b.block
 	b.block = nil
-	if block == nil || b.row != block.first || len(b.lines[block.first]) <= block.length {
-		return // nothing typed, or the cursor left the row (enter, up, down): no repeat
+	if block == nil || b.row != block.first || block.first >= len(b.lines) {
+		return // the cursor left the row (enter, up, down): no repeat
 	}
 	line := b.lines[block.first]
-	typed := line[block.col : block.col+len(line)-block.length]
+	grown := len(line) - block.length
+	if grown <= 0 || b.col != block.col+grown || b.col > len(line) {
+		return // nothing typed, or the text was edited in a way that is more than typing at the block's column (backspace over its edge)
+	}
+	typed := line[block.col:b.col]
 	for row := block.first + 1; row <= block.last; row++ {
 		text := b.lines[row]
 		if len(text) < block.col {

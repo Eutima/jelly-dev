@@ -79,3 +79,18 @@ func TestWatch_IgnoresTheOwnSave(t *testing.T) {
 		t.Fatalf("lines %q status %q", got, model.editor.status)
 	}
 }
+
+func TestWatch_WaitsForNormalMode_WhenTheUserIsTyping(t *testing.T) {
+	model, path := openWatched(t)
+	model, _ = projectKeys(model, "i", "X") // still in insert mode
+	rewrite(t, path, "disk\n")
+	model = update(model, watchTickMsg{})
+	if got := model.editor.vim.Lines(); got[0] != "Xone" {
+		t.Fatalf("the text must stay while typing: %q", got)
+	}
+	model, _ = projectKeys(model, "esc")
+	model = update(model, watchTickMsg{})
+	if got := model.editor.vim.Lines(); len(got) != 1 || got[0] != "disk" {
+		t.Fatalf("back in normal mode the disk text comes in: %q", got)
+	}
+}

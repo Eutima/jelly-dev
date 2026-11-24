@@ -12,6 +12,8 @@ import (
 	"github.com/eutima/jelly-dev/internal/keymap"
 )
 
+// The message type Bubble Tea uses for an escape sequence it does not know is unexported, so it is found by its name; go.mod pins Bubble Tea
+// and TestAsCtrlF5 fails when an upgrade renames it.
 // ctrlF5Key is the escape sequence xterm, Windows Terminal and most terminals send for ctrl+f5. Bubble Tea does not know it and hands it
 // over as a message of an unexported type, which is recognised by its name and its bytes.
 const ctrlF5Key = "\x1b[15;5~"
@@ -99,7 +101,7 @@ func shellLine(goos string, run dap.Command) string {
 	var parts []string
 	if goos == "windows" { // PowerShell
 		quote := func(text string) string { return "'" + strings.ReplaceAll(text, "'", "''") + "'" }
-		parts = append(parts, "Set-Location "+quote(run.Dir))
+		parts = append(parts, "Set-Location -LiteralPath "+quote(run.Dir)) // -Path would read [ ] as wildcards
 		for _, name := range names {
 			parts = append(parts, fmt.Sprintf("$env:%s=%s", name, quote(run.Env[name])))
 		}

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/eutima/jelly-dev/internal/vimbuf"
 )
 
 // watchInterval is how often the open files are looked at for changes made by other programs. Polling is cheap for the few files that are
@@ -56,6 +58,9 @@ func (m ProjectModel) diskChanged() bool {
 // watchedFiles handles the timer: when another program wrote an open file, the tab shows the new text. Unsaved edits of that tab are
 // replaced as well; undo brings them back.
 func (m ProjectModel) watchedFiles() (ProjectModel, tea.Cmd) {
+	if m.editor.nano == nil && m.editor.vim.Mode() != vimbuf.Normal {
+		return m, watchTick() // typing or selecting: the text is not replaced under the cursor, the next look in normal mode does it
+	}
 	if m.diskChanged() {
 		if reloaded := m.reloadChanged(true); len(reloaded) > 0 {
 			m.say("Reloaded "+strings.Join(reloaded, ", ")+" (changed on disk, unsaved edits are in undo)", false)

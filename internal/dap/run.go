@@ -2,7 +2,6 @@ package dap
 
 import (
 	"errors"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -40,11 +39,7 @@ func RunCommand(file, root string) (Command, error) {
 		}
 		return Command{Argv: []string{"go", verb, "."}, Dir: filepath.Dir(file)}, nil
 	case ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts":
-		node := "node"
-		if path, err := exec.LookPath("node"); err == nil {
-			node = path
-		}
-		return Command{Argv: []string{node, file}, Dir: root}, nil
+		return Command{Argv: []string{"node", file}, Dir: root}, nil // found by the shell the command is typed into
 	}
 	return Command{}, ErrNoRunner
 }

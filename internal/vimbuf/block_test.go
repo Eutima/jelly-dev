@@ -91,3 +91,34 @@ func TestVisualBlock_CommentsRows_WhenGc(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+func TestVisualBlock_PadsShortRows_WhenAWithShortFirstRow(t *testing.T) {
+	b := newBuffer("abcdef", "ab", "abcdef")
+	typeKeys(b, "lll<c-v>jjAX<esc>")
+	if got, want := b.Lines(), []string{"abcdXef", "ab  X", "abcdXef"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	short := newBuffer("a", "abcdef", "abcdef")
+	typeKeys(short, "<c-v>jjllAX<esc>")
+	if got := short.Lines(); got[0] != "a  X" || got[1] != "abcXdef" {
+		t.Fatalf("a short first row is padded: %q", got)
+	}
+}
+
+func TestVisualBlock_SkipsShortRows_WhenIAndFirstRowIsShort(t *testing.T) {
+	b := newBuffer("a", "abcdef", "abcdef")
+	b.mode, b.anchorRow, b.anchorCol, b.row, b.col = VisualBlock, 0, 3, 2, 3 // a block at column 3 that starts in a row that is too short
+	typeKeys(b, "IX<esc>")
+	want := []string{"a", "abcXdef", "abcXdef"}
+	if b.Mode() != Normal || !reflect.DeepEqual(b.Lines(), want) {
+		t.Fatalf("got %q (mode %v), want %q", b.Lines(), b.Mode(), want)
+	}
+}
+
+func TestVisualBlock_DoesNotRepeat_WhenBackspacingOverTheBlockEdge(t *testing.T) {
+	b := newBuffer("abc", "def")
+	typeKeys(b, "l<c-v>jIX<bs><bs>Y<esc>")
+	if got := b.Lines(); got[1] != "def" {
+		t.Fatalf("no repeat after editing before the block: %q", got)
+	}
+}

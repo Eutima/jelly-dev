@@ -27,7 +27,7 @@ func TestShellLine_QuotesEveryPart(t *testing.T) {
 	if got := shellLine("linux", run); got != want {
 		t.Fatalf("got %s, want %s", got, want)
 	}
-	if got := shellLine("windows", run); !strings.HasPrefix(got, "Set-Location '/my proj'; $env:A='1'; $env:B='2'; & '/venv/bin/python' '/p/it''s.py'") {
+	if got := shellLine("windows", run); !strings.HasPrefix(got, "Set-Location -LiteralPath '/my proj'; $env:A='1'; $env:B='2'; & '/venv/bin/python' '/p/it''s.py'") {
 		t.Fatalf("powershell: %s", got)
 	}
 }
@@ -50,5 +50,15 @@ func TestRun_StartsAShellTabAndNotTheDebugger_WhenF5(t *testing.T) {
 		t.Fatalf("a second run replaces the first tab: %d tabs", len(got.terms))
 	} else {
 		defer got.closeTerminal()
+	}
+}
+
+func TestShellLine_KeepsOddFolderNamesInOnePiece(t *testing.T) {
+	run := dap.Command{Argv: []string{"node", "a.js"}, Dir: "/p/proj[1] 'x'", Env: map[string]string{"V": "a b'c"}}
+	if got, want := shellLine("linux", run), `cd '/p/proj[1] '\''x'\''' && env 'V=a b'\''c' 'node' 'a.js'`; got != want {
+		t.Fatalf("got %s, want %s", got, want)
+	}
+	if got := shellLine("windows", run); !strings.HasPrefix(got, "Set-Location -LiteralPath '/p/proj[1] ''x'''") {
+		t.Fatalf("powershell: %s", got)
 	}
 }
