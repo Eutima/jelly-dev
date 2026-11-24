@@ -50,7 +50,7 @@ func TestCompletion_CtrlSpaceOpensPopupFromServerAndTabAccepts(t *testing.T) {
 	}}
 	model := completionEditor(t, nav, "fmt.\nvar x = 1\n", "A"+"pr")
 	model = request(model)
-	if model.completion == nil || strings.Join(labels(model.completion.items), ",") != "println,print,printf" {
+	if model.completion == nil || strings.Join(labels(model.completion.items), ",") != "print,printf,println" {
 		t.Fatalf("the popup must list the matches of the typed prefix: %+v", model.completion)
 	}
 	if len(nav.completeAt) != 1 || nav.completeAt[0] != [2]int{0, 6} {
@@ -235,7 +235,7 @@ func TestCompletion_PopupFitsTheScreenAndMovesAboveAtTheBottom(t *testing.T) {
 				t.Fatalf("size %v: line %d is %d wide", size, i, w)
 			}
 		}
-		if model.completion == nil || !strings.Contains(stripANSI(model.View()), "alpha") {
+		if model.completion == nil || !strings.Contains(stripANSI(model.View()), "alpaca_cart") { // the first of them, they are sorted
 			t.Fatalf("size %v: the popup must be visible:\n%s", size, model.View())
 		}
 	}
@@ -299,5 +299,16 @@ func TestWithNavigator_OpensTheFileInTheServerRightAway(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the file was not opened in the server")
+	}
+}
+
+func TestRankCompletions_OrderIgnoresTheCaseOfTheLetters(t *testing.T) {
+	all := []lsp.CompletionItem{{Label: "Zebra"}, {Label: "apple"}, {Label: "Banana"}, {Label: "cherry"}}
+	if got := strings.Join(labels(rankCompletions(all, "")), ","); got != "apple,Banana,cherry,Zebra" {
+		t.Fatalf("sorted ignoring case: %s", got)
+	}
+	words := bufferWords([]string{"Zebra apple Banana"}, "")
+	if got := strings.Join(labels(words), ","); got != "apple,Banana,Zebra" {
+		t.Fatalf("the words of the file too: %s", got)
 	}
 }

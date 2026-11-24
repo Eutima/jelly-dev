@@ -173,7 +173,7 @@ func TestCompletionPopup_KeepsItsWidthWhileTheSelectionScrolls(t *testing.T) {
 	if after := model.completionWidth(model.textWidth()); after != before {
 		t.Errorf("the popup changed from %d to %d columns while scrolling", before, after)
 	}
-	if rows := model.completionLines(before); len(rows) == 0 || !strings.Contains(stripANSI(strings.Join(model.completionLines(before), "\n")), "item12") {
+	if rows := model.completionLines(before); len(rows) == 0 || !strings.Contains(stripANSI(strings.Join(model.completionLines(before), "\n")), model.completion.items[model.completion.sel].Label) {
 		t.Errorf("the selected suggestion is not in the popup")
 	}
 }

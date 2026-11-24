@@ -175,9 +175,12 @@ func rankCompletions(all []lsp.CompletionItem, typed string) []lsp.CompletionIte
 		if kept[a].score != kept[b].score {
 			return kept[a].score > kept[b].score
 		}
-		sortA, sortB := kept[a].item.SortText, kept[b].item.SortText
-		if sortA != "" && sortB != "" && sortA != sortB {
+		// the order of the server (its sortText groups the suggestions), then the label; the case of the letters does not count
+		if sortA, sortB := strings.ToLower(kept[a].item.SortText), strings.ToLower(kept[b].item.SortText); sortA != "" && sortB != "" && sortA != sortB {
 			return sortA < sortB
+		}
+		if labelA, labelB := strings.ToLower(kept[a].item.Label), strings.ToLower(kept[b].item.Label); labelA != labelB {
+			return labelA < labelB
 		}
 		return kept[a].order < kept[b].order
 	})
@@ -234,7 +237,12 @@ func bufferWords(lines []string, typed string) []lsp.CompletionItem {
 			}
 		}
 	}
-	sort.Strings(words)
+	sort.Slice(words, func(a, b int) bool { // the case of the letters does not count
+		if la, lb := strings.ToLower(words[a]), strings.ToLower(words[b]); la != lb {
+			return la < lb
+		}
+		return words[a] < words[b]
+	})
 	items := make([]lsp.CompletionItem, len(words))
 	for i, word := range words {
 		items[i] = lsp.CompletionItem{Label: word}
