@@ -429,3 +429,16 @@ func TestInstall_PythonToolGoesIntoTheVirtualenv_WhenPipRefusesUser(t *testing.T
 		t.Fatalf("last command %q, want a plain pip install (ran %v)", last, m.ran)
 	}
 }
+
+func TestInstall_PythonWithoutPipTriesEnsurepipThenSaysWhatToInstall(t *testing.T) {
+	m, env := newMachine(t, "python3")
+	m.installs["black"] = "black"
+	m.fail["python3"] = errors.New("/usr/bin/python3: No module named pip")
+	err := env.Install(context.Background(), tool("black"))
+	if err == nil || !strings.Contains(err.Error(), "python3-pip") {
+		t.Fatalf("the hint names the package to install: %v", err)
+	}
+	if !strings.Contains(strings.Join(m.ran, "|"), "python3 -m ensurepip --user") {
+		t.Fatalf("ensurepip is tried: %v", m.ran)
+	}
+}

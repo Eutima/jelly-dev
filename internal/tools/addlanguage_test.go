@@ -182,3 +182,30 @@ func TestInstalled_ARustupProxyWithoutTheComponentIsNotInstalled(t *testing.T) {
 		t.Fatalf("the missing component is pending, the installed one is not: %v", got)
 	}
 }
+
+func TestInstall_BrokenRustToolchainIsInstalledAgain(t *testing.T) {
+	m, env := newMachine(t, "rustup")
+	m.installs["rustfmt"] = "rustfmt"
+	run := env.Run
+	failed := false
+	env.Run = func(ctx context.Context, extra []string, name string, args ...string) error {
+		joined := name + " " + strings.Join(args, " ")
+		if !failed && strings.HasPrefix(joined, "rustup component add") {
+			failed = true
+			m.ran = append(m.ran, joined)
+			return errors.New("error: missing manifest in toolchain 'stable'")
+		}
+		if joined == "rustup default stable" {
+			m.ran = append(m.ran, joined)
+			return errors.New("error: missing manifest in toolchain 'stable'")
+		}
+		return run(ctx, extra, name, args...)
+	}
+	if err := env.Install(context.Background(), tool("rustfmt")); err != nil {
+		t.Fatalf("rustfmt with a broken toolchain: %v", err)
+	}
+	want := "rustup component add rustfmt|rustup default stable|rustup toolchain uninstall stable|rustup toolchain install stable|rustup component add rustfmt"
+	if strings.Join(m.ran, "|") != want {
+		t.Fatalf("the toolchain is reinstalled: %v", m.ran)
+	}
+}

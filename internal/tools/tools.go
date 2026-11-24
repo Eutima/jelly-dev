@@ -292,6 +292,13 @@ func (e Env) pip(ctx context.Context, python string, args ...string) error {
 	if err == nil {
 		return nil
 	}
+	if strings.Contains(err.Error(), "No module named pip") {
+		// a Python without pip: ensurepip brings it (a distribution may switch ensurepip off: then the hint says what to install)
+		if ensureErr := e.Run(ctx, nil, python, "-m", "ensurepip", "--user"); ensureErr != nil {
+			return fmt.Errorf("%s has no pip (install pipx or python3-pip, e.g. sudo apt-get install -y pipx python3-pip): %w", python, err)
+		}
+		return e.pip(ctx, python, args...)
+	}
 	if strings.Contains(err.Error(), "virtualenv") {
 		if venvErr := e.Run(ctx, nil, python, base...); venvErr != nil {
 			return venvErr
@@ -338,8 +345,15 @@ func (e Env) installRustup(ctx context.Context, t Tool) error {
 	}
 	add := append([]string{"component", "add"}, t.Packages...)
 	if err := e.Run(ctx, nil, "rustup", add...); err != nil {
-		if toolchainErr := e.Run(ctx, nil, "rustup", "default", "stable"); toolchainErr != nil {
-			return err
+		toolchainErr := e.Run(ctx, nil, "rustup", "default", "stable")
+		if toolchainErr != nil && strings.Contains(toolchainErr.Error(), "manifest") {
+			// an interrupted installation leaves a toolchain without manifest: it is removed and installed again
+			if e.Run(ctx, nil, "rustup", "toolchain", "uninstall", "stable") == nil {
+				toolchainErr = e.Run(ctx, nil, "rustup", "toolchain", "install", "stable")
+			}
+		}
+		if toolchainErr != nil {
+			return fmt.Errorf("%w (the stable toolchain is broken, try: rustup toolchain uninstall stable && rustup toolchain install stable)", err)
 		}
 		return e.Run(ctx, nil, "rustup", add...)
 	}
