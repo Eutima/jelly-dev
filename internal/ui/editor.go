@@ -367,7 +367,6 @@ func pressedKeys(msg tea.KeyMsg, r *vimkeys.Resolver) []string {
 		if r.Wants(msg.String()) {
 			return []string{msg.String()}
 		}
-		return nil
 	}
 	return editorKeys(msg)
 }

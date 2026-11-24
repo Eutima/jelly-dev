@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -247,6 +248,9 @@ func editorKeys(msg tea.KeyMsg) []string {
 	switch msg.Type {
 	case tea.KeyRunes:
 		if msg.Alt {
+			if altGrSymbol(msg) {
+				return []string{string(msg.Runes[0])}
+			}
 			return nil
 		}
 		keys := make([]string, 0, len(msg.Runes))
@@ -258,6 +262,17 @@ func editorKeys(msg tea.KeyMsg) []string {
 		return []string{" "}
 	}
 	return []string{msg.String()}
+}
+
+// altGrSymbol reports whether an alt key press is a symbol typed with AltGr: a Swiss or German keyboard types { [ ] } \\ @ # | ~ with AltGr,
+// and a terminal that sends AltGr as alt (ESC and the character) would make the editor ignore them. Alt with a letter, a digit or a
+// space stays a command.
+func altGrSymbol(msg tea.KeyMsg) bool {
+	if msg.Type != tea.KeyRunes || !msg.Alt || len(msg.Runes) != 1 {
+		return false
+	}
+	r := msg.Runes[0]
+	return r > ' ' && r != 0x7f && !unicode.IsLetter(r) && !unicode.IsDigit(r)
 }
 
 // handleEditKey feeds a key press to the editor and carries out what it asks for (:w, :wq, :q, :q!).

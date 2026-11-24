@@ -269,7 +269,7 @@ func (m SearchModel) handleKey(msg tea.KeyMsg) (SearchModel, tea.Cmd) {
 		m.input = append(m.input, ' ')
 		return m.queryChanged()
 	default:
-		if msg.Type == tea.KeyRunes && !msg.Alt {
+		if msg.Type == tea.KeyRunes && (!msg.Alt || altGrSymbol(msg)) {
 			m.input = append(m.input, []rune(sanitizeEditable(string(msg.Runes)))...)
 			return m.queryChanged()
 		}
