@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/eutima/jelly-dev/internal/lsp"
 )
 
@@ -126,13 +128,52 @@ func TestRefactor_RenamesFileKeepingExtension_AndUpdatesTab(t *testing.T) {
 
 func TestRefactor_UsageAndMissingNavigator(t *testing.T) {
 	model, _ := newProjectFixture(t, 100, sampleFiles)
-	if model = runRefactor(t, model, "refactor"); !strings.Contains(model.status, "Usage") {
-		t.Fatalf("status = %q", model.status)
+	if model = runRefactor(t, model, "refactor"); model.name != nil || !model.warn {
+		t.Fatalf("without a language server no prompt may open: %q", model.status)
 	}
 	if model = runRefactor(t, model, "refactor two words"); !model.warn {
 		t.Fatalf("a name with spaces must be refused: %q", model.status)
 	}
 	if model = runRefactor(t, model, "refactor name"); !strings.Contains(model.status, "No language server") && !strings.Contains(model.status, "No file name") {
 		t.Fatalf("status = %q", model.status)
+	}
+}
+
+func TestRefactor_OpensPromptWithTheSymbol_WhenNoNameIsGiven(t *testing.T) {
+	model, fx, _ := refactorFixture(t)
+	path := filepath.Join(fx.root, "src", "main.go")
+	model.editor.vim.SetCursor(2, 6) // on `main` in `func main()`
+	model = runRefactor(t, model, "refactor")
+	if model.name == nil || model.name.symbol != "main" || string(model.name.input) != "main" {
+		t.Fatalf("prompt = %+v, status %q", model.name, model.status)
+	}
+	for range 4 {
+		updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+		model = updated.(ProjectModel)
+	}
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("start")})
+	model = updated.(ProjectModel)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(ProjectModel)
+	if model.name != nil || cmd == nil {
+		t.Fatalf("enter must start the rename: prompt %+v", model.name)
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(ProjectModel)
+	if model.dlg == nil || !strings.Contains(model.dlg.title, "rename to start") {
+		t.Fatalf("the user must confirm first: %+v", model.dlg)
+	}
+	if data, _ := os.ReadFile(path); !strings.Contains(string(data), "func main()") {
+		t.Fatal("nothing may be written before the confirmation")
+	}
+}
+
+func TestWordAt_ReturnsTheIdentifier_WhenTheCursorIsOnOne(t *testing.T) {
+	line := []rune("func main_x(a int)")
+	if got := wordAt(line, 7); got != "main_x" {
+		t.Fatalf("got %q", got)
+	}
+	if got := wordAt(line, 4); got != "" {
+		t.Fatalf("a space is no symbol: %q", got)
 	}
 }

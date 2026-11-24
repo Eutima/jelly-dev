@@ -293,8 +293,8 @@ you confirm, `:refactor undo` reverts it); a file outside the project, like a sc
 **Copy the file path**: `:copypath` puts the path of the shown file, relative to the project, on the clipboard; `:copypath abs` the absolute path
 (both are in the palette).
 
-**Refactoring** (needs a language server that renames; `:format` and `gd` use the same ones): `:refactor <new name>` renames the symbol under the
-cursor (method, variable, type...) in every file of the project, `:refactor file <new name>` renames the file of the shown tab (the extension stays
+**Refactoring** (needs a language server that renames; `:format` and `gd` use the same ones): `:refactor [new name]` (without a name a prompt opens, filled with the current one) renames the symbol under the
+cursor (method, variable, type...) in every file of the project, `:refactor file [new name]` renames the file of the shown tab (the extension stays
 when you leave it out; the server also updates the imports where it can). jd asks first and lists how many edits and files are involved; save your
 changes before (the files are changed on disk). `:refactor undo` reverts the latest refactoring, also after jd was restarted: the old texts are kept in
 `<project>/.jd/refactor-journal.json` (the last 20; it holds whole files, so keep `.jd/` in your `.gitignore`). An undo is refused when one of the files was changed after the refactoring, so later work is

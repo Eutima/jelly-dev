@@ -18,6 +18,7 @@ type namePrompt struct {
 	input  []rune
 	home   string // the folder of the selection, which tab goes back to
 	rename string // the file this prompt renames, "" for a new file
+	symbol string // the symbol this prompt renames through the language server, "" when it is no symbol rename
 }
 
 // errOutsideProject is returned for a name that would leave the project folder.
@@ -105,7 +106,7 @@ func (m ProjectModel) nameKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.name = nil
 		return m, nil
 	case tea.KeyTab: // the folder of the selection or the project folder: a tree of folders only has no other way to the root
-		if prompt.rename != "" { // a rename stays in the folder of the file
+		if prompt.rename != "" || prompt.symbol != "" { // a rename stays in the folder of the file
 			break
 		}
 		if prompt.dir == m.root {
@@ -118,6 +119,9 @@ func (m ProjectModel) nameKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			prompt.input = prompt.input[:len(prompt.input)-1]
 		}
 	case tea.KeyEnter:
+		if prompt.symbol != "" {
+			return m.finishSymbolRename(prompt)
+		}
 		if prompt.rename != "" {
 			return m.finishRename(prompt)
 		}
@@ -239,6 +243,9 @@ func (m ProjectModel) nameView(screen string) string {
 	if m.name.rename != "" {
 		title = "Rename " + filepath.Base(m.name.rename)
 	}
+	if m.name.symbol != "" {
+		title = "Rename the symbol " + m.name.symbol
+	}
 	rows := []string{
 		m.theme.Header.Render(padRight(" "+sanitize(title), min(dialogBox, m.width))),
 		m.theme.Equal.Render(padRight(" "+sanitize(string(m.name.input))+"█", min(dialogBox, m.width))),
@@ -249,7 +256,7 @@ func (m ProjectModel) nameView(screen string) string {
 
 // nameHint is the key line of the name prompt; it must fit in the dialog box. Tab is only offered when it has somewhere to go.
 func (m ProjectModel) nameHint() string {
-	if m.name.rename != "" {
+	if m.name.rename != "" || m.name.symbol != "" {
 		return " enter ok, esc cancel"
 	}
 	if m.name.home == m.root {

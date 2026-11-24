@@ -21,7 +21,7 @@ type Refactorer interface {
 	RenameFile(ctx context.Context, oldPath, newPath string) (lsp.WorkspaceEdit, error)
 }
 
-const refactorUsage = "Usage: :refactor <new name> (symbol under the cursor) | :refactor file <new name> | :refactor undo"
+const refactorUsage = "Usage: :refactor [new name] (symbol under the cursor) | :refactor file [new name] | :refactor undo"
 
 // refactorResultMsg is the answer of the language server to a rename.
 type refactorResultMsg struct {
@@ -45,8 +45,7 @@ func (m ProjectModel) refactorCommand(argument string) (tea.Model, tea.Cmd) {
 	rest = strings.TrimSpace(rest)
 	switch {
 	case argument == "":
-		m.say(refactorUsage, false)
-		return m, nil
+		return m.openSymbolPrompt()
 	case argument == "undo":
 		return m.undoRefactor()
 	case verb == "file":
@@ -56,6 +55,54 @@ func (m ProjectModel) refactorCommand(argument string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m.startRename(argument)
+}
+
+// openSymbolPrompt opens the prompt for the new name of the symbol under the cursor, filled with the current name.
+func (m ProjectModel) openSymbolPrompt() (tea.Model, tea.Cmd) {
+	if m.refactorer() == nil || m.editor.Path() == "" {
+		return m.startRename("") // says why a rename is not possible
+	}
+	row, col := m.editor.vim.Cursor()
+	lines := m.editor.vim.Lines()
+	symbol := ""
+	if row >= 0 && row < len(lines) {
+		symbol = wordAt([]rune(lines[row]), col)
+	}
+	if symbol == "" {
+		m.say("No symbol under the cursor to rename", true)
+		return m, nil
+	}
+	m.name = &namePrompt{dir: filepath.Dir(m.editor.Path()), home: filepath.Dir(m.editor.Path()), input: []rune(symbol), symbol: symbol}
+	return m, nil
+}
+
+// wordAt returns the identifier in line that contains column col, "" when the cursor is not on one.
+func wordAt(line []rune, col int) string {
+	if col < 0 || col >= len(line) || !isWordRune(line[col]) {
+		return ""
+	}
+	start, end := col, col
+	for start > 0 && isWordRune(line[start-1]) {
+		start--
+	}
+	for end < len(line) && isWordRune(line[end]) {
+		end++
+	}
+	return string(line[start:end])
+}
+
+// finishSymbolRename runs the rename of the open symbol prompt.
+func (m ProjectModel) finishSymbolRename(prompt namePrompt) (tea.Model, tea.Cmd) {
+	name := strings.TrimSpace(string(prompt.input))
+	if name == "" || strings.ContainsAny(name, " \t") {
+		m.notice("Cannot rename: a symbol name is one word", true) // the prompt stays open to fix the name
+		return m, nil
+	}
+	m.name = nil
+	if name == prompt.symbol {
+		return m, nil
+	}
+	return m.startRename(name)
 }
 
 // refactorBlocked says why a refactoring cannot start, true when it cannot: it changes files on disk, so unsaved changes would be
@@ -105,8 +152,7 @@ func (m ProjectModel) startFileRefactorOf(path, name string) (tea.Model, tea.Cmd
 		m.say("E32: No file name: nothing to rename", true)
 		return m, nil
 	case name == "":
-		m.say(refactorUsage, true)
-		return m, nil
+		return m.renameFile(path, "") // opens the name prompt
 	case m.refactorBlocked():
 		return m, nil
 	}
