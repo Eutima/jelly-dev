@@ -54,9 +54,9 @@ func wordStart(line []rune, col int) int {
 	return start
 }
 
-// isCompletionKey reports whether a key asks for completion: ctrl+space (terminals send it as ctrl+@), ctrl+n, or alt+/ (Windows keeps ctrl+space).
+// isCompletionKey reports whether a key asks for completion: ctrl+space (terminals send it as ctrl+@) or ctrl+n.
 func isCompletionKey(key string) bool {
-	return key == "ctrl+@" || key == "ctrl+space" || key == "ctrl+n" || key == "alt+/"
+	return key == "ctrl+@" || key == "ctrl+space" || key == "ctrl+n"
 }
 
 // startCompletion asks for suggestions at the cursor: the language server when there is one, always together with the

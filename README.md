@@ -340,7 +340,7 @@ and closes a variable, its fields are read when it is first opened) or the **cal
 frame is shown), `left`/`right` or a click on the title switch between the variables and the call stack. The right is the console: the output of the
 program and messages; long lines wrap. Type an expression into its last line (`> `) and press `enter` to evaluate it in the selected frame. The line is a
 small editor: `left`/`right`/`home`/`end` move the cursor, `backspace`/`delete` erase, `ctrl+u` clears it, `up`/`down` bring back the expressions typed before
-(kept from run to run, the line you were typing comes back after the newest) and `tab` or `ctrl+space` (also `ctrl+n` and `alt+/`, the keys of `insert.complete`) completes the name at the cursor with the suggestions of the debugger
+(kept from run to run, the line you were typing comes back after the newest) and `tab` or `ctrl+space` (also `ctrl+n`, the keys of `insert.complete`) completes the name at the cursor with the suggestions of the debugger
 (the part they have in common is put in; with several choices a popup opens above the line like the editor's: `ctrl+n`/`ctrl+p` or `down`/`up` choose, `tab` or `enter`
 accept, typing narrows the list, `esc` closes it; delve cannot complete, so the names of the variables that are on screen are used, `user.Na` gives `user.Name`
 once `user` is open; `ctrl+space` also asks on an empty line, `tab` on an empty line goes back to the list); `alt+up`/`alt+down` choose a row of the list from the

@@ -127,7 +127,7 @@ insert.end           = end                    # default: to the end of the line
 insert.tab           = tab                    # default: insert a tab
 insert.deletetostart = ctrl+u                 # default: delete everything before the cursor
 insert.deletetoend   = ctrl+k                 # default: delete everything after the cursor
-insert.complete      = ctrl+space, ctrl+n, alt+/ # default: open the completion popup (Windows keeps ctrl+space for itself: ctrl+n and alt+/ always work)
+insert.complete      = ctrl+space, ctrl+n     # default: open the completion popup
 
 # nano: the nano-style editor (keys that are not typed text; the arrows, enter, backspace, delete and tab are fixed)
 nano.exit       = ctrl+x                 # default: leave the file (asks to save when there are changes)

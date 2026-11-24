@@ -273,18 +273,3 @@ func TestCompletion_AutoImportAddsTheImportLineAndKeepsTheCursorBehindTheName(t 
 		t.Fatalf("the cursor stays behind the name: %d:%d", row, col)
 	}
 }
-
-// Windows keeps ctrl+space for the input switcher: alt+/ opens the popup as well.
-func TestCompletion_AltSlashOpensThePopup(t *testing.T) {
-	nav := &fakeNav{completions: []lsp.CompletionItem{{Label: "signal"}}}
-	model := completionEditor(t, nav, "\n", "Asi")
-	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}, Alt: true})
-	model = updated.(EditorModel)
-	if cmd == nil {
-		t.Fatal("alt+/ asks for suggestions")
-	}
-	updated, _ = model.Update(cmd())
-	if updated.(EditorModel).completion == nil {
-		t.Fatal("the popup opens")
-	}
-}

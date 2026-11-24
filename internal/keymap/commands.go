@@ -342,7 +342,7 @@ var definitions = []definition{
 	{InsertTab, ScopeInsert, "insert a tab", []string{"tab"}},
 	{InsertDeleteToStart, ScopeInsert, "delete everything before the cursor", []string{"ctrl+u"}},
 	{InsertDeleteToEnd, ScopeInsert, "delete everything after the cursor", []string{"ctrl+k"}},
-	{InsertComplete, ScopeInsert, "open the completion popup (Windows keeps ctrl+space for itself: ctrl+n and alt+/ always work)", []string{"ctrl+space", "ctrl+n", "alt+/"}},
+	{InsertComplete, ScopeInsert, "open the completion popup", []string{"ctrl+space", "ctrl+n"}},
 
 	{NanoExit, ScopeNano, "leave the file (asks to save when there are changes)", []string{"ctrl+x"}},
 	{NanoCut, ScopeNano, "cut the line, or the marked text", []string{"ctrl+k"}},
