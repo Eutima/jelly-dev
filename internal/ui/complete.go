@@ -270,6 +270,49 @@ func (m *EditorModel) acceptCompletion() {
 		to = max(lsp.RuneColumn(string(line), edit.Range.End.Character), col)
 	}
 	m.vim.ReplaceInLine(row, from, to, text)
+	m.applyAdditionalEdits(item)
+}
+
+// completionResolver is implemented by a navigator that can fetch the rest of a completion item (the import line of an auto import).
+type completionResolver interface {
+	ResolveCompletion(ctx context.Context, path string, item lsp.CompletionItem) (lsp.CompletionItem, error)
+}
+
+// applyAdditionalEdits adds the edits that come with a chosen item, such as the import of an auto import, and keeps the cursor on the
+// text that was just inserted. Only edits inside one line are applied (an import line is an insertion at the start of a line).
+func (m *EditorModel) applyAdditionalEdits(item lsp.CompletionItem) {
+	if resolver, ok := m.nav.(completionResolver); ok && len(item.Additional) == 0 && m.doc.Path != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), navTimeout)
+		defer cancel()
+		if resolved, err := resolver.ResolveCompletion(ctx, m.doc.Path, item); err == nil {
+			item = resolved
+		}
+	}
+	edits := append([]lsp.TextEdit(nil), item.Additional...)
+	// from the end of the file to the start, so an edit does not move the ones before it
+	sort.SliceStable(edits, func(a, b int) bool {
+		if edits[a].Range.Start.Line != edits[b].Range.Start.Line {
+			return edits[a].Range.Start.Line > edits[b].Range.Start.Line
+		}
+		return edits[a].Range.Start.Character > edits[b].Range.Start.Character
+	})
+	cursorRow, cursorCol := m.vim.Cursor()
+	for _, edit := range edits {
+		row := edit.Range.Start.Line
+		if row != edit.Range.End.Line || row < 0 || row >= len(m.vim.Lines()) {
+			continue
+		}
+		line := m.vim.Line(row)
+		from := lsp.RuneColumn(line, edit.Range.Start.Character)
+		to := lsp.RuneColumn(line, edit.Range.End.Character)
+		m.vim.ReplaceInLine(row, from, to, edit.NewText)
+		if row <= cursorRow {
+			cursorRow += strings.Count(strings.ReplaceAll(edit.NewText, "\r\n", "\n"), "\n")
+		}
+	}
+	if len(edits) > 0 {
+		m.vim.SetCursor(cursorRow, cursorCol)
+	}
 }
 
 // completionKey handles the keys while the popup is open; it reports whether the key was used.

@@ -277,6 +277,10 @@ func (w *windowNavigator) Complete(ctx context.Context, path, text string, row, 
 	return w.current().Complete(ctx, path, text, row, col)
 }
 
+func (w *windowNavigator) ResolveCompletion(ctx context.Context, path string, item lsp.CompletionItem) (lsp.CompletionItem, error) {
+	return w.current().ResolveCompletion(ctx, path, item)
+}
+
 func (w *windowNavigator) Hover(ctx context.Context, path, text string, row, col int) (string, error) {
 	return w.current().Hover(ctx, path, text, row, col)
 }

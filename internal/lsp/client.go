@@ -99,9 +99,13 @@ func newClient(name string, cmd *exec.Cmd, r io.Reader, w io.Writer) *Client {
 
 func handshake(ctx context.Context, c *Client, root string) (*Client, error) {
 	params := map[string]any{
-		"processId":        nil,
-		"rootUri":          PathToURI(root),
-		"rootPath":         root,
+		"processId": nil,
+		"rootUri":   PathToURI(root),
+		"rootPath":  root,
+		// typescript-language-server suggests (and imports) names of other modules only when it is asked to; other servers ignore this
+		"initializationOptions": map[string]any{"preferences": map[string]any{
+			"includeCompletionsForModuleExports": true, "includeCompletionsWithInsertText": true, "allowIncompleteCompletions": true,
+		}},
 		"workspaceFolders": []map[string]string{{"uri": PathToURI(root), "name": "project"}},
 		"capabilities": map[string]any{
 			"textDocument": map[string]any{
@@ -111,6 +115,7 @@ func handshake(ctx context.Context, c *Client, root string) (*Client, error) {
 				"rename":          map[string]any{"prepareSupport": false},
 				"completion": map[string]any{"completionItem": map[string]any{
 					"snippetSupport": false, "insertReplaceSupport": true, "documentationFormat": []string{"plaintext"},
+					"resolveSupport": map[string]any{"properties": []string{"additionalTextEdits"}},
 				}},
 			},
 			"workspace": map[string]any{

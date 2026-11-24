@@ -16,6 +16,10 @@ type CompletionItem struct {
 	FilterText string    // what the typed text is matched against; the label when empty
 	SortText   string    // the server's ordering; the label when empty
 	Edit       *TextEdit // replaces a range of the line instead of the typed word, when the server says so
+	// Additional are further edits that come with the item, such as the import line of an auto import: a server sends them with
+	// the item or, like typescript-language-server, only when the item is resolved (see Manager.ResolveCompletion).
+	Additional []TextEdit
+	raw        json.RawMessage // the item as the server sent it: resolving sends it back
 }
 
 // rawCompletionItem is the item as it is sent.
@@ -28,6 +32,7 @@ type rawCompletionItem struct {
 	FilterText       string          `json:"filterText"`
 	SortText         string          `json:"sortText"`
 	TextEdit         json.RawMessage `json:"textEdit"`
+	Additional       []TextEdit      `json:"additionalTextEdits"`
 }
 
 // completionItems decodes the answer of a completion request: null, a list, or a list with "items".
@@ -50,12 +55,25 @@ func completionItems(raw json.RawMessage) ([]CompletionItem, error) {
 		}
 		list = wrapped.Items
 	}
+	var rawItems []json.RawMessage
+	if trimmed[0] == '[' {
+		_ = json.Unmarshal(raw, &rawItems)
+	} else {
+		var wrapped struct {
+			Items []json.RawMessage `json:"items"`
+		}
+		_ = json.Unmarshal(raw, &wrapped)
+		rawItems = wrapped.Items
+	}
 	items := make([]CompletionItem, 0, len(list))
-	for _, r := range list {
+	for i, r := range list {
 		if r.Label == "" {
 			continue
 		}
-		item := CompletionItem{Label: r.Label, Detail: r.Detail, Kind: r.Kind, InsertText: r.InsertText, FilterText: r.FilterText, SortText: r.SortText}
+		item := CompletionItem{Label: r.Label, Detail: r.Detail, Kind: r.Kind, InsertText: r.InsertText, FilterText: r.FilterText, SortText: r.SortText, Additional: r.Additional}
+		if i < len(rawItems) {
+			item.raw = rawItems[i]
+		}
 		if r.InsertTextFormat == 2 { // a snippet: keep the text, drop the placeholders
 			item.InsertText = SnippetText(item.InsertText)
 		}
@@ -134,6 +152,24 @@ func (m *Manager) Complete(ctx context.Context, path, text string, row, col int)
 		line = lines[row]
 	}
 	return c.Complete(ctx, path, Position{Line: row, Character: UTF16Column([]rune(line), col)})
+}
+
+// ResolveCompletion asks the server for the rest of an item: a server such as typescript-language-server sends the edits of an auto
+// import (the import line) only for the item that was chosen. An item the server cannot resolve comes back as it was.
+func (m *Manager) ResolveCompletion(ctx context.Context, path string, item CompletionItem) (CompletionItem, error) {
+	if len(item.raw) == 0 {
+		return item, nil
+	}
+	c, _, err := m.client(ctx, path)
+	if err != nil {
+		return item, err
+	}
+	var resolved rawCompletionItem
+	if err := c.call(ctx, "completionItem/resolve", item.raw, &resolved); err != nil {
+		return item, err
+	}
+	item.Additional = append(item.Additional, resolved.Additional...)
+	return item, nil
 }
 
 // kindNames are the short names of the completion item kinds of the protocol.

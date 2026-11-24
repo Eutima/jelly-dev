@@ -253,3 +253,23 @@ func TestCompletion_RankingPrefersPrefixThenContainsThenLetters(t *testing.T) {
 		t.Fatalf("sortText orders items: %v", got)
 	}
 }
+
+// An auto import comes as an additional edit: the name is completed and the import line is added at the top, the cursor stays behind the name.
+func TestCompletion_AutoImportAddsTheImportLineAndKeepsTheCursorBehindTheName(t *testing.T) {
+	importLine := lsp.TextEdit{NewText: "import { signal } from '@angular/core';\n"}
+	nav := &fakeNav{completions: []lsp.CompletionItem{{Label: "signal", Kind: 3, Additional: []lsp.TextEdit{importLine}}}}
+	model := completionEditor(t, nav, "export class A {\n  count = \n}\n", "j$a"+"sig")
+	model = request(model)
+	if model.completion == nil {
+		t.Fatalf("the popup opens: %v", model.vim.Lines())
+	}
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = updated.(EditorModel)
+	lines := model.vim.Lines()
+	if lines[0] != "import { signal } from '@angular/core';" || lines[1] != "export class A {" || !strings.HasSuffix(lines[2], "count = signal") {
+		t.Fatalf("the import is added above and the name completed: %q", lines)
+	}
+	if row, col := model.vim.Cursor(); row != 2 || col != len([]rune(lines[2])) {
+		t.Fatalf("the cursor stays behind the name: %d:%d", row, col)
+	}
+}
