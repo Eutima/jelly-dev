@@ -105,7 +105,7 @@ func (m *Manager) Format(ctx context.Context, path, text string) (string, error)
 			return runFormatterChecked(ctx, command, path, text, m.root)
 		}
 	}
-	spec, languageID, ok := specFor(m.servers, path)
+	spec, languageID, ok := m.specFor(path)
 	if !ok {
 		return "", ErrNoServer
 	}

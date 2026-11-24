@@ -151,6 +151,34 @@ func specFor(servers []ServerSpec, path string) (ServerSpec, string, bool) {
 	return spec, strings.TrimPrefix(filepath.Ext(bestExt), "."), true
 }
 
+// specFor is specFor for a file of this manager's project: an HTML file in an Angular project (an angular.json above it) goes to the Angular
+// server, whatever its name: a template is not always called ".component.html" (templateUrl can name any file).
+func (m *Manager) specFor(path string) (ServerSpec, string, bool) {
+	spec, languageID, ok := specFor(m.servers, path)
+	if !ok || spec.Name != "html" {
+		return spec, languageID, ok
+	}
+	for _, candidate := range m.servers {
+		if candidate.Name == "angular" && inAngularProject(m.root, path) {
+			return candidate, languageID, true
+		}
+	}
+	return spec, languageID, ok
+}
+
+// inAngularProject tells whether an angular.json is in the folder of the file or above it, up to the project root.
+func inAngularProject(projectRoot, path string) bool {
+	for dir := filepath.Dir(path); strings.HasPrefix(dir, projectRoot); dir = filepath.Dir(dir) {
+		if hasMarker(dir, "angular.json") {
+			return true
+		}
+		if dir == projectRoot || filepath.Dir(dir) == dir {
+			break
+		}
+	}
+	return false
+}
+
 // rootFor returns the folder a server is started in: the nearest folder above the file (up to the project root) that
 // holds one of the markers, else the project root. With spec.OutermostRoot it is the outermost such folder.
 func rootFor(spec ServerSpec, projectRoot, path string) string {

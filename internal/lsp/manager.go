@@ -43,7 +43,7 @@ func NewManager(root string, servers []ServerSpec) *Manager {
 
 // client returns the running server for a file, starting it first when needed.
 func (m *Manager) client(ctx context.Context, path string) (*Client, string, error) {
-	spec, languageID, ok := specFor(m.servers, path)
+	spec, languageID, ok := m.specFor(path)
 	if !ok {
 		return nil, "", ErrNoServer
 	}
@@ -118,7 +118,7 @@ func (m *Manager) preload(c *Client, spec ServerSpec, root string) {
 		case opened >= maxPreloadFiles:
 			return filepath.SkipAll
 		}
-		found, languageID, ok := specFor(m.servers, path)
+		found, languageID, ok := m.specFor(path)
 		if !ok || found.Name != spec.Name {
 			return nil
 		}
