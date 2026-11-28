@@ -1,6 +1,6 @@
 module github.com/eutima/jelly-dev
 
-go 1.24.2
+go 1.26.0
 
 require (
 	github.com/alecthomas/chroma/v2 v2.14.0
@@ -13,7 +13,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.31
 	github.com/muesli/termenv v0.16.0
 	github.com/sergi/go-diff v1.4.5
-	golang.org/x/sys v0.41.0
+	golang.org/x/sys v0.50.0
 )
 
 require (
