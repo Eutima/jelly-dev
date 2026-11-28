@@ -27,7 +27,7 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # a tag given by hand is built from that tag, a release run from the commit it released
           ref: ${{ github.event.inputs.tag != '' && format('refs/tags/{0}', github.event.inputs.tag) || github.event.workflow_run.head_sha || github.sha }}
@@ -72,7 +72,7 @@ jobs:
           /tmp/check/bin/pip install --no-index dist/wheels/*manylinux_2_17_x86_64*.whl
           /tmp/check/bin/jd version
           /tmp/check/bin/python -m jelly_dev version
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.tag.outputs.tag != ''
         with:
           name: wheels
@@ -86,11 +86,11 @@ jobs:
     permissions:
       id-token: write # trusted publishing: PyPI trusts this workflow, no API token is stored
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: wheels
           path: dist
-      - uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           packages-dir: dist
           skip-existing: true # a re-run of the same release is not an error
